@@ -1,0 +1,62 @@
+import { View, Text, StyleSheet } from 'react-native';
+import { Colors, Typography, Spacing } from '@/constants/theme';
+
+interface ResourcePillProps {
+  label: string;
+  value: number;
+  color: string;
+}
+
+function ResourcePill({ label, value, color }: ResourcePillProps) {
+  return (
+    <View style={styles.pill}>
+      <Text style={[styles.pillValue, { color }]}>{value.toLocaleString()}</Text>
+      <Text style={styles.pillLabel}>{label}</Text>
+    </View>
+  );
+}
+
+interface Props {
+  credits: number;
+  attacks: number;
+  raids: number;
+  shields: number;
+  spinsRemaining: number;
+}
+
+export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining }: Props) {
+  return (
+    <View style={styles.container}>
+      <ResourcePill label="CREDITS" value={credits} color={Colors.credits} />
+      <ResourcePill label="ATTACKS" value={attacks} color={Colors.attack} />
+      <ResourcePill label="RAIDS" value={raids} color={Colors.raid} />
+      <ResourcePill label="SHIELDS" value={shields} color={Colors.shield} />
+      <ResourcePill label="SPINS" value={spinsRemaining} color={Colors.accent} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  pill: {
+    alignItems: 'center',
+  },
+  pillValue: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    lineHeight: 20,
+  },
+  pillLabel: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+});
