@@ -36,6 +36,16 @@
 
 ---
 
+## 🔧 Environment & Tooling
+
+### Claude Code — GitHub App Setup
+The Claude Code terminal provides a `/install-github-app` command to connect the GitHub integration automatically. If that command fails, you can perform a manual setup:
+1. Go to the **GitHub Marketplace** and search for the **Claude** app.
+2. Click **Install** and grant it access to this repository.
+3. Once installed, it will appear under **github.com → Settings → Installed GitHub Apps** and the Claude Code terminal will have push/PR access automatically.
+
+---
+
 ## 📝 Developer Notes & Rules of Thumb
 * **Flat UI:** Minimize menu drill-downs. "Spin" is the single-button entry point.
 * **Inflation Check:** Adding new currencies (Drone Fuel, Temporal Energy) must not devalue the core Credit economy. 
