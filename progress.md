@@ -33,6 +33,8 @@
 - [ ] **RevenueCat Integration:** Setup IAP for Spin Packs and Shield Bundles.
 - [ ] **AdMob Integration:** Implement Rewarded Video (e.g., "Watch to reboot Temporal Rift").
 - [ ] **UI/UX Polish:** Finalize gradient rendering, screen-shake effects, and the Armadillo sprite customization menus.
+- [ ] **Tutorial:** First-run onboarding flow — walk new players through spinning, building, and deploying their first drone.
+- [ ] **Visual Sugar:** Juice up the experience — particle effects on jackpots, screen shake on attacks, animated reel symbols, haptic feedback, and transition polish.
 
 ---
 
