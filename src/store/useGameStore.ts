@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { SpinResult, slotsEngine, TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
+import { useDroneStore } from '@/store/useDroneStore';
 
 interface Resources {
   credits: number;
@@ -64,8 +65,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     slotsEngine.setRiftTier(riftTier);
     const result = slotsEngine.spin();
 
+    // Apply active drone effects then tick ON_SPIN drones
+    const droneEffects = useDroneStore.getState().getEffects();
+    useDroneStore.getState().tickSpins();
+
+    const boostedCreditsWon = Math.floor(result.creditsWon * droneEffects.creditMultiplier);
+
     set((state) => {
-      const newCredits = Math.max(0, state.credits - riftCost + result.creditsWon);
+      const newCredits = Math.max(0, state.credits - riftCost + boostedCreditsWon);
       const newXp = state.xp + XP_PER_SPIN + (result.isJackpot ? 20 : 0);
       const xpNeeded = XP_PER_LEVEL(state.level);
       const leveledUp = newXp >= xpNeeded;
