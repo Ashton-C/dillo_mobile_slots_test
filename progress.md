@@ -35,6 +35,7 @@
 - [ ] **UI/UX Polish:** Finalize gradient rendering, screen-shake effects, and the Armadillo sprite customization menus.
 - [ ] **Tutorial:** First-run onboarding flow — walk new players through spinning, building, and deploying their first drone.
 - [ ] **Visual Sugar:** Juice up the experience — particle effects on jackpots, screen shake on attacks, animated reel symbols, haptic feedback, and transition polish.
+- [ ] **Testing:** Unit tests for SlotsEngine (payout math, weight normalization, Rift modifiers) and DroneMercenaryService (effect aggregation, cost validation). Integration tests for Zustand store actions.
 
 ---
 
