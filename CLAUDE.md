@@ -11,7 +11,18 @@ A disruptive, "cozy sci-fi" social-casino mobile game that evolves the "Coin Mas
 
 ## 3. The Core Loop (The "Twist")
 1.  **Spin (Generator):** Weighted slot reels for Credits (Coins), Attacks, Raids, Shields.
-2.  **Build (Meta):** Sci-fi habitat/outpost construction.
+2.  **Build (Meta):** Clash-style real-time base construction. Players spend Credits earned from spinning to construct and upgrade buildings inside their sci-fi outpost. Key design rules:
+    * **Real-Time Build Timers:** Construction and upgrades take real wall-clock time — seconds for Level 1, scaling up to hours or days for high-tier upgrades. This is the primary long-term engagement driver.
+    * **Builder Slots:** Players start with 1 active Builder (drone worker). Additional Builder slots are a premium IAP unlock, allowing parallel construction (core Clash monetization mechanic).
+    * **Monetized Skip:** Players can spend a hard currency (Temporal Crystals — distinct from Credits) to instantly complete any build timer. Rewarded video ads grant small timer reductions as a soft alternative.
+    * **Building Roster** (current — expand per phase):
+      - `GENERATOR` — Increases passive Credit income rate
+      - `ARMORY` — Raises the Attack storage cap
+      - `VAULT` — Reduces Credit loss when raided
+      - `TURRET` — Auto-blocks one incoming Attack per cooldown window
+      - `HANGAR` — Unlocks Drone Mercenary contracts (Phase 2)
+    * **Outpost Level:** The Outpost itself has a master level (like Clash's Town Hall) that gates which buildings can be built and how high they can be upgraded. Attacking a player's Outpost directly is the highest-stakes PvP action.
+    * **No Instant Gratification at High Tiers:** Level 1–3 upgrades should feel snappy (under 10 minutes). Level 7–10 upgrades should feel like real commitment (12–72 hours). This creates natural IAP pressure without being predatory at the low end.
 3.  **Strategy (The Innovation):**
     * **Temporal Rifts:** Spend Credits to weight reel outcomes (Gambling Strategy).
     * **Space Anomalies:** Global 4-hour weather events syncing buffs/debuffs across all players.
