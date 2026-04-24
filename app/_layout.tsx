@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { Colors } from '@/constants/theme';
+import { useAuthStore } from '@/store/useAuthStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,6 +16,13 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  const initialize = useAuthStore((s) => s.initialize);
+
+  useEffect(() => {
+    const unsubscribe = initialize();
+    return unsubscribe;
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
