@@ -13,6 +13,7 @@ import {
 import { auth, db } from '@/lib/firebase';
 import { subscribeToUser } from '@/services/FirestoreService';
 import { useGameStore } from '@/store/useGameStore';
+import { useAnomalyStore } from '@/store/useAnomalyStore';
 
 interface AuthState {
   user: User | null;
@@ -28,18 +29,21 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initialize() {
     let firestoreUnsub: (() => void) | null = null;
+    let anomalyUnsub: (() => void) | null = null;
 
     const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Clean up any previous Firestore listener
       firestoreUnsub?.();
+      anomalyUnsub?.();
 
       if (firebaseUser) {
         await ensureUserDoc(firebaseUser);
 
-        // Start real-time sync — Firestore is source of truth for resources
         firestoreUnsub = subscribeToUser(firebaseUser.uid, (snapshot) => {
           useGameStore.getState().syncFromFirestore(snapshot);
         });
+
+        // Start anomaly listener only after auth is confirmed
+        anomalyUnsub = useAnomalyStore.getState().subscribe();
 
         set({ user: firebaseUser, isLoading: false, error: null });
       } else {
@@ -54,6 +58,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     return () => {
       authUnsub();
       firestoreUnsub?.();
+      anomalyUnsub?.();
     };
   },
 }));

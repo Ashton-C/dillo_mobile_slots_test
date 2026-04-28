@@ -13,19 +13,14 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
-  const subscribeToAnomaly = useAnomalyStore((s) => s.subscribe);
   const tickAnomaly = useAnomalyStore((s) => s.tick);
 
   useEffect(() => {
     const unsubAuth = initializeAuth();
-    const unsubAnomaly = subscribeToAnomaly();
-
-    // Tick the anomaly countdown every minute
     const interval = setInterval(tickAnomaly, 60_000);
 
     return () => {
       unsubAuth();
-      unsubAnomaly();
       clearInterval(interval);
     };
   }, []);
