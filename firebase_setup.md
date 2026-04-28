@@ -85,10 +85,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Habitat owner can write; any authenticated user can read (for raids/attacks)
+    // Habitat: any authenticated user can read (needed for raids/attacks).
+    // Create requires ownerUid == caller; update/delete requires existing ownerUid match.
     match /habitats/{habitatId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.ownerUid;
+      allow update, delete: if request.auth != null
         && request.auth.uid == resource.data.ownerUid;
     }
 

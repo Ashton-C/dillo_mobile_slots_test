@@ -47,28 +47,33 @@ export const useAuthStore = create<AuthState>((set) => ({
       anomalyUnsub?.();
 
       if (firebaseUser) {
-        const profile = await ensureUserDoc(firebaseUser);
+        try {
+          const profile = await ensureUserDoc(firebaseUser);
 
-        userUnsub = subscribeToUser(firebaseUser.uid, (snapshot) => {
-          useGameStore.getState().syncFromFirestore(snapshot);
-        });
+          userUnsub = subscribeToUser(firebaseUser.uid, (snapshot) => {
+            useGameStore.getState().syncFromFirestore(snapshot);
+          });
 
-        const habitatId = await ensureHabitatForUser(firebaseUser.uid);
-        useHabitatStore.getState().setHabitatId(habitatId);
-        habitatUnsub = subscribeToHabitat(habitatId, (snapshot) => {
-          useHabitatStore.getState().syncFromFirestore(snapshot);
-        });
+          const habitatId = await ensureHabitatForUser(firebaseUser.uid);
+          useHabitatStore.getState().setHabitatId(habitatId);
+          habitatUnsub = subscribeToHabitat(habitatId, (snapshot) => {
+            useHabitatStore.getState().syncFromFirestore(snapshot);
+          });
 
-        anomalyUnsub = useAnomalyStore.getState().subscribe();
+          anomalyUnsub = useAnomalyStore.getState().subscribe();
 
-        set({
-          user: firebaseUser,
-          displayName: profile.displayName,
-          avatarColor: profile.avatarColor,
-          needsUsername: !profile.hasSetUsername,
-          isLoading: false,
-          error: null,
-        });
+          set({
+            user: firebaseUser,
+            displayName: profile.displayName,
+            avatarColor: profile.avatarColor,
+            needsUsername: !profile.hasSetUsername,
+            isLoading: false,
+            error: null,
+          });
+        } catch (err) {
+          console.error('Auth init error:', err);
+          set({ isLoading: false, error: 'Failed to load profile' });
+        }
       } else {
         try {
           await signInAnonymously(auth);

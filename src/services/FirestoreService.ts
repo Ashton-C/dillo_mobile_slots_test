@@ -43,19 +43,23 @@ export function subscribeToUser(
   onUpdate: (data: UserResourceSnapshot) => void,
 ): Unsubscribe {
   const ref = doc(db, 'users', uid);
-  return onSnapshot(ref, (snap) => {
-    if (!snap.exists()) return;
-    const d = snap.data();
-    onUpdate({
-      credits: d.credits ?? 0,
-      attacks: d.attacks ?? 0,
-      raids: d.raids ?? 0,
-      shields: d.shields ?? 0,
-      spinsRemaining: d.spinsRemaining ?? 50,
-      xp: d.xp ?? 0,
-      level: d.level ?? 1,
-    });
-  });
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      onUpdate({
+        credits: d.credits ?? 0,
+        attacks: d.attacks ?? 0,
+        raids: d.raids ?? 0,
+        shields: d.shields ?? 0,
+        spinsRemaining: d.spinsRemaining ?? 50,
+        xp: d.xp ?? 0,
+        level: d.level ?? 1,
+      });
+    },
+    (err) => console.error('subscribeToUser error:', err),
+  );
 }
 
 // Ensure a habitat doc exists for the user. Creates one if missing and writes
@@ -91,12 +95,16 @@ export function subscribeToHabitat(
   onUpdate: (data: HabitatSnapshot) => void,
 ): Unsubscribe {
   const ref = doc(db, 'habitats', habitatId);
-  return onSnapshot(ref, (snap) => {
-    if (!snap.exists()) return;
-    const d = snap.data();
-    onUpdate({
-      buildingLevels: (d.buildingLevels as Partial<Record<BuildingType, number>>) ?? {},
-      activeBuildJob: (d.activeBuildJob as ActiveBuildJob | null) ?? null,
-    });
-  });
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) return;
+      const d = snap.data();
+      onUpdate({
+        buildingLevels: (d.buildingLevels as Partial<Record<BuildingType, number>>) ?? {},
+        activeBuildJob: (d.activeBuildJob as ActiveBuildJob | null) ?? null,
+      });
+    },
+    (err) => console.error('subscribeToHabitat error:', err),
+  );
 }
