@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { useGameStore } from '@/store/useGameStore';
+import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { SpinButton } from '@/components/SpinButton';
 import { ReelDisplay } from '@/components/ReelDisplay';
 import { ResourceBar } from '@/components/ResourceBar';
@@ -16,12 +17,10 @@ export default function SpinScreen() {
     spin, setRiftTier,
   } = useGameStore();
 
+  const { definition } = useAnomalyStore();
+
   const reels = lastResult?.reels ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
-
-  function handleSpin() {
-    spin();
-  }
 
   return (
     <SafeAreaView style={styles.root}>
@@ -33,13 +32,23 @@ export default function SpinScreen() {
         spinsRemaining={spinsRemaining}
       />
 
+      {/* Anomaly ticker */}
+      {definition && definition.id !== 'CALM' && (
+        <View style={[styles.anomalyTicker, { borderColor: definition.color }]}>
+          <Text style={[styles.anomalyName, { color: definition.color }]}>
+            {definition.name}
+          </Text>
+          <Text style={styles.anomalyDesc} numberOfLines={1}>
+            {definition.description}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.content}>
         {/* Outcome banner */}
         <View style={styles.outcomeBanner}>
           {lastResult && lastResult.outcomeType !== 'NOTHING' ? (
-            <Text style={styles.outcomeText}>
-              {outcomeMessage(lastResult)}
-            </Text>
+            <Text style={styles.outcomeText}>{outcomeMessage(lastResult)}</Text>
           ) : (
             <Text style={styles.outcomeTextMuted}>
               {spinsRemaining > 0 ? 'Awaiting spin…' : 'No spins left'}
@@ -50,16 +59,13 @@ export default function SpinScreen() {
           )}
         </View>
 
-        {/* Reels */}
         <ReelDisplay reels={reels} isSpinning={isSpinning} />
 
-        {/* Spin button */}
         <View style={styles.spinZone}>
-          <SpinButton onPress={handleSpin} disabled={!canSpin} isSpinning={isSpinning} />
+          <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
           <Text style={styles.spinsLabel}>{spinsRemaining} spins remaining</Text>
         </View>
 
-        {/* Rift selector */}
         <RiftSelector
           currentTier={riftTier}
           availableCredits={credits}
@@ -81,15 +87,29 @@ function outcomeMessage(result: NonNullable<ReturnType<typeof useGameStore.getSt
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: Colors.background,
+  root: { flex: 1, backgroundColor: Colors.background },
+  anomalyTicker: {
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: Colors.surfaceElevated,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
-  content: {
-    flex: 1,
-    paddingTop: Spacing.xl,
-    gap: Spacing.xl,
+  anomalyName: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
   },
+  anomalyDesc: {
+    flex: 1,
+    fontSize: Typography.sizes.xs,
+    color: Colors.textSecondary,
+  },
+  content: { flex: 1, paddingTop: Spacing.lg, gap: Spacing.xl },
   outcomeBanner: {
     alignItems: 'center',
     minHeight: 48,
@@ -117,10 +137,7 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     marginTop: Spacing.xs,
   },
-  spinZone: {
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
+  spinZone: { alignItems: 'center', gap: Spacing.sm },
   spinsLabel: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,

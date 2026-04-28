@@ -44,6 +44,13 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => <TabIcon label="HANGAR" focused={focused} />,
         }}
       />
+      <Tabs.Screen
+        name="rift"
+        options={{
+          title: 'Rift',
+          tabBarIcon: ({ focused }) => <TabIcon label="RIFT" focused={focused} />,
+        }}
+      />
     </Tabs>
   );
 }

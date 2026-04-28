@@ -11,12 +11,14 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { subscribeToUser } from '@/services/FirestoreService';
+import { useGameStore } from '@/store/useGameStore';
 
 interface AuthState {
   user: User | null;
   isLoading: boolean;
   error: string | null;
-  initialize: () => () => void; // returns unsubscribe fn
+  initialize: () => () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -25,29 +27,40 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   initialize() {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let firestoreUnsub: (() => void) | null = null;
+
+    const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Clean up any previous Firestore listener
+      firestoreUnsub?.();
+
       if (firebaseUser) {
         await ensureUserDoc(firebaseUser);
+
+        // Start real-time sync — Firestore is source of truth for resources
+        firestoreUnsub = subscribeToUser(firebaseUser.uid, (snapshot) => {
+          useGameStore.getState().syncFromFirestore(snapshot);
+        });
+
         set({ user: firebaseUser, isLoading: false, error: null });
       } else {
-        // No session — sign in anonymously
         try {
           await signInAnonymously(auth);
-          // onAuthStateChanged will fire again with the new user
-        } catch (e) {
+        } catch {
           set({ isLoading: false, error: 'Sign-in failed' });
         }
       }
     });
 
-    return unsubscribe;
+    return () => {
+      authUnsub();
+      firestoreUnsub?.();
+    };
   },
 }));
 
 async function ensureUserDoc(user: User): Promise<void> {
   const ref = doc(db, 'users', user.uid);
   const snap = await getDoc(ref);
-
   if (!snap.exists()) {
     await setDoc(ref, {
       uid: user.uid,

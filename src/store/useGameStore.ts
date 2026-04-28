@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { SpinResult, slotsEngine, TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
 import { useDroneStore } from '@/store/useDroneStore';
+import { writeUserResources } from '@/services/FirestoreService';
+import { anomalyService } from '@/services/AnomalyService';
+import { auth } from '@/lib/firebase';
 
 interface Resources {
   credits: number;
@@ -19,7 +22,6 @@ interface SpinState {
 }
 
 interface GameState extends Resources, SpinState {
-  // Actions
   spin: () => SpinResult | null;
   setRiftTier: (tier: TemporalRiftTier) => void;
   consumeAttack: () => boolean;
@@ -45,6 +47,11 @@ const INITIAL_RESOURCES: Resources = {
 const XP_PER_SPIN = 5;
 const XP_PER_LEVEL = (level: number) => 100 * level;
 
+function persistResources(data: Partial<Resources>) {
+  const uid = auth.currentUser?.uid;
+  if (uid) writeUserResources(uid, data).catch(console.error);
+}
+
 export const useGameStore = create<GameState>((set, get) => ({
   ...INITIAL_RESOURCES,
   isSpinning: false,
@@ -53,10 +60,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   spin() {
     const { spinsRemaining, riftTier, credits } = get();
-
     if (spinsRemaining <= 0 || get().isSpinning) return null;
 
-    // Deduct rift cost before spinning
     const riftCost = RIFT_COSTS[riftTier];
     if (riftCost > credits) return null;
 
@@ -65,11 +70,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     slotsEngine.setRiftTier(riftTier);
     const result = slotsEngine.spin();
 
-    // Apply active drone effects then tick ON_SPIN drones
     const droneEffects = useDroneStore.getState().getEffects();
     useDroneStore.getState().tickSpins();
+    const boostedCreditsWon = Math.floor(
+      result.creditsWon * droneEffects.creditMultiplier * (anomalyService.getDefinition()?.creditMultiplier ?? 1),
+    );
 
-    const boostedCreditsWon = Math.floor(result.creditsWon * droneEffects.creditMultiplier);
+    let nextState: Partial<Resources> = {};
 
     set((state) => {
       const newCredits = Math.max(0, state.credits - riftCost + boostedCreditsWon);
@@ -77,7 +84,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const xpNeeded = XP_PER_LEVEL(state.level);
       const leveledUp = newXp >= xpNeeded;
 
-      return {
+      nextState = {
         credits: newCredits,
         attacks: Math.min(50, state.attacks + result.attacksWon),
         raids: Math.min(50, state.raids + result.raidsWon),
@@ -85,11 +92,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         spinsRemaining: state.spinsRemaining - 1,
         xp: leveledUp ? newXp - xpNeeded : newXp,
         level: leveledUp ? state.level + 1 : state.level,
-        lastResult: result,
-        isSpinning: false,
       };
+
+      return { ...nextState, lastResult: result, isSpinning: false };
     });
 
+    persistResources(nextState);
     return result;
   },
 
@@ -100,37 +108,49 @@ export const useGameStore = create<GameState>((set, get) => ({
   consumeAttack() {
     const { attacks } = get();
     if (attacks <= 0) return false;
-    set((state) => ({ attacks: state.attacks - 1 }));
+    const next = { attacks: attacks - 1 };
+    set(next);
+    persistResources(next);
     return true;
   },
 
   consumeRaid() {
     const { raids } = get();
     if (raids <= 0) return false;
-    set((state) => ({ raids: state.raids - 1 }));
+    const next = { raids: raids - 1 };
+    set(next);
+    persistResources(next);
     return true;
   },
 
   consumeShield() {
     const { shields } = get();
     if (shields <= 0) return false;
-    set((state) => ({ shields: state.shields - 1 }));
+    const next = { shields: shields - 1 };
+    set(next);
+    persistResources(next);
     return true;
   },
 
   addCredits(amount) {
-    set((state) => ({ credits: state.credits + amount }));
+    const next = { credits: get().credits + amount };
+    set(next);
+    persistResources(next);
   },
 
   subtractCredits(amount) {
     const { credits } = get();
     if (credits < amount) return false;
-    set((state) => ({ credits: state.credits - amount }));
+    const next = { credits: credits - amount };
+    set(next);
+    persistResources(next);
     return true;
   },
 
   refillSpins() {
-    set({ spinsRemaining: 50 });
+    const next = { spinsRemaining: 50 };
+    set(next);
+    persistResources(next);
   },
 
   syncFromFirestore(resources) {
