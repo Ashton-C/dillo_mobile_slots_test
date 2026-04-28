@@ -29,6 +29,26 @@ export const BUILDING_UPGRADE_COST: Record<BuildingType, (level: number) => numb
   HANGAR: (lvl) => 1000 * lvl,
 };
 
+// Build duration (ms) to upgrade TO the given level (level 1 is free/instant on first build)
+export const BUILD_DURATION_MS: { [targetLevel: number]: number } = {
+  1: 0,
+  2: 30_000,
+  3: 5 * 60_000,
+  4: 15 * 60_000,
+  5: 60 * 60_000,
+  6: 4 * 3_600_000,
+  7: 12 * 3_600_000,
+  8: 24 * 3_600_000,
+  9: 48 * 3_600_000,
+  10: 72 * 3_600_000,
+};
+
+export interface ActiveBuildJob {
+  type: BuildingType;
+  targetLevel: number;
+  completesAt: number; // unix ms
+}
+
 export const AttackLogEntrySchema = z.object({
   attackerUid: z.string(),
   attackerName: z.string(),

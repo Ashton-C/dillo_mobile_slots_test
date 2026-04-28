@@ -11,9 +11,10 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { subscribeToUser } from '@/services/FirestoreService';
+import { subscribeToUser, subscribeToHabitat, ensureHabitatForUser } from '@/services/FirestoreService';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
+import { useHabitatStore } from '@/store/useHabitatStore';
 
 interface AuthState {
   user: User | null;
@@ -28,21 +29,28 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   initialize() {
-    let firestoreUnsub: (() => void) | null = null;
+    let userUnsub: (() => void) | null = null;
+    let habitatUnsub: (() => void) | null = null;
     let anomalyUnsub: (() => void) | null = null;
 
     const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      firestoreUnsub?.();
+      userUnsub?.();
+      habitatUnsub?.();
       anomalyUnsub?.();
 
       if (firebaseUser) {
         await ensureUserDoc(firebaseUser);
 
-        firestoreUnsub = subscribeToUser(firebaseUser.uid, (snapshot) => {
+        userUnsub = subscribeToUser(firebaseUser.uid, (snapshot) => {
           useGameStore.getState().syncFromFirestore(snapshot);
         });
 
-        // Start anomaly listener only after auth is confirmed
+        const habitatId = await ensureHabitatForUser(firebaseUser.uid);
+        useHabitatStore.getState().setHabitatId(habitatId);
+        habitatUnsub = subscribeToHabitat(habitatId, (snapshot) => {
+          useHabitatStore.getState().syncFromFirestore(snapshot);
+        });
+
         anomalyUnsub = useAnomalyStore.getState().subscribe();
 
         set({ user: firebaseUser, isLoading: false, error: null });
@@ -57,7 +65,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     return () => {
       authUnsub();
-      firestoreUnsub?.();
+      userUnsub?.();
+      habitatUnsub?.();
       anomalyUnsub?.();
     };
   },

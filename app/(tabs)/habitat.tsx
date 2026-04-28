@@ -1,52 +1,95 @@
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '@/store/useGameStore';
-import { BuildingType, BUILDING_UPGRADE_COST } from '@/models/Habitat';
+import { useHabitatStore } from '@/store/useHabitatStore';
+import { BuildingType, BUILDING_UPGRADE_COST, BUILD_DURATION_MS } from '@/models/Habitat';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const BUILDING_META: Record<BuildingType, { icon: string; label: string; desc: string }> = {
   GENERATOR: { icon: '⚡', label: 'GENERATOR', desc: 'Passive credit income' },
-  ARMORY: { icon: '⚔', label: 'ARMORY', desc: 'Increases max attacks' },
-  VAULT: { icon: '◈', label: 'VAULT', desc: 'Reduces raid losses' },
-  TURRET: { icon: '◎', label: 'TURRET', desc: 'Auto-blocks 1 attack/day' },
-  HANGAR: { icon: '▲', label: 'HANGAR', desc: 'Unlocks drone mercenaries' },
+  ARMORY:    { icon: '⚔', label: 'ARMORY',    desc: 'Increases max attacks' },
+  VAULT:     { icon: '◈', label: 'VAULT',      desc: 'Reduces raid losses' },
+  TURRET:    { icon: '◎', label: 'TURRET',     desc: 'Auto-blocks 1 attack/day' },
+  HANGAR:    { icon: '▲', label: 'HANGAR',     desc: 'Unlocks drone mercenaries' },
 };
 
-const STARTER_BUILDINGS: BuildingType[] = ['GENERATOR', 'ARMORY', 'VAULT'];
+const ALL_BUILDINGS: BuildingType[] = ['GENERATOR', 'ARMORY', 'VAULT', 'TURRET', 'HANGAR'];
+
+function formatTimer(ms: number): string {
+  const s = Math.ceil(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
 
 interface BuildingCardProps {
   type: BuildingType;
   level: number;
   canAfford: boolean;
   upgradeCost: number;
+  isBuilding: boolean;
+  builderBusy: boolean;
+  msRemaining: number;
+  totalBuildMs: number;
   onUpgrade: () => void;
 }
 
-function BuildingCard({ type, level, canAfford, upgradeCost, onUpgrade }: BuildingCardProps) {
+function BuildingCard({
+  type, level, canAfford, upgradeCost, isBuilding, builderBusy, msRemaining, totalBuildMs, onUpgrade,
+}: BuildingCardProps) {
   const meta = BUILDING_META[type];
   const maxed = level >= 10;
+  const blocked = builderBusy && !isBuilding;
+
+  let buttonLabel: string;
+  let buttonDisabled: boolean;
+
+  if (maxed) {
+    buttonLabel = 'MAX';
+    buttonDisabled = true;
+  } else if (isBuilding) {
+    buttonLabel = formatTimer(msRemaining);
+    buttonDisabled = true;
+  } else if (blocked) {
+    buttonLabel = 'BUSY';
+    buttonDisabled = true;
+  } else {
+    buttonLabel = `${upgradeCost} CR`;
+    buttonDisabled = !canAfford;
+  }
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isBuilding && styles.cardActive]}>
       <View style={styles.cardLeft}>
         <Text style={styles.cardIcon}>{meta.icon}</Text>
-        <View>
+        <View style={styles.cardInfo}>
           <Text style={styles.cardLabel}>{meta.label}</Text>
           <Text style={styles.cardDesc}>{meta.desc}</Text>
+          {isBuilding && totalBuildMs > 0 && (
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${Math.max(2, (1 - msRemaining / totalBuildMs) * 100)}%` }]} />
+            </View>
+          )}
         </View>
       </View>
       <View style={styles.cardRight}>
-        <Text style={styles.cardLevel}>LVL {level}</Text>
+        <Text style={[styles.cardLevel, level === 0 ? styles.cardLevelEmpty : undefined]}>
+          {level === 0 ? 'NEW' : `LVL ${level}`}
+        </Text>
         <Pressable
           onPress={onUpgrade}
-          disabled={!canAfford || maxed}
+          disabled={buttonDisabled}
           style={[
             styles.upgradeButton,
-            (!canAfford || maxed) && styles.upgradeButtonDisabled,
+            isBuilding && styles.upgradeButtonBuilding,
+            buttonDisabled && !isBuilding && styles.upgradeButtonDisabled,
           ]}
         >
-          <Text style={styles.upgradeButtonText}>
-            {maxed ? 'MAX' : `${upgradeCost} CR`}
+          <Text style={[styles.upgradeButtonText, isBuilding && styles.upgradeButtonTextBuilding]}>
+            {buttonLabel}
           </Text>
         </Pressable>
       </View>
@@ -56,12 +99,9 @@ function BuildingCard({ type, level, canAfford, upgradeCost, onUpgrade }: Buildi
 
 export default function HabitatScreen() {
   const { credits, subtractCredits } = useGameStore();
+  const { buildingLevels, activeBuildJob, msUntilComplete, startBuild } = useHabitatStore();
 
-  // Local state for demo — will be replaced by Firestore sync in Phase 2
-  function handleUpgrade(type: BuildingType, level: number) {
-    const cost = BUILDING_UPGRADE_COST[type](level);
-    subtractCredits(cost);
-  }
+  const builderBusy = activeBuildJob !== null;
 
   return (
     <SafeAreaView style={styles.root}>
@@ -70,15 +110,28 @@ export default function HabitatScreen() {
         <Text style={styles.subtitle}>Build. Defend. Expand.</Text>
       </View>
 
-      <View style={styles.creditsBadge}>
-        <Text style={styles.creditsValue}>{credits.toLocaleString()}</Text>
-        <Text style={styles.creditsLabel}> CREDITS</Text>
+      <View style={styles.statusRow}>
+        <View style={styles.creditsBadge}>
+          <Text style={styles.creditsValue}>{credits.toLocaleString()}</Text>
+          <Text style={styles.creditsLabel}> CR</Text>
+        </View>
+        <View style={[styles.builderBadge, builderBusy && styles.builderBadgeBusy]}>
+          <Text style={[styles.builderText, builderBusy && styles.builderTextBusy]}>
+            {builderBusy ? `BUILDING · ${formatTimer(msUntilComplete)}` : 'BUILDER READY'}
+          </Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {STARTER_BUILDINGS.map((type) => {
-          const level = 1;
-          const upgradeCost = BUILDING_UPGRADE_COST[type](level);
+        <Text style={styles.sectionHeader}>STRUCTURES</Text>
+
+        {ALL_BUILDINGS.map((type) => {
+          const level = buildingLevels[type] ?? 0;
+          const upgradeCost = BUILDING_UPGRADE_COST[type](level === 0 ? 1 : level);
+          const isBuilding = activeBuildJob?.type === type;
+          const targetLevel = level + 1;
+          const totalBuildMs = BUILD_DURATION_MS[targetLevel] ?? 0;
+
           return (
             <BuildingCard
               key={type}
@@ -86,40 +139,26 @@ export default function HabitatScreen() {
               level={level}
               canAfford={credits >= upgradeCost}
               upgradeCost={upgradeCost}
-              onUpgrade={() => handleUpgrade(type, level)}
+              isBuilding={isBuilding}
+              builderBusy={builderBusy}
+              msRemaining={isBuilding ? msUntilComplete : 0}
+              totalBuildMs={totalBuildMs}
+              onUpgrade={() => startBuild(type, subtractCredits)}
             />
           );
         })}
 
-        <View style={styles.lockedSection}>
-          <Text style={styles.lockedHeader}>LOCKED — PHASE 2</Text>
-          {(['TURRET', 'HANGAR'] as BuildingType[]).map((type) => (
-            <View key={type} style={[styles.card, styles.cardLocked]}>
-              <View style={styles.cardLeft}>
-                <Text style={[styles.cardIcon, { opacity: 0.3 }]}>
-                  {BUILDING_META[type].icon}
-                </Text>
-                <View>
-                  <Text style={[styles.cardLabel, { color: Colors.textMuted }]}>
-                    {BUILDING_META[type].label}
-                  </Text>
-                  <Text style={styles.cardDesc}>{BUILDING_META[type].desc}</Text>
-                </View>
-              </View>
-              <Text style={styles.lockBadge}>LOCKED</Text>
-            </View>
-          ))}
-        </View>
+        <Text style={styles.footnote}>
+          One builder drone active at a time. Higher levels take longer to construct.
+          Builder Slots (parallel construction) coming in a future update.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  root: { flex: 1, backgroundColor: Colors.background },
   header: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
@@ -137,11 +176,16 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginTop: 2,
   },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
   creditsBadge: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
   },
   creditsValue: {
     fontSize: Typography.sizes.xl,
@@ -153,9 +197,32 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  list: {
-    padding: Spacing.md,
-    gap: Spacing.sm,
+  builderBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  builderBadgeBusy: {
+    borderColor: Colors.accent,
+  },
+  builderText: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+  builderTextBusy: {
+    color: Colors.accent,
+    fontWeight: Typography.weights.bold,
+  },
+  list: { padding: Spacing.md, gap: Spacing.sm },
+  sectionHeader: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 3,
+    marginBottom: Spacing.xs,
   },
   card: {
     flexDirection: 'row',
@@ -167,8 +234,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     padding: Spacing.md,
   },
-  cardLocked: {
-    opacity: 0.5,
+  cardActive: {
+    borderColor: Colors.accent,
   },
   cardLeft: {
     flexDirection: 'row',
@@ -181,6 +248,10 @@ const styles = StyleSheet.create({
     width: 32,
     textAlign: 'center',
   },
+  cardInfo: {
+    flex: 1,
+    gap: 2,
+  },
   cardLabel: {
     fontSize: Typography.sizes.sm,
     fontWeight: Typography.weights.bold,
@@ -190,7 +261,18 @@ const styles = StyleSheet.create({
   cardDesc: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
-    marginTop: 2,
+  },
+  progressTrack: {
+    height: 2,
+    backgroundColor: Colors.border,
+    borderRadius: 1,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: Colors.accent,
+    borderRadius: 1,
   },
   cardRight: {
     alignItems: 'flex-end',
@@ -201,11 +283,21 @@ const styles = StyleSheet.create({
     color: Colors.accent,
     letterSpacing: 2,
   },
+  cardLevelEmpty: {
+    color: Colors.textMuted,
+  },
   upgradeButton: {
     backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.sm,
     paddingVertical: 4,
     borderRadius: BorderRadius.sm,
+    minWidth: 64,
+    alignItems: 'center',
+  },
+  upgradeButtonBuilding: {
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.accent,
   },
   upgradeButtonDisabled: {
     backgroundColor: Colors.surfaceElevated,
@@ -216,24 +308,13 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     letterSpacing: 1,
   },
-  lockedSection: {
-    marginTop: Spacing.lg,
-    gap: Spacing.sm,
+  upgradeButtonTextBuilding: {
+    color: Colors.accent,
   },
-  lockedHeader: {
+  footnote: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
-    letterSpacing: 3,
-    marginBottom: Spacing.xs,
-  },
-  lockBadge: {
-    fontSize: Typography.sizes.xs,
-    color: Colors.textMuted,
-    letterSpacing: 2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    lineHeight: 18,
+    marginTop: Spacing.sm,
   },
 });

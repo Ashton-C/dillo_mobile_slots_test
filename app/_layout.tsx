@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
+import { useHabitatStore } from '@/store/useHabitatStore';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -14,14 +15,17 @@ const queryClient = new QueryClient({
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
   const tickAnomaly = useAnomalyStore((s) => s.tick);
+  const tickHabitat = useHabitatStore((s) => s.tick);
 
   useEffect(() => {
     const unsubAuth = initializeAuth();
-    const interval = setInterval(tickAnomaly, 60_000);
+    const anomalyInterval = setInterval(tickAnomaly, 60_000);
+    const habitatInterval = setInterval(tickHabitat, 1_000);
 
     return () => {
       unsubAuth();
-      clearInterval(interval);
+      clearInterval(anomalyInterval);
+      clearInterval(habitatInterval);
     };
   }, []);
 
