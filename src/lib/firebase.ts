@@ -1,9 +1,8 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { initializeAuth, getAuth, getReactNativePersistence, Auth } from 'firebase/auth';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, Firestore } from 'firebase/firestore';
 
-// Config is pulled from environment variables (set via .env.local for local dev,
-// EAS Secrets for production builds). Never commit real values here.
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '',
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',
@@ -13,14 +12,19 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? '',
 };
 
-// Guard against re-initialization in hot-reload environments
 let app: FirebaseApp;
+let auth: Auth;
+
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+  });
 } else {
   app = getApps()[0]!;
+  auth = getAuth(app);
 }
 
-export const auth: Auth = getAuth(app);
+export { auth };
 export const db: Firestore = getFirestore(app);
 export default app;
