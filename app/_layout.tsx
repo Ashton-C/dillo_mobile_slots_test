@@ -7,6 +7,7 @@ import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
+import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -40,6 +41,7 @@ export default function RootLayout() {
             animation: 'fade',
           }}
         />
+        <UsernameSetupModal />
       </QueryClientProvider>
     </GestureHandlerRootView>
   );

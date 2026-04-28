@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { SpinButton } from '@/components/SpinButton';
 import { ReelDisplay } from '@/components/ReelDisplay';
 import { ResourceBar } from '@/components/ResourceBar';
@@ -18,12 +19,16 @@ export default function SpinScreen() {
   } = useGameStore();
 
   const { definition } = useAnomalyStore();
+  const { displayName } = useAuthStore();
 
   const reels = lastResult?.reels ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
 
   return (
     <SafeAreaView style={styles.root}>
+      {displayName && (
+        <Text style={styles.pilotBadge}>◎ {displayName}</Text>
+      )}
       <ResourceBar
         credits={credits}
         attacks={attacks}
@@ -88,6 +93,14 @@ function outcomeMessage(result: NonNullable<ReturnType<typeof useGameStore.getSt
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
+  pilotBadge: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    textAlign: 'right',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.xs,
+  },
   anomalyTicker: {
     marginHorizontal: Spacing.md,
     marginTop: Spacing.sm,
