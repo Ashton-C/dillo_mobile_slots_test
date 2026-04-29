@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect } from 'react';
+import Animated, {
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useDroneStore } from '@/store/useDroneStore';
@@ -9,6 +15,8 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 type DisplayMode = 'dots' | 'numbers';
 const STORAGE_KEY = '@modifier_panel_mode';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const RIFT_LABELS: Record<number, string> = {
   0: 'NO RIFT',
@@ -69,8 +77,26 @@ function ModifierRow({ label, value, dotCount, color, mode }: ModifierRowProps) 
 export function ModifierPanel() {
   const { definition, msRemaining } = useAnomalyStore();
   const riftTier = useGameStore((s) => s.riftTier);
+  const isSpinning = useGameStore((s) => s.isSpinning);
   const { activeDrones, getEffects } = useDroneStore();
   const [mode, setMode] = useState<DisplayMode>('dots');
+
+  const prevSpinningRef = useRef(isSpinning);
+  const glowT = useSharedValue(0);
+
+  const panelStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(glowT.value, [0, 1], [Colors.border, Colors.accent]),
+  }));
+
+  useEffect(() => {
+    if (!isSpinning && prevSpinningRef.current) {
+      glowT.value = withSequence(
+        withTiming(1, { duration: 180 }),
+        withTiming(0, { duration: 700 }),
+      );
+    }
+    prevSpinningRef.current = isSpinning;
+  }, [isSpinning]);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((v) => {
@@ -98,7 +124,7 @@ export function ModifierPanel() {
   if (!hasAnyModifier) return null;
 
   return (
-    <Pressable onPress={toggleMode} style={styles.panel}>
+    <AnimatedPressable onPress={toggleMode} style={[styles.panel, panelStyle]}>
       <View style={styles.header}>
         <Text style={styles.panelTitle}>ACTIVE EFFECTS</Text>
         <Text style={styles.toggleHint}>{mode === 'dots' ? '123' : '●●●'}</Text>
@@ -163,7 +189,7 @@ export function ModifierPanel() {
           mode={mode}
         />
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -175,7 +201,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceElevated,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
     gap: 6,
   },
   header: {

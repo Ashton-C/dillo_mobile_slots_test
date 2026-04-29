@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -7,6 +7,7 @@ import Animated, {
   useAnimatedStyle,
   withSequence,
   withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 import { useGameStore } from '@/store/useGameStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -15,12 +16,14 @@ import { ReelDisplay } from '@/components/ReelDisplay';
 import { ResourceBar } from '@/components/ResourceBar';
 import { RiftSelector } from '@/components/RiftSelector';
 import { ModifierPanel } from '@/components/ModifierPanel';
+import { JackpotBurst } from '@/components/JackpotBurst';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { TemporalRiftTier } from '@/services/SlotsEngine';
 
 const EMPTY_REELS: ['EMPTY', 'EMPTY', 'EMPTY'] = ['EMPTY', 'EMPTY', 'EMPTY'];
 const MAX_SPINS = 50;
 const LOW_SPIN_THRESHOLD = 5;
+const MILESTONES = [250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000];
 
 function formatRefillTimer(ms: number): string {
   const totalSec = Math.ceil(ms / 1000);
@@ -31,10 +34,18 @@ function formatRefillTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function getMilestone(credits: number): { next: number; progress: number } {
+  const nextIdx = MILESTONES.findIndex((m) => m > credits);
+  if (nextIdx === -1) return { next: MILESTONES[MILESTONES.length - 1], progress: 1 };
+  const next = MILESTONES[nextIdx];
+  const prev = nextIdx > 0 ? MILESTONES[nextIdx - 1] : 0;
+  return { next, progress: Math.min(1, Math.max(0, (credits - prev) / (next - prev))) };
+}
+
 export default function SpinScreen() {
   const {
     credits, attacks, raids, shields, intrusions, extractions, spinsRemaining,
-    isSpinning, lastResult, riftTier,
+    isSpinning, lastResult, riftTier, level,
     msUntilNextSpin, msUntilFull,
     overclockActive, signalBoostActive,
     spin, setRiftTier, activateOverclock, activateSignalBoost,
@@ -42,7 +53,9 @@ export default function SpinScreen() {
 
   const { displayName } = useAuthStore();
 
-  // Jackpot flash
+  const [burstVisible, setBurstVisible] = useState(false);
+
+  // Jackpot flash + burst
   const flashOpacity = useSharedValue(0);
   const prevJackpot = useRef(false);
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
@@ -57,15 +70,50 @@ export default function SpinScreen() {
         withTiming(0.7, { duration: 60 }),
         withTiming(0, { duration: 400 }),
       );
+      setBurstVisible(true);
+      setTimeout(() => setBurstVisible(false), 1000);
     }
     prevJackpot.current = isJackpot;
   }, [lastResult]);
+
+  // Outcome banner scale
+  const bannerScale = useSharedValue(1);
+  useEffect(() => {
+    if (lastResult && lastResult.outcomeType !== 'NOTHING') {
+      bannerScale.value = withSequence(
+        withTiming(1.08, { duration: 90 }),
+        withSpring(1, { damping: 10, stiffness: 150 }),
+      );
+    }
+  }, [lastResult]);
+  const bannerStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: bannerScale.value }],
+  }));
+
+  // Level-up flash
+  const levelFlash = useSharedValue(0);
+  const prevLevel = useRef(level);
+  const levelFlashStyle = useAnimatedStyle(() => ({ opacity: levelFlash.value }));
+
+  useEffect(() => {
+    if (level > prevLevel.current) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      levelFlash.value = withSequence(
+        withTiming(1, { duration: 80 }),
+        withTiming(0.6, { duration: 120 }),
+        withTiming(1, { duration: 80 }),
+        withTiming(0, { duration: 500 }),
+      );
+    }
+    prevLevel.current = level;
+  }, [level]);
 
   const reels = lastResult?.reels ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
   const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
   const showCombatResources = intrusions > 0 || extractions > 0;
   const spinsLow = spinsRemaining <= LOW_SPIN_THRESHOLD;
+  const milestone = getMilestone(credits);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -76,7 +124,16 @@ export default function SpinScreen() {
         style={[StyleSheet.absoluteFill, styles.jackpotFlash, flashStyle]}
       />
 
-      {/* Gradient header — pilot badge + resource bar */}
+      {/* Level-up overlay */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.levelUpFlash, levelFlashStyle]}
+      />
+
+      {/* Jackpot particle burst — centered over reel area */}
+      <JackpotBurst visible={burstVisible} />
+
+      {/* Gradient header */}
       <LinearGradient
         colors={[Colors.gradientStart + '55', Colors.gradientMid + '33', Colors.background]}
         start={{ x: 0, y: 0 }}
@@ -99,7 +156,7 @@ export default function SpinScreen() {
 
       <View style={styles.content}>
         {/* Outcome banner */}
-        <View style={styles.outcomeBanner}>
+        <Animated.View style={[styles.outcomeBanner, bannerStyle]}>
           {lastResult && lastResult.outcomeType !== 'NOTHING' ? (
             <Text style={styles.outcomeText}>{outcomeMessage(lastResult)}</Text>
           ) : (
@@ -110,9 +167,17 @@ export default function SpinScreen() {
           {lastResult?.isJackpot && (
             <Text style={styles.jackpotBadge}>JACKPOT</Text>
           )}
+        </Animated.View>
+
+        {/* Credit milestone bar */}
+        <View style={styles.milestoneContainer}>
+          <View style={styles.milestoneTrack}>
+            <View style={[styles.milestoneFill, { width: `${milestone.progress * 100}%` }]} />
+          </View>
+          <Text style={styles.milestoneLabel}>{milestone.next.toLocaleString()} CR</Text>
         </View>
 
-        <ReelDisplay reels={reels} isSpinning={isSpinning} />
+        <ReelDisplay reels={reels} isSpinning={isSpinning} lastResult={lastResult} />
 
         <View style={styles.spinZone}>
           <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
@@ -209,6 +274,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.credits + '66',
     zIndex: 99,
   },
+  levelUpFlash: {
+    backgroundColor: Colors.accent + '44',
+    zIndex: 98,
+  },
 
   pilotBadge: {
     fontSize: Typography.sizes.xs,
@@ -224,7 +293,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border + '55',
   },
 
-  content: { flex: 1, paddingTop: Spacing.md, gap: Spacing.lg },
+  content: { flex: 1, paddingTop: Spacing.sm, gap: Spacing.md },
 
   outcomeBanner: {
     alignItems: 'center',
@@ -252,6 +321,32 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     letterSpacing: 3,
     marginTop: Spacing.xs,
+  },
+
+  milestoneContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+  },
+  milestoneTrack: {
+    flex: 1,
+    height: 3,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  milestoneFill: {
+    height: '100%',
+    backgroundColor: Colors.credits + 'AA',
+    borderRadius: 2,
+  },
+  milestoneLabel: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+    minWidth: 52,
+    textAlign: 'right',
   },
 
   spinZone: { alignItems: 'center', gap: Spacing.sm },

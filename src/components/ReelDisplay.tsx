@@ -5,10 +5,12 @@ import Animated, {
   withRepeat,
   withTiming,
   withDelay,
+  withSequence,
+  withSpring,
   Easing,
 } from 'react-native-reanimated';
-import { useEffect } from 'react';
-import { SlotSymbol } from '@/services/SlotsEngine';
+import { useEffect, useRef } from 'react';
+import { SlotSymbol, SpinResult } from '@/services/SlotsEngine';
 import { Colors, BorderRadius, Typography } from '@/constants/theme';
 
 const SYMBOL_GLYPHS: Record<SlotSymbol, string> = {
@@ -38,23 +40,22 @@ const SYMBOL_COLORS: Record<SlotSymbol, string> = {
 interface ReelProps {
   symbol: SlotSymbol;
   isSpinning: boolean;
+  isWinning: boolean;
   delayMs?: number;
 }
 
-function Reel({ symbol, isSpinning, delayMs = 0 }: ReelProps) {
+function Reel({ symbol, isSpinning, isWinning, delayMs = 0 }: ReelProps) {
   const opacity = useSharedValue(1);
   const translateY = useSharedValue(0);
+  const glowOp = useSharedValue(0);
 
   useEffect(() => {
     if (isSpinning) {
       opacity.value = 0.4;
+      glowOp.value = 0;
       translateY.value = withDelay(
         delayMs,
-        withRepeat(
-          withTiming(-8, { duration: 120, easing: Easing.linear }),
-          -1,
-          true,
-        ),
+        withRepeat(withTiming(-8, { duration: 120, easing: Easing.linear }), -1, true),
       );
     } else {
       opacity.value = withTiming(1, { duration: 200 });
@@ -62,17 +63,34 @@ function Reel({ symbol, isSpinning, delayMs = 0 }: ReelProps) {
     }
   }, [isSpinning]);
 
+  useEffect(() => {
+    if (isWinning) {
+      glowOp.value = withSequence(
+        withTiming(1, { duration: 180 }),
+        withTiming(0.45, { duration: 500 }),
+        withTiming(0.85, { duration: 280 }),
+        withTiming(0, { duration: 650 }),
+      );
+    } else {
+      glowOp.value = withTiming(0, { duration: 200 });
+    }
+  }, [isWinning]);
+
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ translateY: translateY.value }],
   }));
 
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glowOp.value }));
+  const symbolColor = SYMBOL_COLORS[symbol];
+
   return (
     <View style={styles.reelCell}>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { backgroundColor: symbolColor + '28' }, glowStyle]}
+      />
       <Animated.View style={animatedStyle}>
-        <Text style={[styles.symbol, { color: SYMBOL_COLORS[symbol] }]}>
-          {SYMBOL_GLYPHS[symbol]}
-        </Text>
+        <Text style={[styles.symbol, { color: symbolColor }]}>{SYMBOL_GLYPHS[symbol]}</Text>
       </Animated.View>
     </View>
   );
@@ -81,18 +99,64 @@ function Reel({ symbol, isSpinning, delayMs = 0 }: ReelProps) {
 interface Props {
   reels: [SlotSymbol, SlotSymbol, SlotSymbol];
   isSpinning: boolean;
+  lastResult?: SpinResult | null;
 }
 
-export function ReelDisplay({ reels, isSpinning }: Props) {
+export function ReelDisplay({ reels, isSpinning, lastResult }: Props) {
+  const trackScale = useSharedValue(1);
+  const prevSpinningRef = useRef(isSpinning);
+
+  const isPaid = !isSpinning && !!lastResult && lastResult.outcomeType !== 'NOTHING';
+  const [r0, r1, r2] = reels;
+
+  const isTriple = isPaid && r0 === r1 && r1 === r2;
+  const isPair   = isPaid && !isTriple && (r0 === r1 || r1 === r2 || r0 === r2);
+
+  const reelWins: [boolean, boolean, boolean] = isPaid
+    ? [r0 === r1 || r0 === r2, r0 === r1 || r1 === r2, r1 === r2 || r0 === r2]
+    : [false, false, false];
+
+  let winLabel = '';
+  if (lastResult?.isJackpot)   winLabel = 'JACKPOT';
+  else if (isTriple)           winLabel = 'TRIPLE';
+  else if (isPair)             winLabel = 'PAIR';
+
+  const winColor = lastResult?.isJackpot
+    ? Colors.credits
+    : isTriple
+    ? Colors.primary
+    : Colors.success;
+
+  useEffect(() => {
+    if (!isSpinning && prevSpinningRef.current && isPaid) {
+      trackScale.value = withSequence(
+        withSpring(1.05, { damping: 8, stiffness: 200 }),
+        withTiming(1, { duration: 300 }),
+      );
+    }
+    prevSpinningRef.current = isSpinning;
+  }, [isSpinning]);
+
+  const trackScaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: trackScale.value }],
+  }));
+
   return (
     <View style={styles.container}>
-      <View style={styles.track}>
-        <Reel symbol={reels[0]} isSpinning={isSpinning} delayMs={0} />
-        <View style={styles.divider} />
-        <Reel symbol={reels[1]} isSpinning={isSpinning} delayMs={80} />
-        <View style={styles.divider} />
-        <Reel symbol={reels[2]} isSpinning={isSpinning} delayMs={160} />
-      </View>
+      <Animated.View style={[{ width: '100%' }, trackScaleStyle]}>
+        <View style={styles.track}>
+          <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} delayMs={0} />
+          <View style={styles.divider} />
+          <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} delayMs={80} />
+          <View style={styles.divider} />
+          <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} delayMs={160} />
+        </View>
+      </Animated.View>
+      {winLabel !== '' && !isSpinning && (
+        <View style={[styles.winBadge, { backgroundColor: winColor }]}>
+          <Text style={styles.winBadgeText}>{winLabel}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -126,5 +190,18 @@ const styles = StyleSheet.create({
   divider: {
     width: 1,
     backgroundColor: Colors.border,
+  },
+  winBadge: {
+    position: 'absolute',
+    bottom: -13,
+    paddingHorizontal: 14,
+    paddingVertical: 3,
+    borderRadius: 99,
+  },
+  winBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.background,
+    letterSpacing: 2,
   },
 });

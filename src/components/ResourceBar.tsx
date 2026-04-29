@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, Typography, Spacing } from '@/constants/theme';
+import { CreditCounter } from '@/components/CreditCounter';
 
 interface ResourcePillProps {
   label: string;
@@ -29,7 +30,10 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, 
   const spinsColor = spinsRemaining <= 5 ? Colors.warning : Colors.accent;
   return (
     <View style={[styles.container, style]}>
-      <ResourcePill label="CREDITS" value={credits} color={Colors.credits} />
+      <View style={styles.pill}>
+        <CreditCounter value={credits} color={Colors.credits} style={styles.pillValue} />
+        <Text style={styles.pillLabel}>CREDITS</Text>
+      </View>
       <ResourcePill label="FUEL" value={attacks} color={Colors.attack} />
       <ResourcePill label="BOOST" value={raids} color={Colors.raid} />
       <ResourcePill label="SHIELDS" value={shields} color={Colors.shield} />
