@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
+import { ArmadilloAvatar } from '@/components/ArmadilloAvatar';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 function xpToNextLevel(level: number) { return 100 * level; }
@@ -15,7 +17,6 @@ export default function PilotScreen() {
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const initial = (displayName ?? '?')[0].toUpperCase();
   const xpNeeded = xpToNextLevel(level);
   const xpPct = Math.min(1, xp / xpNeeded);
 
@@ -32,13 +33,16 @@ export default function PilotScreen() {
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.scroll}>
 
-        {/* Avatar */}
-        <View style={styles.avatarSection}>
+        {/* Avatar section with gradient backdrop */}
+        <LinearGradient
+          colors={[Colors.gradientStart + '44', Colors.gradientEnd + '22', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.avatarSection}
+        >
           <View style={[styles.avatarRingOuter, { borderColor: Colors.accent }]}>
             <View style={[styles.avatarRingInner, { borderColor: Colors.primary }]}>
-              <View style={[styles.avatarCircle, { backgroundColor: avatarColor }]}>
-                <Text style={styles.avatarInitial}>{initial}</Text>
-              </View>
+              <ArmadilloAvatar color={avatarColor} size={80} />
             </View>
           </View>
           <Text style={styles.pilotTitle}>ARMADILLO PILOT</Text>
@@ -46,7 +50,7 @@ export default function PilotScreen() {
           <Pressable onPress={() => { setEditName(displayName ?? ''); setEditVisible(true); }} style={styles.editButton}>
             <Text style={styles.editButtonText}>EDIT NAME</Text>
           </Pressable>
-        </View>
+        </LinearGradient>
 
         {/* Level & XP */}
         <View style={styles.section}>
@@ -65,10 +69,10 @@ export default function PilotScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>RESOURCES</Text>
           <View style={styles.statsGrid}>
-            <StatCard label="CREDITS" value={credits.toLocaleString()} color={Colors.credits} />
-            <StatCard label="ATTACKS" value={String(attacks)} color={Colors.attack} />
-            <StatCard label="RAIDS" value={String(raids)} color={Colors.raid} />
-            <StatCard label="SHIELDS" value={String(shields)} color={Colors.shield} />
+            <StatCard label="CREDITS"  value={credits.toLocaleString()} color={Colors.credits} />
+            <StatCard label="FUEL"     value={String(attacks)}          color={Colors.attack} />
+            <StatCard label="BOOST"    value={String(raids)}            color={Colors.raid} />
+            <StatCard label="SHIELDS"  value={String(shields)}          color={Colors.shield} />
           </View>
         </View>
 
@@ -126,9 +130,15 @@ function StatCard({ label, value, color }: { label: string; value: string; color
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
-  scroll: { padding: Spacing.lg, gap: Spacing.xl, alignItems: 'center' },
+  scroll: { gap: Spacing.xl, alignItems: 'center' },
 
-  avatarSection: { alignItems: 'center', gap: Spacing.sm, paddingTop: Spacing.md },
+  avatarSection: {
+    width: '100%',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.xl,
+  },
   avatarRingOuter: {
     width: 112,
     height: 112,
@@ -144,19 +154,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitial: {
-    fontSize: Typography.sizes.hero,
-    fontWeight: Typography.weights.bold,
-    color: Colors.background,
-    lineHeight: Typography.sizes.hero + 4,
   },
   pilotTitle: {
     fontSize: Typography.sizes.xs,
@@ -183,7 +180,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  section: { width: '100%', gap: Spacing.sm },
+  section: { width: '100%', gap: Spacing.sm, paddingHorizontal: Spacing.lg },
   sectionHeader: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,

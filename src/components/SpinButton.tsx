@@ -1,9 +1,12 @@
-import { Pressable, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useEffect } from 'react';
+import { Pressable, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import { Colors, Typography, BorderRadius } from '@/constants/theme';
 
@@ -15,8 +18,31 @@ interface Props {
 
 export function SpinButton({ onPress, disabled, isSpinning }: Props) {
   const scale = useSharedValue(1);
+  const pulseScale = useSharedValue(1);
+  const pulseOpacity = useSharedValue(0);
 
-  const animatedStyle = useAnimatedStyle(() => ({
+  useEffect(() => {
+    if (!disabled && !isSpinning) {
+      pulseOpacity.value = withTiming(0.35, { duration: 300 });
+      pulseScale.value = withRepeat(
+        withSequence(
+          withTiming(1.22, { duration: 1400, easing: Easing.out(Easing.ease) }),
+          withTiming(1.0, { duration: 1400, easing: Easing.in(Easing.ease) }),
+        ),
+        -1,
+      );
+    } else {
+      pulseOpacity.value = withTiming(0, { duration: 200 });
+      pulseScale.value = withTiming(1, { duration: 200 });
+    }
+  }, [disabled, isSpinning]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseScale.value }],
+    opacity: pulseOpacity.value,
+  }));
+
+  const buttonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
@@ -29,23 +55,44 @@ export function SpinButton({ onPress, disabled, isSpinning }: Props) {
   }
 
   return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        onPress={handlePress}
-        disabled={disabled || isSpinning}
-        style={[styles.button, (disabled || isSpinning) && styles.buttonDisabled]}
-      >
-        {isSpinning ? (
-          <ActivityIndicator color={Colors.textPrimary} size="small" />
-        ) : (
-          <Text style={styles.label}>SPIN</Text>
-        )}
-      </Pressable>
-    </Animated.View>
+    <View style={styles.wrapper}>
+      {/* Pulsing glow ring */}
+      <Animated.View style={[styles.glowRing, pulseStyle]} />
+      {/* Button */}
+      <Animated.View style={[styles.buttonContainer, buttonStyle]}>
+        <Pressable
+          onPress={handlePress}
+          disabled={disabled || isSpinning}
+          style={[styles.button, (disabled || isSpinning) && styles.buttonDisabled]}
+        >
+          {isSpinning ? (
+            <ActivityIndicator color={Colors.textPrimary} size="small" />
+          ) : (
+            <Text style={styles.label}>SPIN</Text>
+          )}
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    width: 140,
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glowRing: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '55',
+  },
+  buttonContainer: {
+    position: 'absolute',
+  },
   button: {
     width: 140,
     height: 140,

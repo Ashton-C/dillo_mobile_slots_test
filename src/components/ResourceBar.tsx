@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, Typography, Spacing } from '@/constants/theme';
 
 interface ResourcePillProps {
@@ -22,16 +22,18 @@ interface Props {
   raids: number;
   shields: number;
   spinsRemaining: number;
+  style?: ViewStyle;
 }
 
-export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining }: Props) {
+export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, style }: Props) {
+  const spinsColor = spinsRemaining <= 5 ? Colors.warning : Colors.accent;
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, style]}>
       <ResourcePill label="CREDITS" value={credits} color={Colors.credits} />
       <ResourcePill label="FUEL" value={attacks} color={Colors.attack} />
       <ResourcePill label="BOOST" value={raids} color={Colors.raid} />
       <ResourcePill label="SHIELDS" value={shields} color={Colors.shield} />
-      <ResourcePill label="SPINS" value={spinsRemaining} color={Colors.accent} />
+      <ResourcePill label="SPINS" value={spinsRemaining} color={spinsColor} />
     </View>
   );
 }
