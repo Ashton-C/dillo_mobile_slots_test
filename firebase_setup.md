@@ -127,14 +127,48 @@ service cloud.firestore {
 
 ---
 
-## Step 7 — Post-Setup Checklist
+## Step 7 — Deploy Cloud Functions
+
+The `resolveCombat` function lives in `functions/src/index.ts`. It triggers on every new `combatRequests` document and handles the full PvP resolution loop.
+
+```bash
+cd functions
+npm install
+npm run build
+firebase deploy --only functions
+```
+
+Requires the Firebase CLI: `npm install -g firebase-tools` and `firebase login`.
+
+After deploy, confirm the function appears in **Firebase Console → Functions**. Test it by triggering a BREACH/EXTRACT from the RADAR screen — the outcome should appear in the EventBanner within a few seconds.
+
+---
+
+## Step 8 — Seed Mock Users for PvP Testing
+
+Creates two fake players (`AlphaRaider` and `BetaOps`) in Firestore so the RADAR screen has targets to discover. Run once:
+
+```bash
+# Against live Firebase (needs service account or ADC login)
+node scripts/seed-mock-users.js
+
+# Against local emulator
+FIRESTORE_EMULATOR_HOST=localhost:8080 node scripts/seed-mock-users.js
+```
+
+`AlphaRaider` has Outpost LVL 3 and TURRET LVL 2 (blocks 2 attacks/day). `BetaOps` is a softer target at Outpost LVL 1 with no TURRET.
+
+---
+
+## Step 9 — Post-Setup Checklist
 
 - [ ] `.env.local` filled in with real values
-- [ ] Anonymous + Email/Password auth enabled
-- [ ] Firestore database created (test mode is fine for now)
-- [ ] Run `npm run start:lan` and confirm **no Firebase errors** in the Metro console
-- [ ] Sign-in flow wired in the app (next coding session)
-- [ ] Security rules updated before any public testing
+- [ ] Anonymous Auth enabled
+- [ ] Firestore database created
+- [ ] Security rules deployed (Step 6)
+- [ ] Cloud Function deployed (Step 7)
+- [ ] Mock users seeded (Step 8)
+- [ ] Run `npx expo start --lan` and confirm no Firebase errors in Metro console
 
 ---
 

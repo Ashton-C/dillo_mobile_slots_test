@@ -58,10 +58,12 @@ PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with
 - [x] **Combat log on Pilot tab** — last 20 events with relative timestamps and color-coded dots
 
 ### Remaining
-- [ ] **Cloud Function** — resolve `combatRequests`, calculate outcome, write to `users/{defenderUid}/events` and `users/{attackerUid}/events`, apply credit changes
-- [ ] **TURRET passive** — auto-block N incoming attacks per day (N = TURRET building level); applied during Cloud Function resolution
-- [ ] **VAULT passive** — reduce credit loss % during raid resolution (% = VAULT level × 5); applied during Cloud Function resolution
-- [ ] **Firebase security rules** — add rules for `playerIndex` (authenticated read, owner write) and `combatRequests` (authenticated create, CF write)
+- [x] **Firebase security rules** — `playerIndex`, `users/{uid}/events`, `combatRequests` all covered
+- [x] **Cloud Function `resolveCombat`** — Firestore trigger on `combatRequests` create; computes outcome, applies VAULT/TURRET passives, writes events to both players, updates credits (`functions/src/index.ts`)
+- [x] **TURRET passive** — daily charge tracking (`turretCharges` + `turretResetAt` on habitat doc); auto-block consumes one charge per incoming attack up to TURRET level per day
+- [x] **VAULT passive** — reduces defender credit loss by `vaultLevel × 5%` (max 75%) on successful raid
+- [ ] **Deploy Cloud Function** — `cd functions && npm install && npm run build && firebase deploy --only functions`
+- [ ] **Seed mock users** — `node scripts/seed-mock-users.js` (run once; populates AlphaRaider + BetaOps in playerIndex for RADAR testing)
 
 ---
 
@@ -103,6 +105,7 @@ Hard currency, IAP, and rewarded ads. Build the social loop fully before adding 
 | RADAR screen | ✅ New | Needs real playerIndex data to populate |
 | CombatMiniGame | ✅ New | Client-side only; outcomes pending CF |
 | EventBanner | ✅ New | Fully wired; events pending CF writes |
-| Cloud Function | ❌ Missing | Highest remaining priority |
-| TURRET/VAULT passives | ❌ Missing | Depends on Cloud Function |
-| Security rules | ⚠️ Incomplete | Missing playerIndex + combatRequests rules |
+| Cloud Function | ✅ Written | Needs deploy: `cd functions && npm run build && firebase deploy --only functions` |
+| TURRET/VAULT passives | ✅ Written | Wired inside resolveCombat CF |
+| Security rules | ✅ Complete | playerIndex, events subcollection, combatRequests all covered |
+| Mock users | ✅ Written | Run `node scripts/seed-mock-users.js` to populate RADAR targets |
