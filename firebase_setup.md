@@ -86,8 +86,10 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
 
       match /events/{eventId} {
-        allow read, delete: if request.auth != null && request.auth.uid == uid;
-        allow write: if false; // Cloud Function only
+        // Owner can read, mark-as-read (update), and delete their own events.
+        // Only Cloud Functions may create events (write = create here).
+        allow read, update, delete: if request.auth != null && request.auth.uid == uid;
+        allow create: if false; // Cloud Function only
       }
     }
 
@@ -101,10 +103,11 @@ service cloud.firestore {
         && request.auth.uid == resource.data.ownerUid;
     }
 
-    // Anomalies are server-written only; clients read-only.
+    // Anomalies: any authenticated client can read and write.
+    // First connected client seeds the doc if missing; subsequent writes are
+    // handled cooperatively (each client catches the race condition internally).
     match /anomalies/{doc} {
-      allow read: if request.auth != null;
-      allow write: if false; // Cloud Function only
+      allow read, write: if request.auth != null;
     }
 
     // Player index: any authenticated player can read (used by RADAR scan).

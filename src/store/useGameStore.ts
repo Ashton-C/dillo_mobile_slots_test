@@ -271,12 +271,25 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   syncFromFirestore(resources) {
-    set((state) => ({
-      ...state,
-      ...resources,
-      intrusions: resources.intrusions ?? state.intrusions,
-      extractions: resources.extractions ?? state.extractions,
-    }));
+    set((state) => {
+      const merged = {
+        ...state,
+        ...resources,
+        intrusions:  resources.intrusions  ?? state.intrusions,
+        extractions: resources.extractions ?? state.extractions,
+      };
+
+      // Repair inconsistent state: spins below max but no refill timer running.
+      // Happens when the user ran out of spins while offline and Firestore
+      // recorded 0 spins but never set spinRefillStart.
+      if (merged.spinsRemaining < MAX_SPINS && merged.spinRefillStart === 0) {
+        const repaired = { ...merged, spinRefillStart: Date.now() };
+        persistResources({ spinRefillStart: repaired.spinRefillStart });
+        return repaired;
+      }
+
+      return merged;
+    });
   },
 
   setIsSpinning(spinning) {

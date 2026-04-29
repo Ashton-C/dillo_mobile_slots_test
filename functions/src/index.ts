@@ -226,3 +226,56 @@ export const resolveCombat = functions.firestore
       await requestRef.update({ status: 'ERROR', error: String(err) });
     }
   });
+
+// ---------------------------------------------------------------------------
+// refillSpins — scheduled every 5 minutes
+// Tops up spins for any player who is below max and has an active refill timer.
+// This handles offline users — the client timer only runs when the app is open.
+// ---------------------------------------------------------------------------
+
+const MAX_SPINS = 50;
+const SPIN_REFILL_MS = 5 * 60_000;
+
+export const refillSpins = functions.pubsub
+  .schedule('every 5 minutes')
+  .onRun(async () => {
+    const now = Date.now();
+    const usersRef = db.collection('users');
+
+    // Only query users actively refilling (spinRefillStart > 0, spins < max)
+    const snap = await usersRef
+      .where('spinsRemaining', '<', MAX_SPINS)
+      .where('spinRefillStart', '>', 0)
+      .get();
+
+    if (snap.empty) return;
+
+    const batch = db.batch();
+    let updateCount = 0;
+
+    snap.forEach((docSnap) => {
+      const d = docSnap.data();
+      const spinsRemaining: number = d.spinsRemaining ?? MAX_SPINS;
+      const spinRefillStart: number = d.spinRefillStart ?? 0;
+      if (spinRefillStart === 0 || spinsRemaining >= MAX_SPINS) return;
+
+      const elapsed = now - spinRefillStart;
+      const earned = Math.floor(elapsed / SPIN_REFILL_MS);
+      if (earned <= 0) return;
+
+      const newSpins = Math.min(MAX_SPINS, spinsRemaining + earned);
+      const newRefillStart = newSpins >= MAX_SPINS
+        ? 0
+        : spinRefillStart + earned * SPIN_REFILL_MS;
+
+      batch.update(docSnap.ref, {
+        spinsRemaining: newSpins,
+        spinRefillStart: newRefillStart,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      updateCount++;
+    });
+
+    await batch.commit();
+    functions.logger.info(`refillSpins: updated ${updateCount} users`);
+  });
