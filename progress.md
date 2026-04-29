@@ -1,57 +1,108 @@
-# 🚀 Sovereign Slots: Progress & Roadmap
+# Sovereign Slots — Progress & Roadmap
 
-**Status:** Phase 1 (Foundation)  
-**Last Updated:** [Insert Date]  
-**Lead Architect:** Ashton  
-
----
-
-## 🎯 Design Pillars
-* **The Protagonist:** A rugged, customizable Armadillo in a high-tech environmental suit. 
-* **The Vibe:** "Cozy Punk" — low-fi space station meets vibrant sunset. Dark mode backgrounds, orange-to-purple neon gradients, and thin, geometric sans-serif typography. Keep it lean, minimalist, and uncluttered.
-* **The Hook:** Active strategy over passive RNG. Players use tactics to manipulate the slot engine and defend their habitats.
+**Current Phase:** Phase 3 (Social Combat) — mostly complete, Cloud Function pending
+**Last Updated:** 2026-04-29
 
 ---
 
-## 🛠️ Core Systems Tracker
+## Phase 1: Engine Foundation ✅
 
-### Phase 1: Engine Foundation (In Progress ⏳)
-*The absolute basics to get the slot engine and client/server syncing.*
-- [x] **Project Init:** Stand up React Native + Expo Router with Zustand.
-- [x] **The Generator (`SlotsEngine`):** Build mathematical weighting for slot reels (Credits, Attacks, Raids, Shields).
-- [x] **State Sync:** Hook up Firebase/Firestore for real-time state and Authentication.
-- [x] **The Meta (`HabitatBuilder`):** Real-time build timers (30s → 72h), all 5 buildings, builder-busy lock, Firestore persistence.
-- [x] **Pilot Profile:** First-launch username modal, Pilot tab with avatar/XP bar, rename flow.
-- [ ] **Spin Energy Timer:** Drip-refill at 1 spin per 5 min (max 50). Live "next spin" and "full in" countdown on Spin screen.
+The minimum viable slot game — engine, auth, base construction, and Firestore sync.
 
-### Phase 2: Strategic Systems (Complete ✅)
-*The mechanics that disrupt the traditional "Coin Master" model.*
-- [x] **Space Anomalies:** Global 4-hour weather events syncing buffs/debuffs across all players.
-- [x] **Temporal Rifts:** Spend Credits to shift reel probability weights. Full RIFT tab UI.
-- [x] **Drone Mercenaries:** Resource-based robotic defenders/attackers with stacking effects.
-
-### Phase 3: Monetization & Polish (Backlog 📋)
-*Making it profitable and pretty.*
-- [ ] **RevenueCat Integration:** Setup IAP for Spin Packs and Shield Bundles.
-- [ ] **AdMob Integration:** Implement Rewarded Video (e.g., "Watch to reboot Temporal Rift").
-- [ ] **UI/UX Polish:** Finalize gradient rendering, screen-shake effects, and the Armadillo sprite customization menus.
-- [ ] **Tutorial:** First-run onboarding flow — walk new players through spinning, building, and deploying their first drone.
-- [ ] **Visual Sugar:** Juice up the experience — particle effects on jackpots, screen shake on attacks, animated reel symbols, haptic feedback, and transition polish.
-- [ ] **Testing:** Unit tests for SlotsEngine (payout math, weight normalization, Rift modifiers) and DroneMercenaryService (effect aggregation, cost validation). Integration tests for Zustand store actions.
+- [x] Expo + Expo Router project init with Zustand state management
+- [x] `SlotsEngine` — weighted random draw, 6-symbol reel, payout tables for triple/pair
+- [x] Firebase Auth (anonymous) + Firestore initial data models (`users`, `habitats`)
+- [x] `HabitatBuilder` — 5 buildings (GENERATOR, ARMORY, VAULT, TURRET, HANGAR), real-time build timers (30s → 72h), Firestore persistence, builder-busy lock
+- [x] Pilot profile — first-launch username modal, XP bar, rename flow
+- [x] Spin energy timer — drip-refill at 1 spin / 5 min (max 50), countdown display on Spin screen
 
 ---
 
-## 🔧 Environment & Tooling
+## Phase 2: Strategic Systems ✅
 
-### Claude Code — GitHub App Setup
-The Claude Code terminal provides a `/install-github-app` command to connect the GitHub integration automatically. If that command fails, you can perform a manual setup:
-1. Go to **[github.com/apps/claude](https://github.com/apps/claude)** and click **Install**.
-2. Grant it access to this repository (or all repositories).
-3. Once installed, it will appear under **github.com → Settings → Installed GitHub Apps** and the Claude Code terminal will have push/PR access automatically.
+The mechanics that differentiate Sovereign Slots from Coin Master.
+
+- [x] **Space Anomalies** — global 4-hour weather events via `anomalies/current` Firestore doc; `AnomalyService` with local tick
+- [x] **Temporal Rifts** — 4 tiers (0–3), each shifting reel weights toward credits or combat tokens; costs Credits per spin
+- [x] **Drone Mercenaries** — 4 drone types (SENTINEL, SCRAMBLER, HARVESTER, RAIDER), stacking effect aggregation, `useDroneStore`
+- [x] **FUEL CELLS** (attacks) + **SIGNAL BOOSTERS** (raids) — renamed and repurposed as consumable spin buffs:
+  - Overclock (1 Fuel Cell) → flat credit bonus on next spin (scales with GENERATOR level)
+  - Signal Boost (1 Signal Booster) → credit symbol weights ×1.5 on next spin
+- [x] **ModifierPanel** — active effects display: combined credit multiplier, rift tier, active drones, anomaly countdown; tap to toggle dots ↔ numbers mode (persisted to AsyncStorage)
+- [x] **Outpost Level System** — master gate (1–10) blocking buildings from exceeding outpost level; upgrade flow with real-time timer, Firestore persistence
+- [x] **Drone Marketplace** — bottom-sheet modal from Habitat screen (CONTRACTS button, visible when HANGAR ≥ 1); atomic resource deduction
+- [x] **Brand polish** — LinearGradient header on Spin screen, jackpot flash animation, SpinButton pulse glow, low-spin color warning, `ArmadilloAvatar` component
 
 ---
 
-## 📝 Developer Notes & Rules of Thumb
-* **Flat UI:** Minimize menu drill-downs. "Spin" is the single-button entry point.
-* **Inflation Check:** Adding new currencies (Drone Fuel, Temporal Energy) must not devalue the core Credit economy. 
-* **Server Authority:** Never trust the client. All spin resolutions and PvP outcomes must be validated server-side to prevent spoofing.
+## Phase 3: Social Combat 🔨
+
+PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with the slot theme.
+
+### Design decisions (locked)
+- **PvP mini-game:** 3 mini-reels cycling at different speeds (130/160/190ms). Player taps each to lock; 3s auto-stop if idle. Power = random base + match bonus (triple +30, pair +15) + Outpost Level × 10. Highly thematic, minimal learning curve.
+- **Drone UI:** Modal from Habitat screen — not a dedicated tab.
+- **AdMob:** Deferred to Phase 4.
+- **Outpost gate:** Hard gate — buildings can't exceed current Outpost Level.
+
+### Completed
+- [x] Outpost Level System — hard gate, upgrade flow, UI on Habitat screen
+- [x] Drone Marketplace — CONTRACTS modal, hire flow, atomic resource deduction
+- [x] INTRUSION + EXTRACTION symbols — added to `SlotsEngine` weight tables and payout tables; tracked in `useGameStore` and persisted to Firestore
+- [x] **RADAR screen** (repurposed from Hangar tab) — scans `playerIndex` for 5 nearby targets, threat assessment (WEAK/EVEN/STRONG), BREACH + EXTRACT action buttons
+- [x] **CombatMiniGame** — insta-stop modal: 3 reels at staggered speeds, tap-to-lock, 3s auto-stop, power evaluation, writes `combatRequest` to Firestore
+- [x] **EventBanner** — Reanimated slide-down notification for all PvP event types; auto-dismisses at 5s; wired into root layout
+- [x] **useEventStore** — Firestore `users/{uid}/events` subcollection subscription, event deduplication, active-event queue
+- [x] **Player index writes** — `useAuthStore` writes to `playerIndex` on login and on display name change
+- [x] **Resource deduction on launch** — BREACH/EXTRACT deduct from inventory before mini-game opens
+- [x] **Combat log on Pilot tab** — last 20 events with relative timestamps and color-coded dots
+
+### Remaining
+- [ ] **Cloud Function** — resolve `combatRequests`, calculate outcome, write to `users/{defenderUid}/events` and `users/{attackerUid}/events`, apply credit changes
+- [ ] **TURRET passive** — auto-block N incoming attacks per day (N = TURRET building level); applied during Cloud Function resolution
+- [ ] **VAULT passive** — reduce credit loss % during raid resolution (% = VAULT level × 5); applied during Cloud Function resolution
+- [ ] **Firebase security rules** — add rules for `playerIndex` (authenticated read, owner write) and `combatRequests` (authenticated create, CF write)
+
+---
+
+## Phase 4: Monetization 📋
+
+Hard currency, IAP, and rewarded ads. Build the social loop fully before adding monetization pressure.
+
+- [ ] **Temporal Crystals** — hard currency (distinct from Credits); earned via IAP or sparingly via gameplay
+- [ ] **RevenueCat integration** — Spin Packs, Builder Slots (parallel construction unlock), Shield Bundles
+- [ ] **AdMob rewarded ads** — "+5 spins" and "−30 min from active build timer" placements
+- [ ] **Instant build skip** — spend Temporal Crystals to instantly complete any build job
+
+---
+
+## Phase 5: Polish & Launch 📋
+
+- [ ] Unit tests — `SlotsEngine` payout math, weight normalization, Rift modifiers
+- [ ] Integration tests — Zustand store actions, Firestore write/read round-trips
+- [ ] Onboarding tutorial — first-run flow: spin → build → deploy drone
+- [ ] Armadillo customization — color/accessory picker on Pilot screen
+- [ ] Particle effects — jackpot confetti, screen shake on incoming attacks, reel symbol animations
+- [ ] Push notifications — "your build is complete", "you were raided" (FCM)
+- [ ] App Store / Play Store submission
+
+---
+
+## System Health
+
+| System | Status | Notes |
+|---|---|---|
+| SlotsEngine | ✅ Solid | 9 symbols, rift modifiers, signal boost, full payout table |
+| useGameStore | ✅ Solid | All resources, spin buffs, Firestore sync |
+| useHabitatStore | ✅ Solid | Outpost gate, build timers, Firestore persistence |
+| useDroneStore | ✅ Solid | Deploy/tick/expire lifecycle |
+| useAnomalyStore | ✅ Solid | Global sync via onSnapshot |
+| useEventStore | ✅ New | Firestore events subscription, needs CF to write events |
+| useAuthStore | ✅ Solid | Player index writes added |
+| FirestoreService | ✅ Solid | All collections covered; CF integration pending |
+| RADAR screen | ✅ New | Needs real playerIndex data to populate |
+| CombatMiniGame | ✅ New | Client-side only; outcomes pending CF |
+| EventBanner | ✅ New | Fully wired; events pending CF writes |
+| Cloud Function | ❌ Missing | Highest remaining priority |
+| TURRET/VAULT passives | ❌ Missing | Depends on Cloud Function |
+| Security rules | ⚠️ Incomplete | Missing playerIndex + combatRequests rules |
