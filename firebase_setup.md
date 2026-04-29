@@ -80,12 +80,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can only read/write their own document
+    // Users can only read/write their own document.
+    // The events subcollection is written by Cloud Functions and read by the owner only.
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /events/{eventId} {
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow write: if false; // Cloud Function only
+      }
     }
 
-    // Habitat: any authenticated user can read (needed for raids/attacks).
+    // Habitat: any authenticated user can read (needed for radar/raids).
     // Create requires ownerUid == caller; update/delete requires existing ownerUid match.
     match /habitats/{habitatId} {
       allow read: if request.auth != null;
@@ -95,10 +101,25 @@ service cloud.firestore {
         && request.auth.uid == resource.data.ownerUid;
     }
 
-    // Anomalies are server-written only; clients read-only
+    // Anomalies are server-written only; clients read-only.
     match /anomalies/{doc} {
       allow read: if request.auth != null;
-      allow write: if false; // server-side Cloud Function only
+      allow write: if false; // Cloud Function only
+    }
+
+    // Player index: any authenticated player can read (used by RADAR scan).
+    // Each player can only write their own entry.
+    match /playerIndex/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Combat requests: any authenticated player can create (client initiates).
+    // Only Cloud Functions resolve (update/delete) — enforced by not granting update/delete here.
+    match /combatRequests/{requestId} {
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.attackerUid;
+      allow read, update, delete: if false; // Cloud Function only
     }
   }
 }
