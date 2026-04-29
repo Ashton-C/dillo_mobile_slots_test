@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,7 +13,8 @@ import Animated, {
 import { useEffect } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
-import { BuildingType, BUILDING_UPGRADE_COST, BUILD_DURATION_MS } from '@/models/Habitat';
+import { DroneMarketplace } from '@/components/DroneMarketplace';
+import { BuildingType, BUILDING_UPGRADE_COST, BUILD_DURATION_MS, outpostUpgradeCost, outpostUpgradeDuration } from '@/models/Habitat';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const BUILDING_META: Record<BuildingType, { icon: string; label: string }> = {
@@ -54,6 +56,7 @@ function formatTimer(ms: number): string {
 interface BuildingCardProps {
   type: BuildingType;
   level: number;
+  outpostLevel: number;
   canAfford: boolean;
   upgradeCost: number;
   isBuilding: boolean;
@@ -64,35 +67,30 @@ interface BuildingCardProps {
 }
 
 function BuildingCard({
-  type, level, canAfford, upgradeCost, isBuilding, builderBusy, msRemaining, totalBuildMs, onUpgrade,
+  type, level, outpostLevel, canAfford, upgradeCost, isBuilding, builderBusy, msRemaining, totalBuildMs, onUpgrade,
 }: BuildingCardProps) {
   const color = BUILDING_COLOR[type];
   const meta = BUILDING_META[type];
   const maxed = level >= 10;
   const blocked = builderBusy && !isBuilding;
+  const gatedByOutpost = !maxed && (level + 1) > outpostLevel;
 
   const iconOpacity = useSharedValue(1);
-
   useEffect(() => {
     if (isBuilding) {
       iconOpacity.value = withRepeat(
-        withSequence(
-          withTiming(0.4, { duration: 600 }),
-          withTiming(1, { duration: 600 }),
-        ),
+        withSequence(withTiming(0.4, { duration: 600 }), withTiming(1, { duration: 600 })),
         -1,
       );
     } else {
       iconOpacity.value = withTiming(1, { duration: 200 });
     }
   }, [isBuilding]);
-
-  const iconAnimStyle = useAnimatedStyle(() => ({
-    opacity: iconOpacity.value,
-  }));
+  const iconAnimStyle = useAnimatedStyle(() => ({ opacity: iconOpacity.value }));
 
   let buttonLabel: string;
   let buttonDisabled: boolean;
+  let buttonColor: string = color;
 
   if (maxed) {
     buttonLabel = 'FULLY UPGRADED';
@@ -100,6 +98,10 @@ function BuildingCard({
   } else if (isBuilding) {
     buttonLabel = `BUILDING  ${formatTimer(msRemaining)}`;
     buttonDisabled = true;
+  } else if (gatedByOutpost) {
+    buttonLabel = `OUTPOST LVL ${level + 1} REQUIRED`;
+    buttonDisabled = true;
+    buttonColor = Colors.textMuted;
   } else if (blocked) {
     buttonLabel = 'BUILDER BUSY';
     buttonDisabled = true;
@@ -109,10 +111,7 @@ function BuildingCard({
   }
 
   const progressPct = totalBuildMs > 0 ? Math.max(2, (1 - msRemaining / totalBuildMs) * 100) : 0;
-
-  const levelDots = Array.from({ length: 10 }, (_, i) =>
-    i < level ? '●' : '○'
-  ).join('');
+  const levelDots = Array.from({ length: 10 }, (_, i) => i < level ? '●' : '○').join('');
 
   function handlePress() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -121,22 +120,16 @@ function BuildingCard({
 
   return (
     <View style={[styles.card, { borderColor: isBuilding ? color : Colors.border }]}>
-      {/* Top color stripe */}
       <LinearGradient
         colors={[color + 'AA', 'transparent']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.cardStripe}
       />
-
-      {/* Main content row */}
       <View style={styles.cardBody}>
-        {/* Icon badge */}
         <Animated.View style={[styles.iconBadge, { borderColor: color, backgroundColor: color + '18' }, iconAnimStyle]}>
           <Text style={styles.cardIcon}>{meta.icon}</Text>
         </Animated.View>
-
-        {/* Info section */}
         <View style={styles.cardInfo}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.cardLabel}>{meta.label}</Text>
@@ -144,21 +137,17 @@ function BuildingCard({
               {level === 0 ? 'NEW' : `LVL ${level}`}
             </Text>
           </View>
-          <Text style={[styles.cardEffect, { color: color }]}>
-            {BUILDING_EFFECT[type](level)}
-          </Text>
-          <Text style={[styles.levelDots, { color: color }]}>{levelDots}</Text>
+          <Text style={[styles.cardEffect, { color }]}>{BUILDING_EFFECT[type](level)}</Text>
+          <Text style={[styles.levelDots, { color }]}>{levelDots}</Text>
         </View>
       </View>
 
-      {/* Build progress bar */}
       {isBuilding && totalBuildMs > 0 && (
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progressPct}%`, backgroundColor: color }]} />
         </View>
       )}
 
-      {/* Upgrade button */}
       <Pressable
         onPress={handlePress}
         disabled={buttonDisabled}
@@ -166,18 +155,19 @@ function BuildingCard({
           styles.upgradeButton,
           isBuilding
             ? [styles.upgradeButtonBuilding, { borderColor: color }]
-            : buttonDisabled
-              ? styles.upgradeButtonDisabled
-              : { backgroundColor: color },
+            : gatedByOutpost
+              ? styles.upgradeButtonGated
+              : buttonDisabled
+                ? styles.upgradeButtonDisabled
+                : { backgroundColor: buttonColor },
         ]}
       >
         <Text style={[
           styles.upgradeButtonText,
-          isBuilding
-            ? { color }
-            : buttonDisabled
-              ? { color: Colors.textMuted }
-              : { color: Colors.background },
+          isBuilding      ? { color }                   :
+          gatedByOutpost  ? { color: Colors.textMuted } :
+          buttonDisabled  ? { color: Colors.textMuted } :
+                            { color: Colors.background },
         ]}>
           {buttonLabel}
         </Text>
@@ -188,27 +178,83 @@ function BuildingCard({
 
 export default function HabitatScreen() {
   const { credits, subtractCredits } = useGameStore();
-  const { buildingLevels, activeBuildJob, msUntilComplete, startBuild } = useHabitatStore();
+  const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete, startBuild, upgradeOutpost } = useHabitatStore();
+  const [contractsVisible, setContractsVisible] = useState(false);
 
   const builderBusy = activeBuildJob !== null;
+  const isUpgradingOutpost = activeBuildJob?.isOutpost === true;
+  const hangarLevel = buildingLevels['HANGAR'] ?? 0;
+
+  const outpostCost = outpostUpgradeCost(outpostLevel);
+  const outpostDuration = outpostUpgradeDuration(outpostLevel + 1);
+  const outpostMaxed = outpostLevel >= 10;
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.header}>
-        <Text style={styles.title}>OUTPOST</Text>
-        <Text style={styles.subtitle}>Build. Defend. Expand.</Text>
-      </View>
+
+      {/* Outpost level banner */}
+      <LinearGradient
+        colors={[Colors.gradientEnd + '44', Colors.gradientStart + '22', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.outpostBanner}
+      >
+        <View style={styles.outpostLeft}>
+          <Text style={styles.outpostTitle}>OUTPOST</Text>
+          <View style={styles.outpostLevelRow}>
+            <Text style={styles.outpostLevelNum}>{outpostLevel}</Text>
+            <Text style={styles.outpostLevelMax}> / 10</Text>
+          </View>
+          <Text style={styles.outpostHint}>
+            {outpostMaxed ? 'Fully upgraded' : `Buildings capped at level ${outpostLevel}`}
+          </Text>
+        </View>
+
+        <View style={styles.outpostRight}>
+          {!outpostMaxed && (
+            isUpgradingOutpost ? (
+              <View style={styles.outpostBuildingBadge}>
+                <Text style={styles.outpostBuildingText}>
+                  UPGRADING  {formatTimer(msUntilComplete)}
+                </Text>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  upgradeOutpost(subtractCredits);
+                }}
+                disabled={builderBusy || credits < outpostCost}
+                style={[
+                  styles.outpostButton,
+                  (builderBusy || credits < outpostCost) && styles.outpostButtonDisabled,
+                ]}
+              >
+                <Text style={styles.outpostButtonCost}>{outpostCost.toLocaleString()} CR</Text>
+                <Text style={styles.outpostButtonSub}>{formatTimer(outpostDuration)}</Text>
+              </Pressable>
+            )
+          )}
+        </View>
+      </LinearGradient>
 
       <View style={styles.statusRow}>
         <View style={styles.creditsBadge}>
           <Text style={styles.creditsValue}>{credits.toLocaleString()}</Text>
           <Text style={styles.creditsLabel}> CR</Text>
         </View>
-        <View style={[styles.builderBadge, builderBusy && styles.builderBadgeBusy]}>
-          <Text style={[styles.builderText, builderBusy && styles.builderTextBusy]}>
-            {builderBusy ? `BUILDING · ${formatTimer(msUntilComplete)}` : '◎ BUILDER READY'}
-          </Text>
-        </View>
+        {builderBusy && !isUpgradingOutpost && (
+          <View style={styles.builderBadge}>
+            <Text style={styles.builderText}>
+              BUILDING · {formatTimer(msUntilComplete)}
+            </Text>
+          </View>
+        )}
+        {!builderBusy && (
+          <View style={[styles.builderBadge, styles.builderBadgeIdle]}>
+            <Text style={styles.builderTextIdle}>◎ BUILDER READY</Text>
+          </View>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
@@ -217,7 +263,7 @@ export default function HabitatScreen() {
         {ALL_BUILDINGS.map((type) => {
           const level = buildingLevels[type] ?? 0;
           const upgradeCost = BUILDING_UPGRADE_COST[type](level === 0 ? 1 : level);
-          const isBuilding = activeBuildJob?.type === type;
+          const isBuilding = activeBuildJob?.type === type && !activeBuildJob.isOutpost;
           const targetLevel = level + 1;
           const totalBuildMs = BUILD_DURATION_MS[targetLevel] ?? 0;
 
@@ -226,6 +272,7 @@ export default function HabitatScreen() {
               key={type}
               type={type}
               level={level}
+              outpostLevel={outpostLevel}
               canAfford={credits >= upgradeCost}
               upgradeCost={upgradeCost}
               isBuilding={isBuilding}
@@ -237,34 +284,110 @@ export default function HabitatScreen() {
           );
         })}
 
+        {hangarLevel > 0 && (
+          <Pressable
+            onPress={() => setContractsVisible(true)}
+            style={styles.contractsButton}
+          >
+            <LinearGradient
+              colors={[Colors.primary + '33', Colors.accent + '22']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.contractsGradient}
+            >
+              <Text style={styles.contractsIcon}>▲</Text>
+              <View>
+                <Text style={styles.contractsLabel}>DRONE CONTRACTS</Text>
+                <Text style={styles.contractsSub}>Hire mercenary drones · HANGAR LVL {hangarLevel}</Text>
+              </View>
+              <Text style={styles.contractsChevron}>›</Text>
+            </LinearGradient>
+          </Pressable>
+        )}
+
         <Text style={styles.footnote}>
-          One builder drone active at a time. Higher levels take longer to construct.
-          Builder Slots (parallel construction) coming in a future update.
+          One builder drone active at a time. Buildings are capped by Outpost level.
+          Higher levels take longer to construct.
         </Text>
       </ScrollView>
+
+      <DroneMarketplace visible={contractsVisible} onClose={() => setContractsVisible(false)} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
-  header: {
+
+  outpostBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.sm,
+    paddingBottom: Spacing.md,
   },
-  title: {
+  outpostLeft: { gap: 2 },
+  outpostTitle: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 4,
+  },
+  outpostLevelRow: { flexDirection: 'row', alignItems: 'baseline' },
+  outpostLevelNum: {
     fontSize: Typography.sizes.xxl,
     fontWeight: Typography.weights.bold,
-    color: Colors.textPrimary,
-    letterSpacing: 6,
+    color: Colors.accent,
   },
-  subtitle: {
-    fontSize: Typography.sizes.sm,
+  outpostLevelMax: {
+    fontSize: Typography.sizes.md,
     color: Colors.textMuted,
-    letterSpacing: 2,
-    marginTop: 2,
+    letterSpacing: 1,
   },
+  outpostHint: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+  outpostRight: { alignItems: 'flex-end' },
+  outpostButton: {
+    backgroundColor: Colors.accent,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    minWidth: 100,
+  },
+  outpostButtonDisabled: {
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  outpostButtonCost: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+    letterSpacing: 1,
+  },
+  outpostButtonSub: {
+    fontSize: 10,
+    color: Colors.textPrimary + 'AA',
+    letterSpacing: 1,
+  },
+  outpostBuildingBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+  },
+  outpostBuildingText: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.accent,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
+  },
+
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -272,10 +395,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
   },
-  creditsBadge: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
+  creditsBadge: { flexDirection: 'row', alignItems: 'baseline' },
   creditsValue: {
     fontSize: Typography.sizes.xl,
     fontWeight: Typography.weights.bold,
@@ -291,21 +411,24 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.accent,
     backgroundColor: Colors.surfaceElevated,
   },
-  builderBadgeBusy: {
-    borderColor: Colors.accent,
+  builderBadgeIdle: {
+    borderColor: Colors.border,
   },
   builderText: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.accent,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
+  },
+  builderTextIdle: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
     letterSpacing: 1,
   },
-  builderTextBusy: {
-    color: Colors.accent,
-    fontWeight: Typography.weights.bold,
-  },
+
   list: { padding: Spacing.md, gap: Spacing.sm },
   sectionHeader: {
     fontSize: Typography.sizes.xs,
@@ -313,16 +436,14 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     marginBottom: Spacing.xs,
   },
+
   card: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     overflow: 'hidden',
   },
-  cardStripe: {
-    height: 3,
-    width: '100%',
-  },
+  cardStripe: { height: 3, width: '100%' },
   cardBody: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -338,37 +459,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  cardIcon: {
-    fontSize: Typography.sizes.xl,
-  },
-  cardInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  cardIcon: { fontSize: Typography.sizes.xl },
+  cardInfo: { flex: 1, gap: 3 },
+  cardTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardLabel: {
     fontSize: Typography.sizes.sm,
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
     letterSpacing: 2,
   },
-  cardLevel: {
-    fontSize: Typography.sizes.xs,
-    letterSpacing: 2,
-  },
-  cardEffect: {
-    fontSize: Typography.sizes.xs,
-    letterSpacing: 0.5,
-  },
-  levelDots: {
-    fontSize: 9,
-    letterSpacing: 2,
-    marginTop: 1,
-  },
+  cardLevel: { fontSize: Typography.sizes.xs, letterSpacing: 2 },
+  cardEffect: { fontSize: Typography.sizes.xs, letterSpacing: 0.5 },
+  levelDots: { fontSize: 9, letterSpacing: 2, marginTop: 1 },
+
   progressTrack: {
     height: 3,
     backgroundColor: Colors.border,
@@ -377,10 +480,8 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
+  progressFill: { height: '100%', borderRadius: 2 },
+
   upgradeButton: {
     marginHorizontal: Spacing.md,
     marginBottom: Spacing.md,
@@ -393,6 +494,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceElevated,
     borderWidth: 1,
   },
+  upgradeButtonGated: {
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+  },
   upgradeButtonDisabled: {
     backgroundColor: Colors.surfaceElevated,
   },
@@ -401,6 +508,43 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     letterSpacing: 2,
   },
+
+  contractsButton: {
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.primary + '55',
+    marginTop: Spacing.xs,
+  },
+  contractsGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  contractsIcon: {
+    fontSize: Typography.sizes.xl,
+    color: Colors.primary,
+    width: 32,
+    textAlign: 'center',
+  },
+  contractsLabel: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primary,
+    letterSpacing: 2,
+  },
+  contractsSub: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+  contractsChevron: {
+    marginLeft: 'auto',
+    fontSize: Typography.sizes.xl,
+    color: Colors.textMuted,
+  },
+
   footnote: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,

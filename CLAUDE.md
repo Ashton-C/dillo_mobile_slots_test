@@ -41,20 +41,41 @@ A disruptive, "cozy sci-fi" social-casino mobile game that evolves the "Coin Mas
 * **Scalability:** Separate local UI state from server-side "Source of Truth" to prevent client-side spoofing/cheating.
 
 ## 6. Roadmap
-### Phase 1: Engine Foundation
-- [ ] Initialize Expo project with Expo Router and Zustand.
-- [ ] Implement `SlotsEngine` with mathematical weighting logic.
-- [ ] Establish Firebase data models (`User`, `Habitat`).
 
-### Phase 2: Strategic Systems
-- [ ] Implement `AnomalyService` (Space Weather sync).
-- [ ] Build `DroneMercenary` inventory and effect system.
-- [ ] Develop `TemporalRift` modifier logic for reels.
+### Phase 1: Engine Foundation ✅
+- [x] Initialize Expo project with Expo Router and Zustand.
+- [x] Implement `SlotsEngine` with mathematical weighting logic.
+- [x] Establish Firebase data models (`User`, `Habitat`).
 
-### Phase 3: Monetization & Polish
-- [ ] Integrate RevenueCat (Spin Packs, Shield Bundles).
-- [ ] Integrate AdMob (Watch to refill spins).
-- [ ] Polish UI (Orange-to-Purple gradients, thin sans-serif font, Armadillo sprite integration).
+### Phase 2: Strategic Systems ✅
+- [x] Implement `AnomalyService` (Space Weather sync).
+- [x] Build `DroneMercenary` inventory and effect system.
+- [x] Develop `TemporalRift` modifier logic for reels.
+- [x] Spin energy drip-refill timer (1 spin / 5 min, up to 50 max).
+- [x] HabitatBuilder — real-time build timers with Firestore persistence.
+- [x] Pilot profile, username setup modal, ArmadilloAvatar.
+- [x] FUEL CELLS (attacks) / SIGNAL BOOSTERS (raids) — Overclock + Signal Boost spin buffs.
+- [x] ModifierPanel — active effects display with dots/numbers toggle.
+- [x] Brand polish — gradient header, jackpot flash, SpinButton glow pulse, low-spin warning.
+
+### Phase 3: Social Combat & Drone Marketplace 🔨
+#### Design Decisions (locked)
+- **PvP mini-game:** RNG + skill. Use a slot-with-insta-stop mechanic (three mini-reels spin, player taps each to lock — on-theme with the slot machine core). Player's Outpost Level adds a flat power bonus to the final result. Highly thematic, minimal learning curve.
+- **Drone UI:** Modal triggered from Habitat screen (CONTRACTS button, visible when HANGAR ≥ 1).
+- **AdMob:** Deferred to Phase 4. Build social loop first.
+- **Outpost Level:** Hard gate — buildings cannot be upgraded past the current Outpost level. Incentivizes Outpost upgrades and extends progression timeline naturally.
+
+#### Items
+- [x] Outpost Level System — hard gate, upgrade flow, UI on Habitat screen.
+- [x] Drone Marketplace — modal with hire flow wired to game store resource deduction.
+- [ ] PvP Loop — INTRUSION / EXTRACTION symbols on reels, targeting mini-game, Cloud Functions for attack/raid resolution, TURRET / VAULT / SHIELD passives, real-time EventBanner.
+- [ ] Radar screen — player discovery, 5 nearby targets, target preview.
+- [ ] Combat log on Pilot tab.
+
+### Phase 4: Monetization
+- [ ] RevenueCat — Spin Packs, Builder Slots (parallel construction), Shield Bundles.
+- [ ] AdMob rewarded ads — +5 spins, −30 min from build timer.
+- [ ] Temporal Crystals hard currency — instant build skip.
 
 ---
 

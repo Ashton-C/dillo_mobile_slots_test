@@ -4,17 +4,21 @@ import {
   BUILDING_UPGRADE_COST,
   BUILD_DURATION_MS,
   ActiveBuildJob,
+  outpostUpgradeCost,
+  outpostUpgradeDuration,
 } from '@/models/Habitat';
 import { writeHabitatState, HabitatSnapshot } from '@/services/FirestoreService';
 
 interface HabitatState {
   habitatId: string | null;
   buildingLevels: Partial<Record<BuildingType, number>>;
+  outpostLevel: number;
   activeBuildJob: ActiveBuildJob | null;
   msUntilComplete: number;
 
   setHabitatId: (id: string) => void;
   startBuild: (type: BuildingType, subtractCredits: (n: number) => boolean) => boolean;
+  upgradeOutpost: (subtractCredits: (n: number) => boolean) => boolean;
   tick: () => void;
   syncFromFirestore: (data: HabitatSnapshot) => void;
 }
@@ -26,6 +30,7 @@ function persist(habitatId: string | null, data: Partial<HabitatSnapshot>) {
 export const useHabitatStore = create<HabitatState>((set, get) => ({
   habitatId: null,
   buildingLevels: {},
+  outpostLevel: 1,
   activeBuildJob: null,
   msUntilComplete: 0,
 
@@ -34,13 +39,15 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
   },
 
   startBuild(type, subtractCredits) {
-    const { activeBuildJob, buildingLevels, habitatId } = get();
-    if (activeBuildJob) return false; // builder is busy
+    const { activeBuildJob, buildingLevels, outpostLevel, habitatId } = get();
+    if (activeBuildJob) return false;
 
     const currentLevel = buildingLevels[type] ?? 0;
+    const targetLevel = currentLevel + 1;
+
+    if (targetLevel > outpostLevel) return false; // hard gate
     if (currentLevel >= 10) return false;
 
-    const targetLevel = currentLevel + 1;
     const cost = BUILDING_UPGRADE_COST[type](currentLevel === 0 ? 1 : currentLevel);
     if (!subtractCredits(cost)) return false;
 
@@ -53,20 +60,43 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
     return true;
   },
 
+  upgradeOutpost(subtractCredits) {
+    const { activeBuildJob, outpostLevel, habitatId } = get();
+    if (activeBuildJob) return false;
+    if (outpostLevel >= 10) return false;
+
+    const cost = outpostUpgradeCost(outpostLevel);
+    if (!subtractCredits(cost)) return false;
+
+    const targetLevel = outpostLevel + 1;
+    const duration = outpostUpgradeDuration(targetLevel);
+    const completesAt = Date.now() + duration;
+    const job: ActiveBuildJob = { type: 'GENERATOR', targetLevel, completesAt, isOutpost: true };
+
+    set({ activeBuildJob: job, msUntilComplete: duration });
+    persist(habitatId, { activeBuildJob: job });
+    return true;
+  },
+
   tick() {
-    const { activeBuildJob, buildingLevels, habitatId } = get();
+    const { activeBuildJob, buildingLevels, outpostLevel, habitatId } = get();
     if (!activeBuildJob) return;
 
     const ms = Math.max(0, activeBuildJob.completesAt - Date.now());
 
     if (ms === 0) {
-      // Build complete — increment level and clear job
-      const newLevels = {
-        ...buildingLevels,
-        [activeBuildJob.type]: activeBuildJob.targetLevel,
-      };
-      set({ buildingLevels: newLevels, activeBuildJob: null, msUntilComplete: 0 });
-      persist(habitatId, { buildingLevels: newLevels, activeBuildJob: null });
+      if (activeBuildJob.isOutpost) {
+        const newOutpostLevel = activeBuildJob.targetLevel;
+        set({ outpostLevel: newOutpostLevel, activeBuildJob: null, msUntilComplete: 0 });
+        persist(habitatId, { outpostLevel: newOutpostLevel, activeBuildJob: null });
+      } else {
+        const newLevels = {
+          ...buildingLevels,
+          [activeBuildJob.type]: activeBuildJob.targetLevel,
+        };
+        set({ buildingLevels: newLevels, activeBuildJob: null, msUntilComplete: 0 });
+        persist(habitatId, { buildingLevels: newLevels, activeBuildJob: null });
+      }
     } else {
       set({ msUntilComplete: ms });
     }
@@ -76,6 +106,7 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
     const job = data.activeBuildJob;
     set({
       buildingLevels: data.buildingLevels,
+      outpostLevel: data.outpostLevel ?? 1,
       activeBuildJob: job,
       msUntilComplete: job ? Math.max(0, job.completesAt - Date.now()) : 0,
     });

@@ -47,6 +47,16 @@ export interface ActiveBuildJob {
   type: BuildingType;
   targetLevel: number;
   completesAt: number; // unix ms
+  isOutpost?: boolean; // true when upgrading the Outpost itself
+}
+
+// Outpost upgrade: 2× the standard building duration for that level
+export function outpostUpgradeCost(currentLevel: number): number {
+  return 500 * currentLevel;
+}
+
+export function outpostUpgradeDuration(targetLevel: number): number {
+  return (BUILD_DURATION_MS[targetLevel] ?? 0) * 2;
 }
 
 export const AttackLogEntrySchema = z.object({

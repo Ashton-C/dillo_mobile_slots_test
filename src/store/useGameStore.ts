@@ -43,6 +43,7 @@ interface GameState extends Resources, SpinState {
   tickGeneratorIncome: () => void;
   activateOverclock: () => boolean;
   activateSignalBoost: () => boolean;
+  subtractResources: (costs: Partial<Pick<Resources, 'credits' | 'attacks' | 'raids' | 'shields'>>) => boolean;
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
 }
@@ -240,6 +241,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     const next = { spinsRemaining: MAX_SPINS, spinRefillStart: 0 };
     set(next);
     persistResources(next);
+  },
+
+  subtractResources(costs) {
+    const { credits, attacks, raids, shields } = get();
+    if ((costs.credits ?? 0) > credits) return false;
+    if ((costs.attacks ?? 0) > attacks) return false;
+    if ((costs.raids ?? 0) > raids) return false;
+    if ((costs.shields ?? 0) > shields) return false;
+    const next: Partial<Resources> = {
+      ...(costs.credits  ? { credits:  credits  - costs.credits  } : {}),
+      ...(costs.attacks  ? { attacks:  attacks  - costs.attacks  } : {}),
+      ...(costs.raids    ? { raids:    raids    - costs.raids    } : {}),
+      ...(costs.shields  ? { shields:  shields  - costs.shields  } : {}),
+    };
+    set((s) => ({ ...s, ...next }));
+    persistResources(next);
+    return true;
   },
 
   syncFromFirestore(resources) {

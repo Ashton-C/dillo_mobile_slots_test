@@ -15,6 +15,7 @@ import { BuildingType, ActiveBuildJob } from '@/models/Habitat';
 export interface HabitatSnapshot {
   buildingLevels: Partial<Record<BuildingType, number>>;
   activeBuildJob: ActiveBuildJob | null;
+  outpostLevel?: number;
 }
 
 export interface UserResourceSnapshot {
@@ -105,6 +106,7 @@ export function subscribeToHabitat(
       onUpdate({
         buildingLevels: (d.buildingLevels as Partial<Record<BuildingType, number>>) ?? {},
         activeBuildJob: (d.activeBuildJob as ActiveBuildJob | null) ?? null,
+        outpostLevel: (d.outpostLevel as number | undefined) ?? 1,
       });
     },
     (err) => console.error('subscribeToHabitat error:', err),
