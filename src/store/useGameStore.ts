@@ -14,6 +14,8 @@ interface Resources {
   attacks: number;
   raids: number;
   shields: number;
+  intrusions: number;
+  extractions: number;
   spinsRemaining: number;
   spinRefillStart: number; // unix ms when current refill cycle started; 0 = at max
   xp: number;
@@ -53,6 +55,8 @@ const INITIAL_RESOURCES: Resources = {
   attacks: 5,
   raids: 0,
   shields: 0,
+  intrusions: 0,
+  extractions: 0,
   spinsRemaining: 50,
   spinRefillStart: 0,
   xp: 0,
@@ -113,9 +117,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       nextState = {
         credits: newCredits,
-        attacks: Math.min(MAX_SPINS, state.attacks + result.attacksWon),
-        raids: Math.min(MAX_SPINS, state.raids + result.raidsWon),
-        shields: Math.min(MAX_SPINS, state.shields + result.shieldsWon),
+        attacks:    Math.min(MAX_SPINS, state.attacks    + result.attacksWon),
+        raids:      Math.min(MAX_SPINS, state.raids      + result.raidsWon),
+        shields:    Math.min(MAX_SPINS, state.shields    + result.shieldsWon),
+        intrusions: Math.min(MAX_SPINS, state.intrusions + result.intrusionsWon),
+        extractions:Math.min(MAX_SPINS, state.extractions+ result.extractionsWon),
         spinsRemaining: newSpins,
         spinRefillStart: newRefillStart,
         xp: leveledUp ? newXp - xpNeeded : newXp,
@@ -261,7 +267,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   syncFromFirestore(resources) {
-    set((state) => ({ ...state, ...resources }));
+    set((state) => ({
+      ...state,
+      ...resources,
+      intrusions: resources.intrusions ?? state.intrusions,
+      extractions: resources.extractions ?? state.extractions,
+    }));
   },
 
   setIsSpinning(spinning) {

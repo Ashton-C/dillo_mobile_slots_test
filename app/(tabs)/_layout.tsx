@@ -40,8 +40,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="hangar"
         options={{
-          title: 'Hangar',
-          tabBarIcon: ({ focused }) => <TabIcon label="HANGAR" focused={focused} />,
+          title: 'Radar',
+          tabBarIcon: ({ focused }) => <TabIcon label="RADAR" focused={focused} />,
         }}
       />
       <Tabs.Screen

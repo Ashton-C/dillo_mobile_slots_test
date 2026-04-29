@@ -12,23 +12,27 @@ import { SlotSymbol } from '@/services/SlotsEngine';
 import { Colors, BorderRadius, Typography } from '@/constants/theme';
 
 const SYMBOL_GLYPHS: Record<SlotSymbol, string> = {
-  CREDIT_SMALL: '◈',
+  CREDIT_SMALL:  '◈',
   CREDIT_MEDIUM: '◈◈',
-  CREDIT_LARGE: '◈◈◈',
-  ATTACK: '⚡',
-  RAID: '◈◈',
-  SHIELD: '◉',
-  EMPTY: '·',
+  CREDIT_LARGE:  '◈◈◈',
+  ATTACK:        '⚡',
+  RAID:          '▲▲',
+  SHIELD:        '◉',
+  INTRUSION:     '⚔',
+  EXTRACTION:    '⛏',
+  EMPTY:         '·',
 };
 
 const SYMBOL_COLORS: Record<SlotSymbol, string> = {
-  CREDIT_SMALL: Colors.credits,
+  CREDIT_SMALL:  Colors.credits,
   CREDIT_MEDIUM: Colors.credits,
-  CREDIT_LARGE: Colors.credits,
-  ATTACK: Colors.attack,
-  RAID: Colors.raid,
-  SHIELD: Colors.shield,
-  EMPTY: Colors.textMuted,
+  CREDIT_LARGE:  Colors.credits,
+  ATTACK:        Colors.attack,
+  RAID:          Colors.raid,
+  SHIELD:        Colors.shield,
+  INTRUSION:     Colors.danger,
+  EXTRACTION:    Colors.accent,
+  EMPTY:         Colors.textMuted,
 };
 
 interface ReelProps {

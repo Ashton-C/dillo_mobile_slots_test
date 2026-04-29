@@ -33,7 +33,7 @@ function formatRefillTimer(ms: number): string {
 
 export default function SpinScreen() {
   const {
-    credits, attacks, raids, shields, spinsRemaining,
+    credits, attacks, raids, shields, intrusions, extractions, spinsRemaining,
     isSpinning, lastResult, riftTier,
     msUntilNextSpin, msUntilFull,
     overclockActive, signalBoostActive,
@@ -64,6 +64,7 @@ export default function SpinScreen() {
   const reels = lastResult?.reels ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
   const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
+  const showCombatResources = intrusions > 0 || extractions > 0;
   const spinsLow = spinsRemaining <= LOW_SPIN_THRESHOLD;
 
   return (
@@ -163,6 +164,22 @@ export default function SpinScreen() {
           </View>
         )}
 
+        {showCombatResources && (
+          <View style={styles.combatRow}>
+            {intrusions > 0 && (
+              <View style={[styles.combatChip, { borderColor: Colors.danger }]}>
+                <Text style={[styles.combatChipText, { color: Colors.danger }]}>⚔  {intrusions} BREACH KEY{intrusions !== 1 ? 'S' : ''}</Text>
+              </View>
+            )}
+            {extractions > 0 && (
+              <View style={[styles.combatChip, { borderColor: Colors.accent }]}>
+                <Text style={[styles.combatChipText, { color: Colors.accent }]}>⛏  {extractions} BEAM{extractions !== 1 ? 'S' : ''}</Text>
+              </View>
+            )}
+            <Text style={styles.combatHint}>→ RADAR</Text>
+          </View>
+        )}
+
         <RiftSelector
           currentTier={riftTier}
           availableCredits={credits}
@@ -175,10 +192,12 @@ export default function SpinScreen() {
 
 function outcomeMessage(result: NonNullable<ReturnType<typeof useGameStore.getState>['lastResult']>): string {
   switch (result.outcomeType) {
-    case 'CREDITS': return `+${result.creditsWon.toLocaleString()} CREDITS`;
-    case 'ATTACK': return `+${result.attacksWon} FUEL CELL${result.attacksWon !== 1 ? 'S' : ''}`;
-    case 'RAID': return `+${result.raidsWon} SIGNAL BOOSTER${result.raidsWon !== 1 ? 'S' : ''}`;
-    case 'SHIELD': return `+${result.shieldsWon} SHIELD${result.shieldsWon !== 1 ? 'S' : ''}`;
+    case 'CREDITS':    return `+${result.creditsWon.toLocaleString()} CREDITS`;
+    case 'ATTACK':     return `+${result.attacksWon} FUEL CELL${result.attacksWon !== 1 ? 'S' : ''}`;
+    case 'RAID':       return `+${result.raidsWon} SIGNAL BOOSTER${result.raidsWon !== 1 ? 'S' : ''}`;
+    case 'SHIELD':     return `+${result.shieldsWon} SHIELD${result.shieldsWon !== 1 ? 'S' : ''}`;
+    case 'INTRUSION':  return `+${result.intrusionsWon} BREACH KEY${result.intrusionsWon !== 1 ? 'S' : ''}`;
+    case 'EXTRACTION': return `+${result.extractionsWon} EXTRACTION BEAM${result.extractionsWon !== 1 ? 'S' : ''}`;
     default: return '';
   }
 }
@@ -298,5 +317,31 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.textMuted,
     letterSpacing: 0.5,
+  },
+
+  combatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  combatChip: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    backgroundColor: Colors.surface,
+  },
+  combatChipText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
+  },
+  combatHint: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    marginLeft: Spacing.xs,
   },
 });
