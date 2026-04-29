@@ -11,7 +11,6 @@ import {
   limit,
   query,
   orderBy,
-  where,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -109,7 +108,8 @@ export async function fetchRadarTargets(
   count = 5,
 ): Promise<PlayerIndexEntry[]> {
   const ref = collection(db, 'playerIndex');
-  const q = query(ref, orderBy('updatedAt', 'desc'), limit(count + 1));
+  // No orderBy — avoids composite index requirement; simple limit + client filter.
+  const q = query(ref, limit(count + 10));
   const snap = await getDocs(q);
   const results: PlayerIndexEntry[] = [];
   snap.forEach((d) => {

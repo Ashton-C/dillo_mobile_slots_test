@@ -48,11 +48,9 @@ export function RiftSelector({ currentTier, availableCredits, onSelect }: Props)
               <Text style={[styles.tierLabel, isActive && styles.tierLabelActive]}>
                 {RIFT_LABELS[tier]}
               </Text>
-              {cost > 0 && (
-                <Text style={[styles.tierCost, !canAfford && styles.tierCostLocked]}>
-                  {cost} CR
-                </Text>
-              )}
+              <Text style={[styles.tierCost, !canAfford && styles.tierCostLocked]}>
+                {cost > 0 ? `${cost} CR` : ' '}
+              </Text>
               <Text style={styles.tierDesc} numberOfLines={1}>
                 {RIFT_DESCRIPTIONS[tier]}
               </Text>
@@ -80,12 +78,14 @@ const styles = StyleSheet.create({
   },
   tierButton: {
     flex: 1,
+    height: 76,
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.sm,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   tierButtonActive: {
     borderColor: Colors.accent,
