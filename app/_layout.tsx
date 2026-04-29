@@ -19,20 +19,22 @@ export default function RootLayout() {
   const tickAnomaly = useAnomalyStore((s) => s.tick);
   const tickHabitat = useHabitatStore((s) => s.tick);
   const tickSpinRefill = useGameStore((s) => s.tickSpinRefill);
+  const tickGeneratorIncome = useGameStore((s) => s.tickGeneratorIncome);
 
   useEffect(() => {
     const unsubAuth = initializeAuth();
     const anomalyInterval = setInterval(tickAnomaly, 60_000);
-    // Habitat build timer and spin refill share the same 1s tick
     const secondInterval = setInterval(() => {
       tickHabitat();
       tickSpinRefill();
     }, 1_000);
+    const generatorInterval = setInterval(tickGeneratorIncome, 30_000);
 
     return () => {
       unsubAuth();
       clearInterval(anomalyInterval);
       clearInterval(secondInterval);
+      clearInterval(generatorInterval);
     };
   }, []);
 

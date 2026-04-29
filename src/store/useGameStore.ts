@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { SpinResult, slotsEngine, TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
 import { useDroneStore } from '@/store/useDroneStore';
+import { useHabitatStore } from '@/store/useHabitatStore';
 import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
 import { auth } from '@/lib/firebase';
@@ -25,6 +26,8 @@ interface SpinState {
   riftTier: TemporalRiftTier;
   msUntilNextSpin: number;
   msUntilFull: number;
+  overclockActive: boolean;
+  signalBoostActive: boolean;
 }
 
 interface GameState extends Resources, SpinState {
@@ -37,6 +40,9 @@ interface GameState extends Resources, SpinState {
   subtractCredits: (amount: number) => boolean;
   refillSpins: () => void;
   tickSpinRefill: () => void;
+  tickGeneratorIncome: () => void;
+  activateOverclock: () => boolean;
+  activateSignalBoost: () => boolean;
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
 }
@@ -67,24 +73,30 @@ export const useGameStore = create<GameState>((set, get) => ({
   riftTier: 0,
   msUntilNextSpin: 0,
   msUntilFull: 0,
+  overclockActive: false,
+  signalBoostActive: false,
 
   spin() {
-    const { spinsRemaining, riftTier, credits, spinRefillStart } = get();
+    const { spinsRemaining, riftTier, credits, spinRefillStart, overclockActive, signalBoostActive } = get();
     if (spinsRemaining <= 0 || get().isSpinning) return null;
 
     const riftCost = RIFT_COSTS[riftTier];
     if (riftCost > credits) return null;
 
-    set({ isSpinning: true });
+    set({ isSpinning: true, overclockActive: false, signalBoostActive: false });
 
     slotsEngine.setRiftTier(riftTier);
+    if (signalBoostActive) slotsEngine.setSignalBoost(true);
     const result = slotsEngine.spin();
+    if (signalBoostActive) slotsEngine.setSignalBoost(false);
 
     const droneEffects = useDroneStore.getState().getEffects();
     useDroneStore.getState().tickSpins();
+    const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
+    const overclockBonus = overclockActive ? genLevel * 50 + 200 : 0;
     const boostedCreditsWon = Math.floor(
       result.creditsWon * droneEffects.creditMultiplier * (anomalyService.getDefinition()?.creditMultiplier ?? 1),
-    );
+    ) + overclockBonus;
 
     let nextState: Partial<Resources> = {};
 
@@ -151,6 +163,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
       set({ msUntilNextSpin, msUntilFull });
     }
+  },
+
+  activateOverclock() {
+    const { attacks } = get();
+    if (attacks <= 0) return false;
+    set({ attacks: attacks - 1, overclockActive: true });
+    persistResources({ attacks: attacks - 1 });
+    return true;
+  },
+
+  activateSignalBoost() {
+    const { raids } = get();
+    if (raids <= 0) return false;
+    set({ raids: raids - 1, signalBoostActive: true });
+    persistResources({ raids: raids - 1 });
+    return true;
+  },
+
+  tickGeneratorIncome() {
+    const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
+    if (genLevel === 0) return;
+    const income = genLevel * 20;
+    const next = { credits: get().credits + income };
+    set(next);
+    persistResources(next);
   },
 
   setRiftTier(tier) {

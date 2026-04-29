@@ -28,8 +28,8 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining }
   return (
     <View style={styles.container}>
       <ResourcePill label="CREDITS" value={credits} color={Colors.credits} />
-      <ResourcePill label="ATTACKS" value={attacks} color={Colors.attack} />
-      <ResourcePill label="RAIDS" value={raids} color={Colors.raid} />
+      <ResourcePill label="FUEL" value={attacks} color={Colors.attack} />
+      <ResourcePill label="BOOST" value={raids} color={Colors.raid} />
       <ResourcePill label="SHIELDS" value={shields} color={Colors.shield} />
       <ResourcePill label="SPINS" value={spinsRemaining} color={Colors.accent} />
     </View>

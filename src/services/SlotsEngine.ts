@@ -90,6 +90,7 @@ const PAIR_PAYOUTS: Partial<Record<SlotSymbol, Partial<SpinResult>>> = {
 
 export class SlotsEngine {
   private riftTier: TemporalRiftTier = 0;
+  private signalBoost = false;
 
   setRiftTier(tier: TemporalRiftTier): void {
     this.riftTier = tier;
@@ -97,6 +98,10 @@ export class SlotsEngine {
 
   getRiftTier(): TemporalRiftTier {
     return this.riftTier;
+  }
+
+  setSignalBoost(active: boolean): void {
+    this.signalBoost = active;
   }
 
   /**
@@ -158,6 +163,13 @@ export class SlotsEngine {
   private buildEffectiveWeights(): Record<SlotSymbol, number> {
     const mods = RIFT_MODIFIERS[this.riftTier];
     const result = { ...BASE_WEIGHTS };
+
+    // Signal Boost amplifies credit symbol weights before rift modifiers
+    if (this.signalBoost) {
+      result.CREDIT_SMALL = Math.round(result.CREDIT_SMALL * 1.5);
+      result.CREDIT_MEDIUM = Math.round(result.CREDIT_MEDIUM * 1.5);
+      result.CREDIT_LARGE = Math.round(result.CREDIT_LARGE * 1.5);
+    }
 
     for (const [sym, delta] of Object.entries(mods) as [SlotSymbol, number][]) {
       result[sym] = Math.max(1, result[sym] + delta);

@@ -1,12 +1,12 @@
-import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, Pressable } from 'react-native';
 import { useGameStore } from '@/store/useGameStore';
-import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { SpinButton } from '@/components/SpinButton';
 import { ReelDisplay } from '@/components/ReelDisplay';
 import { ResourceBar } from '@/components/ResourceBar';
 import { RiftSelector } from '@/components/RiftSelector';
-import { Colors, Typography, Spacing } from '@/constants/theme';
+import { ModifierPanel } from '@/components/ModifierPanel';
+import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { TemporalRiftTier } from '@/services/SlotsEngine';
 
 const EMPTY_REELS: ['EMPTY', 'EMPTY', 'EMPTY'] = ['EMPTY', 'EMPTY', 'EMPTY'];
@@ -27,14 +27,15 @@ export default function SpinScreen() {
     credits, attacks, raids, shields, spinsRemaining,
     isSpinning, lastResult, riftTier,
     msUntilNextSpin, msUntilFull,
-    spin, setRiftTier,
+    overclockActive, signalBoostActive,
+    spin, setRiftTier, activateOverclock, activateSignalBoost,
   } = useGameStore();
 
-  const { definition } = useAnomalyStore();
   const { displayName } = useAuthStore();
 
   const reels = lastResult?.reels ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
+  const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
 
   return (
     <SafeAreaView style={styles.root}>
@@ -49,17 +50,7 @@ export default function SpinScreen() {
         spinsRemaining={spinsRemaining}
       />
 
-      {/* Anomaly ticker */}
-      {definition && definition.id !== 'CALM' && (
-        <View style={[styles.anomalyTicker, { borderColor: definition.color }]}>
-          <Text style={[styles.anomalyName, { color: definition.color }]}>
-            {definition.name}
-          </Text>
-          <Text style={styles.anomalyDesc} numberOfLines={1}>
-            {definition.description}
-          </Text>
-        </View>
-      )}
+      <ModifierPanel />
 
       <View style={styles.content}>
         {/* Outcome banner */}
@@ -95,6 +86,37 @@ export default function SpinScreen() {
           )}
         </View>
 
+        {showQuickActions && (
+          <View style={styles.quickActions}>
+            {(attacks > 0 || overclockActive) && (
+              <Pressable
+                onPress={activateOverclock}
+                disabled={overclockActive}
+                style={[styles.quickButton, overclockActive && styles.quickButtonActive]}
+              >
+                <Text style={[styles.quickButtonLabel, overclockActive && styles.quickButtonLabelActive]}>
+                  {overclockActive ? '⚡ OVERCLOCK  ACTIVE' : `⚡ OVERCLOCK  ${attacks} FUEL`}
+                </Text>
+                <Text style={styles.quickButtonSub}>
+                  {overclockActive ? 'Bonus lands on next spin' : '+CR bonus next spin'}
+                </Text>
+              </Pressable>
+            )}
+            {(raids > 0 || signalBoostActive) && (
+              <Pressable
+                onPress={activateSignalBoost}
+                disabled={signalBoostActive}
+                style={[styles.quickButton, signalBoostActive && styles.quickButtonActive]}
+              >
+                <Text style={[styles.quickButtonLabel, signalBoostActive && styles.quickButtonLabelActive]}>
+                  {signalBoostActive ? '◈ BOOST  ACTIVE' : `◈ BOOST  ${raids} SIGNAL`}
+                </Text>
+                <Text style={styles.quickButtonSub}>Credit weights ×1.5</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+
         <RiftSelector
           currentTier={riftTier}
           availableCredits={credits}
@@ -108,8 +130,8 @@ export default function SpinScreen() {
 function outcomeMessage(result: NonNullable<ReturnType<typeof useGameStore.getState>['lastResult']>): string {
   switch (result.outcomeType) {
     case 'CREDITS': return `+${result.creditsWon.toLocaleString()} CREDITS`;
-    case 'ATTACK': return `+${result.attacksWon} ATTACK${result.attacksWon !== 1 ? 'S' : ''}`;
-    case 'RAID': return 'RAID READY';
+    case 'ATTACK': return `+${result.attacksWon} FUEL CELL${result.attacksWon !== 1 ? 'S' : ''}`;
+    case 'RAID': return `+${result.raidsWon} SIGNAL BOOSTER${result.raidsWon !== 1 ? 'S' : ''}`;
     case 'SHIELD': return `+${result.shieldsWon} SHIELD${result.shieldsWon !== 1 ? 'S' : ''}`;
     default: return '';
   }
@@ -125,28 +147,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.xs,
   },
-  anomalyTicker: {
-    marginHorizontal: Spacing.md,
-    marginTop: Spacing.sm,
-    padding: Spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: Colors.surfaceElevated,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  anomalyName: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    letterSpacing: 2,
-  },
-  anomalyDesc: {
-    flex: 1,
-    fontSize: Typography.sizes.xs,
-    color: Colors.textSecondary,
-  },
-  content: { flex: 1, paddingTop: Spacing.lg, gap: Spacing.xl },
+  content: { flex: 1, paddingTop: Spacing.md, gap: Spacing.lg },
   outcomeBanner: {
     alignItems: 'center',
     minHeight: 48,
@@ -195,5 +196,39 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
     letterSpacing: 1,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+  },
+  quickButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.surfaceElevated,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    gap: 2,
+  },
+  quickButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '22',
+  },
+  quickButtonLabel: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textSecondary,
+    letterSpacing: 1,
+  },
+  quickButtonLabelActive: {
+    color: Colors.primary,
+  },
+  quickButtonSub: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 0.5,
   },
 });

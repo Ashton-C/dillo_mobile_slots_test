@@ -15,8 +15,8 @@ const SYMBOL_GLYPHS: Record<SlotSymbol, string> = {
   CREDIT_SMALL: '◈',
   CREDIT_MEDIUM: '◈◈',
   CREDIT_LARGE: '◈◈◈',
-  ATTACK: '⚔',
-  RAID: '⛏',
+  ATTACK: '⚡',
+  RAID: '◈◈',
   SHIELD: '◉',
   EMPTY: '·',
 };
