@@ -45,7 +45,7 @@ interface GameState extends Resources, SpinState {
   tickGeneratorIncome: () => void;
   activateOverclock: () => boolean;
   activateSignalBoost: () => boolean;
-  subtractResources: (costs: Partial<Pick<Resources, 'credits' | 'attacks' | 'raids' | 'shields'>>) => boolean;
+  subtractResources: (costs: Partial<Pick<Resources, 'credits' | 'attacks' | 'raids' | 'shields' | 'intrusions' | 'extractions'>>) => boolean;
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
 }
@@ -250,16 +250,20 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   subtractResources(costs) {
-    const { credits, attacks, raids, shields } = get();
-    if ((costs.credits ?? 0) > credits) return false;
-    if ((costs.attacks ?? 0) > attacks) return false;
-    if ((costs.raids ?? 0) > raids) return false;
-    if ((costs.shields ?? 0) > shields) return false;
+    const { credits, attacks, raids, shields, intrusions, extractions } = get();
+    if ((costs.credits    ?? 0) > credits)    return false;
+    if ((costs.attacks    ?? 0) > attacks)    return false;
+    if ((costs.raids      ?? 0) > raids)      return false;
+    if ((costs.shields    ?? 0) > shields)    return false;
+    if ((costs.intrusions ?? 0) > intrusions) return false;
+    if ((costs.extractions ?? 0) > extractions) return false;
     const next: Partial<Resources> = {
-      ...(costs.credits  ? { credits:  credits  - costs.credits  } : {}),
-      ...(costs.attacks  ? { attacks:  attacks  - costs.attacks  } : {}),
-      ...(costs.raids    ? { raids:    raids    - costs.raids    } : {}),
-      ...(costs.shields  ? { shields:  shields  - costs.shields  } : {}),
+      ...(costs.credits    ? { credits:    credits    - costs.credits    } : {}),
+      ...(costs.attacks    ? { attacks:    attacks    - costs.attacks    } : {}),
+      ...(costs.raids      ? { raids:      raids      - costs.raids      } : {}),
+      ...(costs.shields    ? { shields:    shields    - costs.shields    } : {}),
+      ...(costs.intrusions ? { intrusions: intrusions - costs.intrusions } : {}),
+      ...(costs.extractions ? { extractions: extractions - costs.extractions } : {}),
     };
     set((s) => ({ ...s, ...next }));
     persistResources(next);

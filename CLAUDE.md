@@ -68,9 +68,12 @@ A disruptive, "cozy sci-fi" social-casino mobile game that evolves the "Coin Mas
 #### Items
 - [x] Outpost Level System — hard gate, upgrade flow, UI on Habitat screen.
 - [x] Drone Marketplace — modal with hire flow wired to game store resource deduction.
-- [ ] PvP Loop — INTRUSION / EXTRACTION symbols on reels, targeting mini-game, Cloud Functions for attack/raid resolution, TURRET / VAULT / SHIELD passives, real-time EventBanner.
-- [ ] Radar screen — player discovery, 5 nearby targets, target preview.
-- [ ] Combat log on Pilot tab.
+- [x] PvP Loop — INTRUSION / EXTRACTION symbols on reels, CombatMiniGame (insta-stop), EventBanner (real-time), player index writes, resource deduction on launch.
+- [x] Radar screen — player discovery, 5 nearby targets, threat assessment, BREACH/EXTRACT actions.
+- [x] Combat log on Pilot tab.
+- [ ] Cloud Function — resolve `combatRequests`, write `users/{uid}/events`, apply VAULT/TURRET passives.
+- [ ] TURRET passive — auto-block N incoming attacks per day (TURRET building level).
+- [ ] VAULT passive — reduce credit loss % on raid resolution (VAULT building level).
 
 ### Phase 4: Monetization
 - [ ] RevenueCat — Spin Packs, Builder Slots (parallel construction), Shield Bundles.

@@ -12,7 +12,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { subscribeToUser, subscribeToHabitat, ensureHabitatForUser } from '@/services/FirestoreService';
+import { subscribeToUser, subscribeToHabitat, ensureHabitatForUser, writePlayerIndex } from '@/services/FirestoreService';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
@@ -62,6 +62,15 @@ export const useAuthStore = create<AuthState>((set) => ({
 
           anomalyUnsub = useAnomalyStore.getState().subscribe();
 
+          const gameState = useGameStore.getState();
+          const outpostLevel = useHabitatStore.getState().outpostLevel;
+          writePlayerIndex(firebaseUser.uid, {
+            displayName: profile.displayName,
+            avatarColor: profile.avatarColor,
+            outpostLevel,
+            level: gameState.level,
+          }).catch(console.error);
+
           set({
             user: firebaseUser,
             displayName: profile.displayName,
@@ -100,6 +109,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       updatedAt: serverTimestamp(),
     });
     set({ displayName: name, needsUsername: false });
+
+    const gameState = useGameStore.getState();
+    const outpostLevel = useHabitatStore.getState().outpostLevel;
+    writePlayerIndex(uid, {
+      displayName: name,
+      avatarColor: '#FF6B35',
+      outpostLevel,
+      level: gameState.level,
+    }).catch(console.error);
   },
 }));
 

@@ -14,7 +14,7 @@ type CombatType = 'INTRUSION' | 'EXTRACTION';
 
 export default function RadarScreen() {
   const user = useAuthStore((s) => s.user);
-  const { intrusions, extractions } = useGameStore();
+  const { intrusions, extractions, subtractResources } = useGameStore();
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
 
   const [targets, setTargets] = useState<PlayerIndexEntry[]>([]);
@@ -45,6 +45,10 @@ export default function RadarScreen() {
   function launchAttack(target: PlayerIndexEntry, type: CombatType) {
     if (type === 'INTRUSION' && intrusions <= 0) return;
     if (type === 'EXTRACTION' && extractions <= 0) return;
+
+    const cost = type === 'INTRUSION' ? { intrusions: 1 } : { extractions: 1 };
+    if (!subtractResources(cost)) return;
+
     setSelectedTarget(target);
     setCombatType(type);
     setMiniGameVisible(true);

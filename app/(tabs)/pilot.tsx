@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
+import { useEventStore } from '@/store/useEventStore';
+import { GameEvent } from '@/services/FirestoreService';
 import { ArmadilloAvatar } from '@/components/ArmadilloAvatar';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -11,7 +13,8 @@ function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
   const { displayName, avatarColor, setDisplayName } = useAuthStore();
-  const { credits, attacks, raids, shields, level, xp } = useGameStore();
+  const { credits, attacks, raids, shields, intrusions, extractions, level, xp } = useGameStore();
+  const events = useEventStore((s) => s.events);
 
   const [editVisible, setEditVisible] = useState(false);
   const [editName, setEditName] = useState('');
@@ -69,11 +72,23 @@ export default function PilotScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>RESOURCES</Text>
           <View style={styles.statsGrid}>
-            <StatCard label="CREDITS"  value={credits.toLocaleString()} color={Colors.credits} />
-            <StatCard label="FUEL"     value={String(attacks)}          color={Colors.attack} />
-            <StatCard label="BOOST"    value={String(raids)}            color={Colors.raid} />
-            <StatCard label="SHIELDS"  value={String(shields)}          color={Colors.shield} />
+            <StatCard label="CREDITS"    value={credits.toLocaleString()} color={Colors.credits} />
+            <StatCard label="FUEL"       value={String(attacks)}          color={Colors.attack} />
+            <StatCard label="BOOST"      value={String(raids)}            color={Colors.raid} />
+            <StatCard label="SHIELDS"    value={String(shields)}          color={Colors.shield} />
+            <StatCard label="BREACH"     value={String(intrusions)}       color={Colors.danger} />
+            <StatCard label="EXTRACTION" value={String(extractions)}      color={Colors.accent} />
           </View>
+        </View>
+
+        {/* Combat log */}
+        <View style={[styles.section, { paddingBottom: Spacing.xl }]}>
+          <Text style={styles.sectionHeader}>COMBAT LOG</Text>
+          {events.length === 0 ? (
+            <Text style={styles.logEmpty}>No combat activity yet</Text>
+          ) : (
+            events.slice(0, 20).map((e) => <CombatLogRow key={e.id} event={e} />)
+          )}
         </View>
 
       </ScrollView>
@@ -87,7 +102,7 @@ export default function PilotScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>RENAME PILOT</Text>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { color: Colors.textPrimary }]}
               value={editName}
               onChangeText={(t) => setEditName(t.replace(/\s/g, ''))}
               maxLength={20}
@@ -96,7 +111,6 @@ export default function PilotScreen() {
               autoCapitalize="none"
               placeholderTextColor={Colors.textMuted}
               placeholder="New pilot name"
-              color={Colors.textPrimary}
               onSubmitEditing={handleSaveName}
               returnKeyType="done"
             />
@@ -124,6 +138,48 @@ function StatCard({ label, value, color }: { label: string; value: string; color
     <View style={styles.statCard}>
       <Text style={[styles.statValue, { color }]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function logMeta(event: GameEvent): { icon: string; summary: string; color: string } {
+  switch (event.type) {
+    case 'ATTACK_INCOMING':
+      return { icon: '⚠', summary: `Breach attempt by ${event.fromDisplayName}`, color: Colors.danger };
+    case 'RAID_INCOMING':
+      return { icon: '⚠', summary: `Extraction beam from ${event.fromDisplayName}`, color: Colors.accent };
+    case 'ATTACK_RESOLVED':
+      return event.attackerWon
+        ? { icon: '✗', summary: `Breached by ${event.fromDisplayName} — lost ${event.creditsLost ?? 0} CR`, color: Colors.danger }
+        : { icon: '◉', summary: `Breach by ${event.fromDisplayName} was repelled`, color: Colors.shield };
+    case 'RAID_RESOLVED':
+      return event.attackerWon
+        ? { icon: '✗', summary: `${event.fromDisplayName} siphoned ${event.creditsLost ?? 0} CR`, color: Colors.accent }
+        : { icon: '◉', summary: `Extraction blocked — VAULT held`, color: Colors.shield };
+    case 'COMBAT_RESULT':
+      return event.attackerWon
+        ? { icon: '⚔', summary: `Raid on ${event.fromDisplayName} succeeded +${event.creditsGained ?? 0} CR`, color: Colors.success }
+        : { icon: '✗', summary: `Raid on ${event.fromDisplayName} failed`, color: Colors.textMuted };
+    default:
+      return { icon: '·', summary: 'Transmission received', color: Colors.textMuted };
+  }
+}
+
+function CombatLogRow({ event }: { event: GameEvent }) {
+  const { icon, summary, color } = logMeta(event);
+  const age = Date.now() - event.timestamp;
+  const ageLabel = age < 60_000 ? 'just now'
+    : age < 3_600_000 ? `${Math.floor(age / 60_000)}m ago`
+    : age < 86_400_000 ? `${Math.floor(age / 3_600_000)}h ago`
+    : `${Math.floor(age / 86_400_000)}d ago`;
+
+  return (
+    <View style={styles.logRow}>
+      <View style={[styles.logDot, { backgroundColor: color }]} />
+      <View style={styles.logContent}>
+        <Text style={[styles.logIcon, { color }]}>{icon}  <Text style={styles.logSummary}>{summary}</Text></Text>
+        <Text style={styles.logAge}>{ageLabel}</Text>
+      </View>
     </View>
   );
 }
@@ -299,5 +355,42 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
     letterSpacing: 2,
+  },
+
+  logEmpty: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+    fontStyle: 'italic',
+  },
+  logRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  logDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  logContent: { flex: 1, gap: 2 },
+  logIcon: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 0.5,
+  },
+  logSummary: {
+    fontWeight: Typography.weights.regular,
+    color: Colors.textSecondary,
+  },
+  logAge: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 1,
   },
 });
