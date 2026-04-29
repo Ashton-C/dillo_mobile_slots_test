@@ -23,6 +23,7 @@ export interface UserResourceSnapshot {
   raids: number;
   shields: number;
   spinsRemaining: number;
+  spinRefillStart: number; // unix ms, 0 when at max spins
   xp: number;
   level: number;
 }
@@ -54,6 +55,7 @@ export function subscribeToUser(
         raids: d.raids ?? 0,
         shields: d.shields ?? 0,
         spinsRemaining: d.spinsRemaining ?? 50,
+        spinRefillStart: d.spinRefillStart ?? 0,
         xp: d.xp ?? 0,
         level: d.level ?? 1,
       });

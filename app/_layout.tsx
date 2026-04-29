@@ -7,6 +7,7 @@ import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
+import { useGameStore } from '@/store/useGameStore';
 import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 
 const queryClient = new QueryClient({
@@ -17,16 +18,21 @@ export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
   const tickAnomaly = useAnomalyStore((s) => s.tick);
   const tickHabitat = useHabitatStore((s) => s.tick);
+  const tickSpinRefill = useGameStore((s) => s.tickSpinRefill);
 
   useEffect(() => {
     const unsubAuth = initializeAuth();
     const anomalyInterval = setInterval(tickAnomaly, 60_000);
-    const habitatInterval = setInterval(tickHabitat, 1_000);
+    // Habitat build timer and spin refill share the same 1s tick
+    const secondInterval = setInterval(() => {
+      tickHabitat();
+      tickSpinRefill();
+    }, 1_000);
 
     return () => {
       unsubAuth();
       clearInterval(anomalyInterval);
-      clearInterval(habitatInterval);
+      clearInterval(secondInterval);
     };
   }, []);
 

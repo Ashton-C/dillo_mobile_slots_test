@@ -5,12 +5,16 @@ import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
 import { auth } from '@/lib/firebase';
 
+const MAX_SPINS = 50;
+const SPIN_REFILL_MS = 5 * 60_000; // 1 spin every 5 minutes
+
 interface Resources {
   credits: number;
   attacks: number;
   raids: number;
   shields: number;
   spinsRemaining: number;
+  spinRefillStart: number; // unix ms when current refill cycle started; 0 = at max
   xp: number;
   level: number;
 }
@@ -19,6 +23,8 @@ interface SpinState {
   isSpinning: boolean;
   lastResult: SpinResult | null;
   riftTier: TemporalRiftTier;
+  msUntilNextSpin: number;
+  msUntilFull: number;
 }
 
 interface GameState extends Resources, SpinState {
@@ -30,6 +36,7 @@ interface GameState extends Resources, SpinState {
   addCredits: (amount: number) => void;
   subtractCredits: (amount: number) => boolean;
   refillSpins: () => void;
+  tickSpinRefill: () => void;
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
 }
@@ -40,6 +47,7 @@ const INITIAL_RESOURCES: Resources = {
   raids: 0,
   shields: 0,
   spinsRemaining: 50,
+  spinRefillStart: 0,
   xp: 0,
   level: 1,
 };
@@ -57,9 +65,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   isSpinning: false,
   lastResult: null,
   riftTier: 0,
+  msUntilNextSpin: 0,
+  msUntilFull: 0,
 
   spin() {
-    const { spinsRemaining, riftTier, credits } = get();
+    const { spinsRemaining, riftTier, credits, spinRefillStart } = get();
     if (spinsRemaining <= 0 || get().isSpinning) return null;
 
     const riftCost = RIFT_COSTS[riftTier];
@@ -83,13 +93,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const newXp = state.xp + XP_PER_SPIN + (result.isJackpot ? 20 : 0);
       const xpNeeded = XP_PER_LEVEL(state.level);
       const leveledUp = newXp >= xpNeeded;
+      const newSpins = state.spinsRemaining - 1;
+
+      // Start refill cycle only when dropping below max for the first time
+      const newRefillStart = state.spinRefillStart === 0 ? Date.now() : state.spinRefillStart;
 
       nextState = {
         credits: newCredits,
-        attacks: Math.min(50, state.attacks + result.attacksWon),
-        raids: Math.min(50, state.raids + result.raidsWon),
-        shields: Math.min(50, state.shields + result.shieldsWon),
-        spinsRemaining: state.spinsRemaining - 1,
+        attacks: Math.min(MAX_SPINS, state.attacks + result.attacksWon),
+        raids: Math.min(MAX_SPINS, state.raids + result.raidsWon),
+        shields: Math.min(MAX_SPINS, state.shields + result.shieldsWon),
+        spinsRemaining: newSpins,
+        spinRefillStart: newRefillStart,
         xp: leveledUp ? newXp - xpNeeded : newXp,
         level: leveledUp ? state.level + 1 : state.level,
       };
@@ -99,6 +114,43 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     persistResources(nextState);
     return result;
+  },
+
+  tickSpinRefill() {
+    const { spinsRemaining, spinRefillStart } = get();
+
+    if (spinsRemaining >= MAX_SPINS || spinRefillStart === 0) {
+      set({ msUntilNextSpin: 0, msUntilFull: 0 });
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - spinRefillStart;
+    const earned = Math.floor(elapsed / SPIN_REFILL_MS);
+
+    if (earned > 0) {
+      const newSpins = Math.min(MAX_SPINS, spinsRemaining + earned);
+      const newRefillStart = spinRefillStart + earned * SPIN_REFILL_MS;
+
+      if (newSpins >= MAX_SPINS) {
+        const update = { spinsRemaining: newSpins, spinRefillStart: 0 };
+        set({ ...update, msUntilNextSpin: 0, msUntilFull: 0 });
+        persistResources(update);
+      } else {
+        const msInCycle = now - newRefillStart;
+        const msUntilNextSpin = SPIN_REFILL_MS - msInCycle;
+        const spinsNeeded = MAX_SPINS - newSpins;
+        const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
+        const update = { spinsRemaining: newSpins, spinRefillStart: newRefillStart };
+        set({ ...update, msUntilNextSpin, msUntilFull });
+        persistResources(update);
+      }
+    } else {
+      const msUntilNextSpin = SPIN_REFILL_MS - (elapsed % SPIN_REFILL_MS);
+      const spinsNeeded = MAX_SPINS - spinsRemaining;
+      const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
+      set({ msUntilNextSpin, msUntilFull });
+    }
   },
 
   setRiftTier(tier) {
@@ -148,7 +200,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   refillSpins() {
-    const next = { spinsRemaining: 50 };
+    const next = { spinsRemaining: MAX_SPINS, spinRefillStart: 0 };
     set(next);
     persistResources(next);
   },

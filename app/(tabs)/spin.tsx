@@ -11,10 +11,22 @@ import { TemporalRiftTier } from '@/services/SlotsEngine';
 
 const EMPTY_REELS: ['EMPTY', 'EMPTY', 'EMPTY'] = ['EMPTY', 'EMPTY', 'EMPTY'];
 
+const MAX_SPINS = 50;
+
+function formatRefillTimer(ms: number): string {
+  const totalSec = Math.ceil(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export default function SpinScreen() {
   const {
     credits, attacks, raids, shields, spinsRemaining,
     isSpinning, lastResult, riftTier,
+    msUntilNextSpin, msUntilFull,
     spin, setRiftTier,
   } = useGameStore();
 
@@ -68,7 +80,19 @@ export default function SpinScreen() {
 
         <View style={styles.spinZone}>
           <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
-          <Text style={styles.spinsLabel}>{spinsRemaining} spins remaining</Text>
+          <Text style={styles.spinsLabel}>{spinsRemaining} / {MAX_SPINS} spins</Text>
+          {spinsRemaining < MAX_SPINS && msUntilNextSpin > 0 && (
+            <View style={styles.refillRow}>
+              <Text style={styles.refillNext}>
+                NEXT SPIN  {formatRefillTimer(msUntilNextSpin)}
+              </Text>
+              {spinsRemaining < MAX_SPINS - 1 && (
+                <Text style={styles.refillFull}>
+                  FULL  {formatRefillTimer(msUntilFull)}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         <RiftSelector
@@ -155,5 +179,21 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
+  },
+  refillRow: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    alignItems: 'center',
+  },
+  refillNext: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.accent,
+    letterSpacing: 1,
+    fontWeight: Typography.weights.bold,
+  },
+  refillFull: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 1,
   },
 });

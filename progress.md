@@ -17,16 +17,18 @@
 
 ### Phase 1: Engine Foundation (In Progress ⏳)
 *The absolute basics to get the slot engine and client/server syncing.*
-- [ ] **Project Init:** Stand up React Native + Expo Router with Zustand.
-- [ ] **The Generator (`SlotsEngine`):** Build mathematical weighting for slot reels (Credits, Attacks, Raids, Shields).
-- [ ] **State Sync:** Hook up Firebase/Firestore for real-time state and Authentication.
-- [ ] **The Meta (`HabitatBuilder`):** Basic sci-fi base construction logic using earned Credits.
+- [x] **Project Init:** Stand up React Native + Expo Router with Zustand.
+- [x] **The Generator (`SlotsEngine`):** Build mathematical weighting for slot reels (Credits, Attacks, Raids, Shields).
+- [x] **State Sync:** Hook up Firebase/Firestore for real-time state and Authentication.
+- [x] **The Meta (`HabitatBuilder`):** Real-time build timers (30s → 72h), all 5 buildings, builder-busy lock, Firestore persistence.
+- [x] **Pilot Profile:** First-launch username modal, Pilot tab with avatar/XP bar, rename flow.
+- [ ] **Spin Energy Timer:** Drip-refill at 1 spin per 5 min (max 50). Live "next spin" and "full in" countdown on Spin screen.
 
-### Phase 2: Strategic Systems (Planned 📅)
+### Phase 2: Strategic Systems (Complete ✅)
 *The mechanics that disrupt the traditional "Coin Master" model.*
-- [ ] **Space Anomalies:** Implement global 4-hour weather events syncing buffs/debuffs across all players.
-- [ ] **Temporal Rifts:** Build the UI/logic allowing players to spend Credits to shift reel probability weights.
-- [ ] **Drone Mercenaries:** Add resource-based robotic defenders/attackers to the player's inventory.
+- [x] **Space Anomalies:** Global 4-hour weather events syncing buffs/debuffs across all players.
+- [x] **Temporal Rifts:** Spend Credits to shift reel probability weights. Full RIFT tab UI.
+- [x] **Drone Mercenaries:** Resource-based robotic defenders/attackers with stacking effects.
 
 ### Phase 3: Monetization & Polish (Backlog 📋)
 *Making it profitable and pretty.*
