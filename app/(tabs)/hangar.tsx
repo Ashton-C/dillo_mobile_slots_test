@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
@@ -57,11 +57,11 @@ export default function RadarScreen() {
     setSelectedTarget(target);
     setCombatType(type);
     setMiniGameVisible(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    hapticCombatLaunch();
   }
 
   function handleMiniGameResult(won: boolean) {
-    // EventBanner will surface the result via Firestore events once CF resolves
+    if (won) hapticCombatWin(); else hapticCombatLoss();
   }
 
   function handleMiniGameClose() {

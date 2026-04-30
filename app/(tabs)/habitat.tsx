@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { hapticBuildStart } from '@/constants/haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -114,7 +114,7 @@ function BuildingCard({
   const levelDots = Array.from({ length: 10 }, (_, i) => i < level ? '●' : '○').join('');
 
   function handlePress() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticBuildStart();
     onUpgrade();
   }
 
@@ -221,7 +221,7 @@ export default function HabitatScreen() {
             ) : (
               <Pressable
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  hapticBuildStart();
                   upgradeOutpost(subtractCredits);
                 }}
                 disabled={builderBusy || credits < outpostCost}

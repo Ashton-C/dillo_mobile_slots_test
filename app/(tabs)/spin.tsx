@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { hapticForSpinResult, hapticActivateBuff, hapticLevelUp } from '@/constants/haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -63,7 +63,7 @@ export default function SpinScreen() {
   useEffect(() => {
     const isJackpot = lastResult?.isJackpot ?? false;
     if (isJackpot && !prevJackpot.current) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticForSpinResult(lastResult!);
       flashOpacity.value = withSequence(
         withTiming(1, { duration: 60 }),
         withTiming(0, { duration: 280 }),
@@ -80,6 +80,7 @@ export default function SpinScreen() {
   const bannerScale = useSharedValue(1);
   useEffect(() => {
     if (lastResult && lastResult.outcomeType !== 'NOTHING') {
+      if (!lastResult.isJackpot) hapticForSpinResult(lastResult);
       bannerScale.value = withSequence(
         withTiming(1.08, { duration: 90 }),
         withSpring(1, { damping: 10, stiffness: 150 }),
@@ -96,7 +97,7 @@ export default function SpinScreen() {
 
   useEffect(() => {
     if (level > prevLevel.current) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticLevelUp();
       levelFlash.value = withSequence(
         withTiming(1, { duration: 80 }),
         withTiming(0.6, { duration: 120 }),
@@ -198,7 +199,7 @@ export default function SpinScreen() {
           <View style={styles.quickActions}>
             {(attacks > 0 || overclockActive) && (
               <Pressable
-                onPress={activateOverclock}
+                onPress={() => { activateOverclock(); hapticActivateBuff(); }}
                 disabled={overclockActive}
                 style={[styles.quickButton, overclockActive && styles.quickButtonActive]}
               >
@@ -212,7 +213,7 @@ export default function SpinScreen() {
             )}
             {(raids > 0 || signalBoostActive) && (
               <Pressable
-                onPress={activateSignalBoost}
+                onPress={() => { activateSignalBoost(); hapticActivateBuff(); }}
                 disabled={signalBoostActive}
                 style={[styles.quickButton, signalBoostActive && styles.quickButtonActive]}
               >
