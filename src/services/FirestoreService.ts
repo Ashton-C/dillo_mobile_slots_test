@@ -227,3 +227,13 @@ export async function getPlayerIndexEntry(uid: string): Promise<PlayerIndexEntry
 export async function deletePlayerIndex(uid: string): Promise<void> {
   await deleteDoc(doc(db, 'playerIndex', uid));
 }
+
+// Write a playerIndex entry under a custom document ID (for debug entries whose
+// uid doesn't match the authenticated user, bypassing the uid == auth.uid rule).
+export async function writePlayerIndexAs(
+  docId: string,
+  entry: Omit<PlayerIndexEntry, 'updatedAt'>,
+): Promise<void> {
+  const ref = doc(db, 'playerIndex', docId);
+  await setDoc(ref, { ...entry, updatedAt: serverTimestamp() }, { merge: true });
+}

@@ -16,10 +16,11 @@ import { ANOMALIES } from '@/services/AnomalyService';
 import type { AnomalyId } from '@/services/AnomalyService';
 import type { DroneType } from '@/models/Drone';
 import {
-  writePlayerIndex,
+  writePlayerIndexAs,
   getPlayerIndexEntry,
   deletePlayerIndex,
 } from '@/services/FirestoreService';
+import { auth } from '@/lib/firebase';
 import { DEBUG_PLAYERS } from '@/constants/debugPlayers';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -47,12 +48,18 @@ export default function DevScreen() {
   const [playerLoading, setPlayerLoading] = useState<Record<string, boolean>>({});
   const prevSpinningRef = useRef(false);
 
+  // Composite doc ID lets the current user write these entries without needing
+  // a security rule exception — the doc ID matches their auth UID prefix.
+  function debugDocId(playerUid: string) {
+    return `${auth.currentUser?.uid ?? 'anon'}_dbg_${playerUid}`;
+  }
+
   useEffect(() => {
     async function checkPresence() {
       const results: Record<string, boolean> = {};
       await Promise.all(
         DEBUG_PLAYERS.map(async (p) => {
-          const entry = await getPlayerIndexEntry(p.uid);
+          const entry = await getPlayerIndexEntry(debugDocId(p.uid));
           results[p.uid] = entry !== null;
         }),
       );
@@ -70,13 +77,15 @@ export default function DevScreen() {
 
   async function togglePlayer(uid: string) {
     setPlayerLoading((prev) => ({ ...prev, [uid]: true }));
+    const docId = debugDocId(uid);
     try {
       if (playerPresence[uid]) {
-        await deletePlayerIndex(uid);
+        await deletePlayerIndex(docId);
         setPlayerPresence((prev) => ({ ...prev, [uid]: false }));
       } else {
         const player = DEBUG_PLAYERS.find((p) => p.uid === uid)!;
-        await writePlayerIndex(uid, {
+        await writePlayerIndexAs(docId, {
+          uid: player.uid,
           displayName: player.displayName,
           avatarColor: player.avatarColor,
           outpostLevel: player.outpostLevel,
