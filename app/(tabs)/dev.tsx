@@ -15,13 +15,7 @@ import type { SpinResult } from '@/services/SlotsEngine';
 import { ANOMALIES } from '@/services/AnomalyService';
 import type { AnomalyId } from '@/services/AnomalyService';
 import type { DroneType } from '@/models/Drone';
-import {
-  writePlayerIndexAs,
-  getPlayerIndexEntry,
-  deletePlayerIndex,
-} from '@/services/FirestoreService';
-import { auth } from '@/lib/firebase';
-import { DEBUG_PLAYERS } from '@/constants/debugPlayers';
+import { DEBUG_PLAYERS, loadActiveDebugUids, saveActiveDebugUids } from '@/constants/debugPlayers';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const ANOMALY_IDS: AnomalyId[] = [
@@ -48,24 +42,12 @@ export default function DevScreen() {
   const [playerLoading, setPlayerLoading] = useState<Record<string, boolean>>({});
   const prevSpinningRef = useRef(false);
 
-  // Composite doc ID lets the current user write these entries without needing
-  // a security rule exception — the doc ID matches their auth UID prefix.
-  function debugDocId(playerUid: string) {
-    return `${auth.currentUser?.uid ?? 'anon'}_dbg_${playerUid}`;
-  }
-
   useEffect(() => {
-    async function checkPresence() {
+    loadActiveDebugUids().then((uids) => {
       const results: Record<string, boolean> = {};
-      await Promise.all(
-        DEBUG_PLAYERS.map(async (p) => {
-          const entry = await getPlayerIndexEntry(debugDocId(p.uid));
-          results[p.uid] = entry !== null;
-        }),
-      );
+      DEBUG_PLAYERS.forEach((p) => { results[p.uid] = uids.includes(p.uid); });
       setPlayerPresence(results);
-    }
-    checkPresence();
+    });
   }, []);
 
   useEffect(() => {
@@ -77,22 +59,13 @@ export default function DevScreen() {
 
   async function togglePlayer(uid: string) {
     setPlayerLoading((prev) => ({ ...prev, [uid]: true }));
-    const docId = debugDocId(uid);
     try {
-      if (playerPresence[uid]) {
-        await deletePlayerIndex(docId);
-        setPlayerPresence((prev) => ({ ...prev, [uid]: false }));
-      } else {
-        const player = DEBUG_PLAYERS.find((p) => p.uid === uid)!;
-        await writePlayerIndexAs(docId, {
-          uid: player.uid,
-          displayName: player.displayName,
-          avatarColor: player.avatarColor,
-          outpostLevel: player.outpostLevel,
-          level: player.level,
-        });
-        setPlayerPresence((prev) => ({ ...prev, [uid]: true }));
-      }
+      const current = await loadActiveDebugUids();
+      const next = playerPresence[uid]
+        ? current.filter((u) => u !== uid)
+        : [...current, uid];
+      await saveActiveDebugUids(next);
+      setPlayerPresence((prev) => ({ ...prev, [uid]: !prev[uid] }));
     } finally {
       setPlayerLoading((prev) => ({ ...prev, [uid]: false }));
     }

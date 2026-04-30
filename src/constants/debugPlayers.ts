@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlayerIndexEntry } from '@/services/FirestoreService';
 
 export const DEBUG_PLAYERS: PlayerIndexEntry[] = [
@@ -18,3 +19,18 @@ export const DEBUG_PLAYERS: PlayerIndexEntry[] = [
     updatedAt: null,
   },
 ];
+
+const STORAGE_KEY = 'debugActivePlayers';
+
+export async function loadActiveDebugUids(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveActiveDebugUids(uids: string[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(uids));
+}

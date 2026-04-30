@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { fetchRadarTargets, PlayerIndexEntry } from '@/services/FirestoreService';
+import { DEBUG_PLAYERS, loadActiveDebugUids } from '@/constants/debugPlayers';
 import { CombatMiniGame } from '@/components/CombatMiniGame';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -28,8 +29,12 @@ export default function RadarScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      const found = await fetchRadarTargets(user.uid, 5);
-      setTargets(found);
+      const [found, activeDebugUids] = await Promise.all([
+        fetchRadarTargets(user.uid, 5),
+        loadActiveDebugUids(),
+      ]);
+      const debugEntries = DEBUG_PLAYERS.filter((p) => activeDebugUids.includes(p.uid));
+      setTargets([...debugEntries, ...found]);
       setScanCount((n) => n + 1);
     } catch (e) {
       console.error('Radar scan failed:', e);
