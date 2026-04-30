@@ -3,6 +3,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   serverTimestamp,
   collection,
@@ -216,4 +217,13 @@ export function subscribeToHabitat(
     },
     (err) => console.error('subscribeToHabitat error:', err),
   );
+}
+
+export async function getPlayerIndexEntry(uid: string): Promise<PlayerIndexEntry | null> {
+  const snap = await getDoc(doc(db, 'playerIndex', uid));
+  return snap.exists() ? (snap.data() as PlayerIndexEntry) : null;
+}
+
+export async function deletePlayerIndex(uid: string): Promise<void> {
+  await deleteDoc(doc(db, 'playerIndex', uid));
 }

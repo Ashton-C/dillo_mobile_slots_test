@@ -99,12 +99,24 @@ const PAIR_PAYOUTS: Partial<Record<SlotSymbol, Partial<SpinResult>>> = {
 export class SlotsEngine {
   private riftTier: TemporalRiftTier = 0;
   private signalBoost = false;
+  private forcedOutcome: Partial<SpinResult> | null = null;
 
   setRiftTier(tier: TemporalRiftTier): void { this.riftTier = tier; }
   getRiftTier(): TemporalRiftTier { return this.riftTier; }
   setSignalBoost(active: boolean): void { this.signalBoost = active; }
+  setForcedOutcome(override: Partial<SpinResult> | null): void { this.forcedOutcome = override; }
+  hasForcedOutcome(): boolean { return this.forcedOutcome !== null; }
 
   spin(): SpinResult {
+    if (this.forcedOutcome) {
+      const override = this.forcedOutcome;
+      this.forcedOutcome = null;
+      const reel0 = this.drawSymbol();
+      const reel1 = this.drawSymbol();
+      const reel2 = this.drawSymbol();
+      const base = this.evaluate([reel0, reel1, reel2]);
+      return { ...base, ...override };
+    }
     const reel0 = this.drawSymbol();
     const reel1 = this.drawSymbol();
     const reel2 = this.drawSymbol();

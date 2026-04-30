@@ -48,6 +48,7 @@ interface GameState extends Resources, SpinState {
   subtractResources: (costs: Partial<Pick<Resources, 'credits' | 'attacks' | 'raids' | 'shields' | 'intrusions' | 'extractions'>>) => boolean;
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
+  debugSetResources: (delta: Partial<Resources>) => void;
 }
 
 const INITIAL_RESOURCES: Resources = {
@@ -294,5 +295,21 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setIsSpinning(spinning) {
     set({ isSpinning: spinning });
+  },
+
+  debugSetResources(delta) {
+    set((s) => {
+      const next: Partial<Resources> = {
+        credits:        Math.max(0, s.credits        + (delta.credits        ?? 0)),
+        attacks:        Math.max(0, s.attacks        + (delta.attacks        ?? 0)),
+        raids:          Math.max(0, s.raids          + (delta.raids          ?? 0)),
+        shields:        Math.max(0, s.shields        + (delta.shields        ?? 0)),
+        intrusions:     Math.max(0, s.intrusions     + (delta.intrusions     ?? 0)),
+        extractions:    Math.max(0, s.extractions    + (delta.extractions    ?? 0)),
+        spinsRemaining: Math.min(MAX_SPINS, Math.max(0, s.spinsRemaining + (delta.spinsRemaining ?? 0))),
+      };
+      persistResources(next);
+      return { ...s, ...next };
+    });
   },
 }));
