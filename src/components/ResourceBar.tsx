@@ -17,6 +17,15 @@ function ResourcePill({ label, value, color }: ResourcePillProps) {
   );
 }
 
+function CreditPill({ credits }: { credits: number }) {
+  return (
+    <View style={styles.pill}>
+      <CreditCounter value={credits} color={Colors.credits} style={styles.pillValue} />
+      <Text style={styles.pillLabel}>CREDITS</Text>
+    </View>
+  );
+}
+
 interface Props {
   credits: number;
   attacks: number;
@@ -30,10 +39,7 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, 
   const spinsColor = spinsRemaining <= 5 ? Colors.warning : Colors.accent;
   return (
     <View style={[styles.container, style]}>
-      <View style={styles.pill}>
-        <CreditCounter value={credits} color={Colors.credits} style={styles.pillValue} />
-        <Text style={styles.pillLabel}>CREDITS</Text>
-      </View>
+      <CreditPill credits={credits} />
       <ResourcePill label="FUEL" value={attacks} color={Colors.attack} />
       <ResourcePill label="BOOST" value={raids} color={Colors.raid} />
       <ResourcePill label="SHIELDS" value={shields} color={Colors.shield} />

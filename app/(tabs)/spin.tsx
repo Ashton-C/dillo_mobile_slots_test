@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -54,8 +54,8 @@ export default function SpinScreen() {
   const { displayName } = useAuthStore();
 
   const [burstVisible, setBurstVisible] = useState(false);
+  const burstTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Jackpot flash + burst
   const flashOpacity = useSharedValue(0);
   const prevJackpot = useRef(false);
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
@@ -71,12 +71,12 @@ export default function SpinScreen() {
         withTiming(0, { duration: 400 }),
       );
       setBurstVisible(true);
-      setTimeout(() => setBurstVisible(false), 1000);
+      burstTimerRef.current = setTimeout(() => setBurstVisible(false), 1000);
     }
     prevJackpot.current = isJackpot;
+    return () => clearTimeout(burstTimerRef.current);
   }, [lastResult]);
 
-  // Outcome banner scale
   const bannerScale = useSharedValue(1);
   useEffect(() => {
     if (lastResult && lastResult.outcomeType !== 'NOTHING') {
@@ -90,7 +90,6 @@ export default function SpinScreen() {
     transform: [{ scale: bannerScale.value }],
   }));
 
-  // Level-up flash
   const levelFlash = useSharedValue(0);
   const prevLevel = useRef(level);
   const levelFlashStyle = useAnimatedStyle(() => ({ opacity: levelFlash.value }));
@@ -113,7 +112,7 @@ export default function SpinScreen() {
   const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
   const showCombatResources = intrusions > 0 || extractions > 0;
   const spinsLow = spinsRemaining <= LOW_SPIN_THRESHOLD;
-  const milestone = getMilestone(credits);
+  const milestone = useMemo(() => getMilestone(credits), [credits]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -163,9 +162,6 @@ export default function SpinScreen() {
             <Text style={styles.outcomeTextMuted}>
               {spinsRemaining > 0 ? 'Awaiting spin…' : 'No spins left'}
             </Text>
-          )}
-          {lastResult?.isJackpot && (
-            <Text style={styles.jackpotBadge}>JACKPOT</Text>
           )}
         </Animated.View>
 
@@ -311,18 +307,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  jackpotBadge: {
-    fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.bold,
-    color: Colors.background,
-    backgroundColor: Colors.credits,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
-    letterSpacing: 3,
-    marginTop: Spacing.xs,
-  },
-
   milestoneContainer: {
     flexDirection: 'row',
     alignItems: 'center',

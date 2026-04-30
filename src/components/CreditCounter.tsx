@@ -31,8 +31,8 @@ export function CreditCounter({ value, color, style }: Props) {
 
   useEffect(() => {
     const from = prevRef.current;
-    prevRef.current = value;
     if (from === value) return;
+    prevRef.current = value;
 
     flashDir.value = value > from ? 1 : -1;
     flashT.value = withSequence(

@@ -9,7 +9,7 @@ import Animated, {
   withSpring,
   Easing,
 } from 'react-native-reanimated';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { SlotSymbol, SpinResult } from '@/services/SlotsEngine';
 import { Colors, BorderRadius, Typography } from '@/constants/theme';
 
@@ -57,14 +57,9 @@ function Reel({ symbol, isSpinning, isWinning, delayMs = 0 }: ReelProps) {
         delayMs,
         withRepeat(withTiming(-8, { duration: 120, easing: Easing.linear }), -1, true),
       );
-    } else {
+    } else if (isWinning) {
       opacity.value = withTiming(1, { duration: 200 });
       translateY.value = withTiming(0, { duration: 150 });
-    }
-  }, [isSpinning]);
-
-  useEffect(() => {
-    if (isWinning) {
       glowOp.value = withSequence(
         withTiming(1, { duration: 180 }),
         withTiming(0.45, { duration: 500 }),
@@ -72,9 +67,11 @@ function Reel({ symbol, isSpinning, isWinning, delayMs = 0 }: ReelProps) {
         withTiming(0, { duration: 650 }),
       );
     } else {
+      opacity.value = withTiming(1, { duration: 200 });
+      translateY.value = withTiming(0, { duration: 150 });
       glowOp.value = withTiming(0, { duration: 200 });
     }
-  }, [isWinning]);
+  }, [isSpinning, isWinning]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -102,33 +99,33 @@ interface Props {
   lastResult?: SpinResult | null;
 }
 
+const WIN_COLORS: Record<string, string> = {
+  JACKPOT: Colors.credits,
+  TRIPLE:  Colors.primary,
+  PAIR:    Colors.success,
+};
+
 export function ReelDisplay({ reels, isSpinning, lastResult }: Props) {
   const trackScale = useSharedValue(1);
   const prevSpinningRef = useRef(isSpinning);
 
-  const isPaid = !isSpinning && !!lastResult && lastResult.outcomeType !== 'NOTHING';
-  const [r0, r1, r2] = reels;
-
-  const isTriple = isPaid && r0 === r1 && r1 === r2;
-  const isPair   = isPaid && !isTriple && (r0 === r1 || r1 === r2 || r0 === r2);
-
-  const reelWins: [boolean, boolean, boolean] = isPaid
-    ? [r0 === r1 || r0 === r2, r0 === r1 || r1 === r2, r1 === r2 || r0 === r2]
-    : [false, false, false];
-
-  let winLabel = '';
-  if (lastResult?.isJackpot)   winLabel = 'JACKPOT';
-  else if (isTriple)           winLabel = 'TRIPLE';
-  else if (isPair)             winLabel = 'PAIR';
-
-  const winColor = lastResult?.isJackpot
-    ? Colors.credits
-    : isTriple
-    ? Colors.primary
-    : Colors.success;
+  const { reelWins, winLabel, winColor } = useMemo(() => {
+    const isPaid = !isSpinning && !!lastResult && lastResult.outcomeType !== 'NOTHING';
+    const [r0, r1, r2] = reels;
+    const isTriple = isPaid && r0 === r1 && r1 === r2;
+    const isPair   = isPaid && !isTriple && (r0 === r1 || r1 === r2 || r0 === r2);
+    const wins: [boolean, boolean, boolean] = isPaid
+      ? [r0 === r1 || r0 === r2, r0 === r1 || r1 === r2, r1 === r2 || r0 === r2]
+      : [false, false, false];
+    let label = '';
+    if (lastResult?.isJackpot) label = 'JACKPOT';
+    else if (isTriple)         label = 'TRIPLE';
+    else if (isPair)           label = 'PAIR';
+    return { reelWins: wins, winLabel: label, winColor: WIN_COLORS[label] ?? Colors.success };
+  }, [reels, lastResult, isSpinning]);
 
   useEffect(() => {
-    if (!isSpinning && prevSpinningRef.current && isPaid) {
+    if (!isSpinning && prevSpinningRef.current && winLabel !== '') {
       trackScale.value = withSequence(
         withSpring(1.05, { damping: 8, stiffness: 200 }),
         withTiming(1, { duration: 300 }),
@@ -143,14 +140,12 @@ export function ReelDisplay({ reels, isSpinning, lastResult }: Props) {
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[{ width: '100%' }, trackScaleStyle]}>
-        <View style={styles.track}>
-          <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} delayMs={0} />
-          <View style={styles.divider} />
-          <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} delayMs={80} />
-          <View style={styles.divider} />
-          <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} delayMs={160} />
-        </View>
+      <Animated.View style={[styles.track, trackScaleStyle]}>
+        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} delayMs={0} />
+        <View style={styles.divider} />
+        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} delayMs={80} />
+        <View style={styles.divider} />
+        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} delayMs={160} />
       </Animated.View>
       {winLabel !== '' && !isSpinning && (
         <View style={[styles.winBadge, { backgroundColor: winColor }]}>
