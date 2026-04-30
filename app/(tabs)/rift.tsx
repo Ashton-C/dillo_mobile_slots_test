@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
@@ -22,6 +24,7 @@ function formatMs(ms: number): string {
 
 export default function RiftScreen() {
   const { credits, riftTier, setRiftTier } = useGameStore();
+  const [legendVisible, setLegendVisible] = useState(false);
   const { definition, msRemaining } = useAnomalyStore();
 
   function handleSelect(tier: TemporalRiftTier) {
@@ -116,6 +119,22 @@ export default function RiftScreen() {
           Anomaly events may reduce costs or amplify outcomes.
         </Text>
       </ScrollView>
+
+      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+        <Text style={styles.legendBtnText}>?</Text>
+      </Pressable>
+
+      <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="RIFT LEGEND" accentColor={Colors.accent}>
+        <LegendSection label="TIER COSTS & EFFECTS" />
+        <LegendRow left="Tier 0  —  FREE" right="Base odds, no modifier" />
+        <LegendRow left="Tier 1  —  50 CR" right="+Credits, fewer empty slots" />
+        <LegendRow left="Tier 2  —  150 CR" right="Jackpot odds boosted" color={Colors.primary} />
+        <LegendRow left="Tier 3  —  400 CR" right="Max jackpot bias + combat drops" color={Colors.credits} />
+        <LegendSection label="ANOMALY INTERACTION" />
+        <LegendRow left="Active anomalies may halve rift costs" />
+        <LegendRow left="Some anomalies amplify rift payouts" />
+        <LegendNote text="Cost is deducted before each spin. If credits run low the rift auto-resets to Tier 0." />
+      </LegendCard>
     </SafeAreaView>
   );
 }
@@ -231,5 +250,24 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
     marginTop: Spacing.sm,
+  },
+  legendBtn: {
+    position: 'absolute',
+    top: 14,
+    right: Spacing.md,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+  },
+  legendBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textMuted,
   },
 });

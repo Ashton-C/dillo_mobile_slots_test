@@ -7,6 +7,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { GameEvent } from '@/services/FirestoreService';
 import { ArmadilloAvatar } from '@/components/ArmadilloAvatar';
+import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 function xpToNextLevel(level: number) { return 100 * level; }
@@ -17,6 +18,7 @@ export default function PilotScreen() {
   const events = useEventStore((s) => s.events);
 
   const [editVisible, setEditVisible] = useState(false);
+  const [legendVisible, setLegendVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -129,6 +131,25 @@ export default function PilotScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+        <Text style={styles.legendBtnText}>?</Text>
+      </Pressable>
+
+      <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="PILOT LEGEND" accentColor={Colors.info}>
+        <LegendSection label="XP & LEVELING" />
+        <LegendRow left="+5 XP" right="every spin" />
+        <LegendRow left="+20 XP" right="jackpot bonus" color={Colors.credits} />
+        <LegendRow left="Level up" right="XP bar fills at 100 × level" />
+        <LegendRow left="Level gates" right="Outpost upgrade tiers" />
+        <LegendSection label="COMBAT POWER" />
+        <LegendRow left="Determines win odds vs. defender" />
+        <LegendRow left="Derived from reel locks + Outpost LVL" />
+        <LegendSection label="COMBAT LOG" />
+        <LegendRow left="Last 20 incoming + outgoing events" />
+        <LegendRow left="ATTACK_INCOMING / RAID_RESOLVED, etc." />
+        <LegendNote text="All combat is resolved server-side. Credits transfer only after the Cloud Function confirms the result." />
+      </LegendCard>
     </SafeAreaView>
   );
 }
@@ -392,5 +413,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.textMuted,
     letterSpacing: 1,
+  },
+  legendBtn: {
+    position: 'absolute',
+    top: 14,
+    right: Spacing.md,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+  },
+  legendBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textMuted,
   },
 });

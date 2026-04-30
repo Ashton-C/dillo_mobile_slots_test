@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticBuildStart } from '@/constants/haptics';
+import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -10,7 +10,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { DroneMarketplace } from '@/components/DroneMarketplace';
@@ -180,6 +180,7 @@ export default function HabitatScreen() {
   const { credits, subtractCredits } = useGameStore();
   const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete, startBuild, upgradeOutpost } = useHabitatStore();
   const [contractsVisible, setContractsVisible] = useState(false);
+  const [legendVisible, setLegendVisible] = useState(false);
 
   const builderBusy = activeBuildJob !== null;
   const isUpgradingOutpost = activeBuildJob?.isOutpost === true;
@@ -312,6 +313,23 @@ export default function HabitatScreen() {
       </ScrollView>
 
       <DroneMarketplace visible={contractsVisible} onClose={() => setContractsVisible(false)} />
+
+      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+        <Text style={styles.legendBtnText}>?</Text>
+      </Pressable>
+
+      <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="BASE LEGEND" accentColor={Colors.credits}>
+        <LegendSection label="BUILDINGS" />
+        <LegendRow left="GENERATOR" right="Passive +level×20 CR / 30s" color={Colors.credits} />
+        <LegendRow left="ARMORY" right="Raises Fuel Cell cap" color={Colors.attack} />
+        <LegendRow left="VAULT" right="Absorbs level×5% raid loss" color={Colors.shield} />
+        <LegendRow left="TURRET" right="Auto-blocks N attacks/day" color={Colors.accent} />
+        <LegendRow left="HANGAR" right="Unlocks drone contract slots" color={Colors.primary} />
+        <LegendSection label="RULES" />
+        <LegendRow left="Outpost Level gates all buildings" />
+        <LegendRow left="One active build job at a time" />
+        <LegendNote text="Build timers count down while the app is closed. Higher tiers take significantly longer." />
+      </LegendCard>
     </SafeAreaView>
   );
 }
@@ -550,5 +568,24 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
     marginTop: Spacing.sm,
+  },
+  legendBtn: {
+    position: 'absolute',
+    top: 14,
+    right: Spacing.md,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+  },
+  legendBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textMuted,
   },
 });

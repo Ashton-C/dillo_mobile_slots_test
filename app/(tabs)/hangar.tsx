@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
+import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
@@ -24,6 +25,7 @@ export default function RadarScreen() {
   const [combatType, setCombatType] = useState<CombatType>('INTRUSION');
   const [miniGameVisible, setMiniGameVisible] = useState(false);
   const [scanCount, setScanCount] = useState(0);
+  const [legendVisible, setLegendVisible] = useState(false);
 
   async function scan() {
     if (!user) return;
@@ -205,6 +207,26 @@ export default function RadarScreen() {
         onClose={handleMiniGameClose}
         onResult={handleMiniGameResult}
       />
+
+      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+        <Text style={styles.legendBtnText}>?</Text>
+      </Pressable>
+
+      <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="RADAR LEGEND" accentColor={Colors.danger}>
+        <LegendSection label="COMBAT ACTIONS" />
+        <LegendRow left="INTRUSION" right="Spend 1 Breach token" color={Colors.danger} />
+        <LegendRow left="" right="Winner steals credits from loser" />
+        <LegendRow left="EXTRACTION" right="Spend 1 Beam token" color={Colors.accent} />
+        <LegendRow left="" right="Higher loot — harder to win" />
+        <LegendSection label="THREAT RATING" />
+        <LegendRow left="WEAK   — your outpost leads by 2+" color={Colors.success} />
+        <LegendRow left="EVEN   — within 1 outpost level" color={Colors.warning} />
+        <LegendRow left="STRONG — their outpost leads" color={Colors.danger} />
+        <LegendSection label="PASSIVE DEFENSES" />
+        <LegendRow left="VAULT" right="Absorbs % of credits lost" />
+        <LegendRow left="TURRET" right="Auto-blocks N attacks/day" />
+        <LegendNote text="Combat is resolved server-side. Results appear in your event log." />
+      </LegendCard>
     </SafeAreaView>
   );
 }
@@ -396,5 +418,24 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
     marginTop: Spacing.xs,
+  },
+  legendBtn: {
+    position: 'absolute',
+    top: 14,
+    right: Spacing.md,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+  },
+  legendBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textMuted,
   },
 });
