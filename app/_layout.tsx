@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from 'react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
@@ -12,6 +13,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 import { EventBanner } from '@/components/EventBanner';
+import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarousel';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -20,6 +22,7 @@ const queryClient = new QueryClient({
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
   const user = useAuthStore((s) => s.user);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const tickAnomaly = useAnomalyStore((s) => s.tick);
   const tickHabitat = useHabitatStore((s) => s.tick);
   const tickSpinRefill = useGameStore((s) => s.tickSpinRefill);
@@ -43,6 +46,13 @@ export default function RootLayout() {
     };
   }, []);
 
+  // Show onboarding carousel once per install
+  useEffect(() => {
+    AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+      if (!val) setShowOnboarding(true);
+    });
+  }, []);
+
   // Subscribe to incoming PvP events once authenticated
   useEffect(() => {
     if (!user?.uid) return;
@@ -64,6 +74,7 @@ export default function RootLayout() {
           />
           <UsernameSetupModal />
           <EventBanner />
+          {showOnboarding && <OnboardingCarousel onDismiss={() => setShowOnboarding(false)} />}
         </View>
       </QueryClientProvider>
     </GestureHandlerRootView>
