@@ -2,14 +2,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withTiming,
-  withDelay,
   withSequence,
   withSpring,
-  Easing,
 } from 'react-native-reanimated';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SlotSymbol, SpinResult, ReelWindow, WinLine, LINE_PATTERNS } from '@/services/SlotsEngine';
 import {
   SYMBOL_PACK_GLYPHS,
@@ -17,6 +14,7 @@ import {
   ReelThemeTokens,
 } from '@/services/CosmeticsService';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
+import { soundService, SoundKey } from '@/services/SoundService';
 import { Colors, BorderRadius, Typography } from '@/constants/theme';
 
 
@@ -32,11 +30,21 @@ const SYMBOL_COLORS: Record<SlotSymbol, string> = {
   EMPTY:         Colors.textMuted,
 };
 
+const ALL_SYMBOLS: SlotSymbol[] = [
+  'CREDIT_SMALL', 'CREDIT_MEDIUM', 'CREDIT_LARGE',
+  'ATTACK', 'RAID', 'SHIELD', 'INTRUSION', 'EXTRACTION', 'EMPTY',
+];
+
+function randomSymbol(): SlotSymbol {
+  return ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
+}
+
 interface ReelProps {
   symbol: SlotSymbol;
   isSpinning: boolean;
   isWinning: boolean;
-  delayMs?: number;
+  colIndex?: number;
+  decelStartMs?: number;
   highlightColor?: string | null;
   cellHeight?: number;
   symbolSize?: number;
@@ -44,21 +52,66 @@ interface ReelProps {
   cellBg: string;
 }
 
-function Reel({ symbol, isSpinning, isWinning, delayMs = 0, highlightColor, cellHeight = 100, symbolSize, glyphs, cellBg }: ReelProps) {
+function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500, highlightColor, cellHeight = 100, symbolSize, glyphs, cellBg }: ReelProps) {
+  const [displaySymbol, setDisplaySymbol] = useState<SlotSymbol>(symbol);
+  const intervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
   const opacity = useSharedValue(1);
   const translateY = useSharedValue(0);
   const glowOp = useSharedValue(0);
 
+  function clearAll() {
+    intervalsRef.current.forEach(clearInterval);
+    timersRef.current.forEach(clearTimeout);
+    intervalsRef.current = [];
+    timersRef.current = [];
+  }
+
   useEffect(() => {
     if (isSpinning) {
-      opacity.value = 0.4;
+      clearAll();
+      opacity.value = 1;
+      translateY.value = 0;
       glowOp.value = 0;
-      translateY.value = withDelay(
-        delayMs,
-        withRepeat(withTiming(-8, { duration: 120, easing: Easing.linear }), -1, true),
-      );
+
+      // Phase 1: fast symbol cycling
+      const fast = setInterval(() => setDisplaySymbol(randomSymbol()), 70);
+      intervalsRef.current.push(fast);
+
+      // Phase 2: medium speed after decelStartMs
+      timersRef.current.push(setTimeout(() => {
+        clearInterval(fast);
+        intervalsRef.current = intervalsRef.current.filter(i => i !== fast);
+
+        const medium = setInterval(() => setDisplaySymbol(randomSymbol()), 140);
+        intervalsRef.current.push(medium);
+
+        // Phase 3: slow speed after 220ms
+        timersRef.current.push(setTimeout(() => {
+          clearInterval(medium);
+          intervalsRef.current = intervalsRef.current.filter(i => i !== medium);
+
+          const slow = setInterval(() => setDisplaySymbol(randomSymbol()), 260);
+          intervalsRef.current.push(slow);
+
+          // Phase 4: land on target after 220ms
+          timersRef.current.push(setTimeout(() => {
+            clearInterval(slow);
+            intervalsRef.current = intervalsRef.current.filter(i => i !== slow);
+
+            setDisplaySymbol(symbol);
+            void soundService.play((`reelStop${colIndex}` as SoundKey));
+            translateY.value = -14;
+            translateY.value = withSpring(0, { damping: 9, stiffness: 280 });
+          }, 220));
+        }, 220));
+      }, decelStartMs));
+
     } else if (isWinning) {
-      opacity.value = withTiming(1, { duration: 200 });
+      clearAll();
+      setDisplaySymbol(symbol);
+      opacity.value = 1;
       translateY.value = withTiming(0, { duration: 150 });
       glowOp.value = withSequence(
         withTiming(1, { duration: 180 }),
@@ -67,10 +120,14 @@ function Reel({ symbol, isSpinning, isWinning, delayMs = 0, highlightColor, cell
         withTiming(0, { duration: 650 }),
       );
     } else {
+      clearAll();
+      setDisplaySymbol(symbol);
       opacity.value = withTiming(1, { duration: 200 });
       translateY.value = withTiming(0, { duration: 150 });
       glowOp.value = withTiming(0, { duration: 200 });
     }
+
+    return clearAll;
   }, [isSpinning, isWinning]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -79,8 +136,8 @@ function Reel({ symbol, isSpinning, isWinning, delayMs = 0, highlightColor, cell
   }));
 
   const glowStyle = useAnimatedStyle(() => ({ opacity: glowOp.value }));
-  const symbolColor = SYMBOL_COLORS[symbol];
-  const glowColor = highlightColor ?? symbolColor;
+  const symbolColor = SYMBOL_COLORS[displaySymbol];
+  const glowColor = highlightColor ?? SYMBOL_COLORS[symbol];
   const fontSize = symbolSize ?? (cellHeight >= 90 ? Typography.sizes.hero : Typography.sizes.xl);
 
   return (
@@ -90,7 +147,7 @@ function Reel({ symbol, isSpinning, isWinning, delayMs = 0, highlightColor, cell
       />
       <Animated.View style={animatedStyle}>
         <Text style={[styles.symbol, { color: symbolColor, fontSize, lineHeight: fontSize + 8 }]}>
-          {glyphs[symbol]}
+          {glyphs[displaySymbol]}
         </Text>
       </Animated.View>
     </View>
@@ -152,7 +209,6 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
     if (activeWinLines.length === 0) return '';
     if (activeWinLines.some((wl) => wl.result.isJackpot)) return 'JACKPOT';
     if (activeWinLines.length > 1) return `${activeWinLines.length} LINES`;
-    // Single win line — derive from result type
     const wl = activeWinLines[0];
     const [r0, r1, r2] = wl.result.reels;
     if (r0 === r1 && r1 === r2) return 'TRIPLE';
@@ -213,7 +269,8 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
                       isSpinning={isSpinning}
                       isWinning={cellHighlights[rowIdx][col] !== null}
                       highlightColor={cellHighlights[rowIdx][col]}
-                      delayMs={col * 60 + rowIdx * 20}
+                      colIndex={col}
+                      decelStartMs={col * 200 + 500}
                       cellHeight={CELL_H}
                       symbolSize={Typography.sizes.xl}
                       glyphs={glyphs}
@@ -234,15 +291,15 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
     );
   }
 
-  // --- Single-row rendering (original) ---
+  // --- Single-row rendering ---
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.track, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
-        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} delayMs={0}   glyphs={glyphs} cellBg={theme.cellBg} />
+        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} colIndex={0} decelStartMs={500} glyphs={glyphs} cellBg={theme.cellBg} />
         <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} delayMs={80}  glyphs={glyphs} cellBg={theme.cellBg} />
+        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} colIndex={1} decelStartMs={700} glyphs={glyphs} cellBg={theme.cellBg} />
         <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} delayMs={160} glyphs={glyphs} cellBg={theme.cellBg} />
+        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} colIndex={2} decelStartMs={900} glyphs={glyphs} cellBg={theme.cellBg} />
       </Animated.View>
       {winLabel !== '' && !isSpinning && (
         <View style={[styles.winBadge, { backgroundColor: winColor }]}>
@@ -274,9 +331,6 @@ const styles = StyleSheet.create({
   multiRow: {
     flexDirection: 'row',
     width: '100%',
-  },
-  multiRowMid: {
-    backgroundColor: Colors.surfaceElevated + '80',
   },
   multiCellWrap: {
     flex: 1,

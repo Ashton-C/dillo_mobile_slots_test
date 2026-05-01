@@ -71,7 +71,7 @@ export interface MultiSpinResult {
 const BASE_WEIGHTS: Record<SlotSymbol, number> = {
   CREDIT_SMALL:  28,
   CREDIT_MEDIUM: 19,
-  CREDIT_LARGE:  10,
+  CREDIT_LARGE:  14,
   ATTACK:        10,
   RAID:           7,
   SHIELD:         7,

@@ -15,6 +15,7 @@ import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 import { EventBanner } from '@/components/EventBanner';
 import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarousel';
+import { soundService } from '@/services/SoundService';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -31,6 +32,7 @@ export default function RootLayout() {
   const subscribeToEvents = useEventStore((s) => s.subscribe);
 
   useEffect(() => {
+    void soundService.preload();
     const unsubAuth = initializeAuth();
     const anomalyInterval = setInterval(tickAnomaly, 60_000);
     const secondInterval = setInterval(() => {

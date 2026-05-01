@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BUTTON_SKIN_TOKENS } from '@/services/CosmeticsService';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
+import { soundService } from '@/services/SoundService';
 import { Colors, Typography, BorderRadius } from '@/constants/theme';
 
 interface Props {
@@ -55,6 +56,7 @@ export function SpinButton({ onPress, disabled, isSpinning }: Props) {
 
   function handlePress() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    void soundService.play('spinStart');
     scale.value = withSequence(
       withTiming(0.86, { duration: 55 }),
       withSpring(1.04, { damping: 5, stiffness: 300 }),

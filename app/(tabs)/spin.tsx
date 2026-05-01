@@ -29,6 +29,10 @@ import { LedgerDrawer } from '@/components/LedgerDrawer';
 import { ConfettiEmitter } from '@/components/ConfettiEmitter';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
+import { soundService } from '@/services/SoundService';
+import { OddsModal } from '@/components/OddsModal';
+import { useDroneStore } from '@/store/useDroneStore';
+import { anomalyService } from '@/services/AnomalyService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { SpinResult, TemporalRiftTier } from '@/services/SlotsEngine';
 
@@ -82,7 +86,7 @@ export default function SpinScreen() {
   const { displayName } = useAuthStore();
   const latestEvent = useEventStore((s) => s.events[0]);
   const generatorLevel = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
-  const overclockBonusPreview = generatorLevel * 50 + 200;
+  const overclockBonusPreview = generatorLevel * 40 + 100;
 
   const activeBgId = useCosmeticsStore((s) => s.active['BACKGROUND'] ?? 'bg_default');
   const bgTokens   = BACKGROUND_TOKENS[activeBgId] ?? BACKGROUND_TOKENS.bg_default;
@@ -94,6 +98,13 @@ export default function SpinScreen() {
   const [confettiActive, setConfettiActive] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [oddsVisible, setOddsVisible] = useState(false);
+  const [muted, setMuted] = useState(() => soundService.getMuted());
+
+  const droneEffects = useDroneStore((s) => s.getEffects());
+  const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
+  const activeCreditMultiplier = droneEffects.creditMultiplier * anomalyMultiplier;
+  const overclockBonusForOdds = generatorLevel * 40 + 100;
   const burstTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const spinHapticRef = useRef<ReturnType<typeof setInterval>>();
@@ -150,6 +161,7 @@ export default function SpinScreen() {
     const isJackpot = lastResult?.isJackpot ?? false;
     if (isJackpot && !prevJackpot.current) {
       hapticForSpinResult(lastResult!);
+      void soundService.play('jackpot');
       flashOpacity.value = withSequence(
         withTiming(1, { duration: 60 }),
         withTiming(0, { duration: 280 }),
@@ -169,7 +181,10 @@ export default function SpinScreen() {
   const bannerScale = useSharedValue(1);
   useEffect(() => {
     if (lastResult && lastResult.outcomeType !== 'NOTHING') {
-      if (!lastResult.isJackpot) hapticForSpinResult(lastResult);
+      if (!lastResult.isJackpot) {
+        hapticForSpinResult(lastResult);
+        soundService.playCoinWin(lastResult.creditsWon);
+      }
       bannerScale.value = withSequence(
         withTiming(1.18, { duration: 70 }),
         withSpring(1, { damping: 5, stiffness: 200 }),
@@ -199,6 +214,7 @@ export default function SpinScreen() {
   useEffect(() => {
     if (level > prevLevel.current) {
       hapticLevelUp();
+      void soundService.play('levelUp');
       levelFlash.value = withSequence(
         withTiming(1, { duration: 80 }),
         withTiming(0.6, { duration: 120 }),
@@ -234,11 +250,12 @@ export default function SpinScreen() {
     lastEventId.current = latestEvent.id;
     if (latestEvent.type === 'ATTACK_INCOMING' || latestEvent.type === 'RAID_INCOMING' || latestEvent.type === 'ATTACK_RESOLVED' || latestEvent.type === 'RAID_RESOLVED') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      void soundService.play('pvpIncoming');
       shake();
     }
   }, [latestEvent]);
 
-  const reels = lastResult?.reels ?? EMPTY_REELS;
+  const reels = lastResult?.reels ?? reelWindow?.[1] ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
   const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
   const showCombatResources = intrusions > 0 || extractions > 0;
@@ -420,9 +437,38 @@ export default function SpinScreen() {
       </Pressable>
       <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
 
+      <Pressable
+        style={[styles.legendBtn, { right: Spacing.md + 72 }]}
+        onPress={() => setOddsVisible(true)}
+        hitSlop={12}
+      >
+        <Text style={styles.legendBtnText}>%</Text>
+      </Pressable>
+
+      <Pressable
+        style={[styles.legendBtn, { right: Spacing.md + 36 }]}
+        onPress={() => {
+          const next = !muted;
+          setMuted(next);
+          void soundService.setMuted(next);
+        }}
+        hitSlop={12}
+      >
+        <Text style={styles.legendBtnText}>{muted ? 'M' : 'S'}</Text>
+      </Pressable>
+
       <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
+
+      <OddsModal
+        visible={oddsVisible}
+        onClose={() => setOddsVisible(false)}
+        riftTier={riftTier}
+        signalBoost={signalBoostActive}
+        creditMultiplier={activeCreditMultiplier}
+        overclockBonus={overclockBonusForOdds}
+      />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="SPIN LEGEND" accentColor={Colors.primary}>
         <LegendSection label="SYMBOLS — PAIR / TRIPLE" />

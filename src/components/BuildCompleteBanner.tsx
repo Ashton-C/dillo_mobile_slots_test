@@ -10,6 +10,7 @@ import Animated, {
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { BuildingType } from '@/models/Habitat';
 import { hapticBuildComplete } from '@/constants/haptics';
+import { soundService } from '@/services/SoundService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const BUILDING_META: Record<BuildingType, { icon: string; label: string; color: string }> = {
@@ -35,6 +36,7 @@ export function BuildCompleteBanner() {
     if (!completedBuilding) return;
 
     hapticBuildComplete();
+    void soundService.play('buildComplete');
     setDisplay({ type: completedBuilding, level: buildingLevels[completedBuilding] ?? 1 });
     clearTimeout(timerRef.current);
 

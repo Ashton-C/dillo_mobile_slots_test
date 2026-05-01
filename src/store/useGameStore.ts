@@ -32,6 +32,7 @@ export interface SpinHistoryEntry {
 
 const MAX_SPINS = 50;
 const SPIN_REFILL_MS = 5 * 60_000; // 1 spin every 5 minutes
+export const SPIN_ANIM_MS = 1500;  // reel animation duration — must match ReelDisplay
 
 interface Resources {
   credits: number;
@@ -128,13 +129,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   sessionCreditsEarned: 0,
 
   spin() {
-    const { spinsRemaining, riftTier, credits, spinRefillStart, overclockActive, signalBoostActive } = get();
+    const {
+      spinsRemaining, riftTier, credits, spinRefillStart,
+      overclockActive, signalBoostActive,
+      xp, level, attacks, raids, shields, intrusions, extractions,
+      spinHistory, sessionSpins, sessionCreditsEarned,
+    } = get();
+
     if (spinsRemaining <= 0 || get().isSpinning) return null;
 
     const riftCost = RIFT_COSTS[riftTier];
     if (riftCost > credits) return null;
-
-    set({ isSpinning: true, overclockActive: false, signalBoostActive: false });
 
     const outpostLevel = useHabitatStore.getState().outpostLevel;
     const numLines = getNumActiveLines(outpostLevel);
@@ -144,7 +149,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const multi = slotsEngine.spinRows(numLines);
     if (signalBoostActive) slotsEngine.setSignalBoost(false);
 
-    // Build a synthetic SpinResult from the multiline data for backwards compat
     const result: SpinResult = {
       reels: multi.reelWindow[1],
       outcomeType: deriveOutcomeType(multi),
@@ -160,72 +164,79 @@ export const useGameStore = create<GameState>((set, get) => ({
     const droneEffects = useDroneStore.getState().getEffects();
     useDroneStore.getState().tickSpins();
     const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
-    const overclockBonus = overclockActive ? genLevel * 50 + 200 : 0;
+    const overclockBonus = overclockActive ? genLevel * 40 + 100 : 0;
     const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
     const boostedCreditsWon = Math.floor(
       result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier,
     ) + overclockBonus;
 
-    let nextState: Partial<Resources> = {};
+    // Pre-calculate all resource changes using values captured at spin time
+    const newCredits = Math.max(0, credits - riftCost + boostedCreditsWon);
+    const newXp = xp + XP_PER_SPIN + (result.isJackpot ? 20 : 0);
+    const xpNeeded = XP_PER_LEVEL(level);
+    const leveledUp = newXp >= xpNeeded;
+    const newRefillStart = spinRefillStart === 0 ? Date.now() : spinRefillStart;
 
-    set((state) => {
-      const newCredits = Math.max(0, state.credits - riftCost + boostedCreditsWon);
-      const newXp = state.xp + XP_PER_SPIN + (result.isJackpot ? 20 : 0);
-      const xpNeeded = XP_PER_LEVEL(state.level);
-      const leveledUp = newXp >= xpNeeded;
-      const newSpins = state.spinsRemaining - 1;
+    const nextState: Partial<Resources> = {
+      credits: newCredits,
+      attacks:     Math.min(MAX_SPINS, attacks     + result.attacksWon),
+      raids:       Math.min(MAX_SPINS, raids       + result.raidsWon),
+      shields:     Math.min(MAX_SPINS, shields     + result.shieldsWon),
+      intrusions:  Math.min(MAX_SPINS, intrusions  + result.intrusionsWon),
+      extractions: Math.min(MAX_SPINS, extractions + result.extractionsWon),
+      spinsRemaining: spinsRemaining - 1,
+      spinRefillStart: newRefillStart,
+      xp: leveledUp ? newXp - xpNeeded : newXp,
+      level: leveledUp ? level + 1 : level,
+    };
 
-      // Start refill cycle only when dropping below max for the first time
-      const newRefillStart = state.spinRefillStart === 0 ? Date.now() : state.spinRefillStart;
+    const historyEntry: SpinHistoryEntry = {
+      reels: result.reels,
+      outcomeType: result.outcomeType,
+      isJackpot: result.isJackpot,
+      baseCreditsWon: result.creditsWon,
+      finalCreditsWon: boostedCreditsWon,
+      attacksWon: result.attacksWon,
+      raidsWon: result.raidsWon,
+      shieldsWon: result.shieldsWon,
+      intrusionsWon: result.intrusionsWon,
+      extractionsWon: result.extractionsWon,
+      riftTier,
+      riftCost,
+      overclockUsed: overclockActive,
+      overclockBonus,
+      signalBoostUsed: signalBoostActive,
+      droneMultiplier: droneEffects.creditMultiplier,
+      anomalyMultiplier,
+      timestamp: Date.now(),
+    };
+    const newHistory = [historyEntry, ...spinHistory].slice(0, 25);
 
-      nextState = {
-        credits: newCredits,
-        attacks:    Math.min(MAX_SPINS, state.attacks    + result.attacksWon),
-        raids:      Math.min(MAX_SPINS, state.raids      + result.raidsWon),
-        shields:    Math.min(MAX_SPINS, state.shields    + result.shieldsWon),
-        intrusions: Math.min(MAX_SPINS, state.intrusions + result.intrusionsWon),
-        extractions:Math.min(MAX_SPINS, state.extractions+ result.extractionsWon),
-        spinsRemaining: newSpins,
-        spinRefillStart: newRefillStart,
-        xp: leveledUp ? newXp - xpNeeded : newXp,
-        level: leveledUp ? state.level + 1 : state.level,
-      };
+    // Phase 1: expose animation targets, start spin (atomic)
+    set({
+      isSpinning: true,
+      overclockActive: false,
+      signalBoostActive: false,
+      reelWindow: multi.reelWindow,
+      activeWinLines: multi.winLines,
+      lastResult: null,
+    });
 
-      const historyEntry: SpinHistoryEntry = {
-        reels: result.reels,
-        outcomeType: result.outcomeType,
-        isJackpot: result.isJackpot,
-        baseCreditsWon: result.creditsWon,
-        finalCreditsWon: boostedCreditsWon,
-        attacksWon: result.attacksWon,
-        raidsWon: result.raidsWon,
-        shieldsWon: result.shieldsWon,
-        intrusionsWon: result.intrusionsWon,
-        extractionsWon: result.extractionsWon,
-        riftTier,
-        riftCost,
-        overclockUsed: overclockActive,
-        overclockBonus,
-        signalBoostUsed: signalBoostActive,
-        droneMultiplier: droneEffects.creditMultiplier,
-        anomalyMultiplier,
-        timestamp: Date.now(),
-      };
-      const newHistory = [historyEntry, ...state.spinHistory].slice(0, 25);
-
-      return {
+    // Phase 2: reveal result and apply resources after animation completes
+    setTimeout(() => {
+      set({
         ...nextState,
         lastResult: { ...result, creditsWon: boostedCreditsWon },
         reelWindow: multi.reelWindow,
         activeWinLines: multi.winLines,
         isSpinning: false,
         spinHistory: newHistory,
-        sessionSpins: state.sessionSpins + 1,
-        sessionCreditsEarned: state.sessionCreditsEarned + boostedCreditsWon,
-      };
-    });
+        sessionSpins: sessionSpins + 1,
+        sessionCreditsEarned: sessionCreditsEarned + boostedCreditsWon,
+      });
+      persistResources(nextState);
+    }, SPIN_ANIM_MS);
 
-    persistResources(nextState);
     return result;
   },
 

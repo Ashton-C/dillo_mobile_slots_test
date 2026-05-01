@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
+import { soundService } from '@/services/SoundService';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
@@ -134,6 +135,7 @@ export default function RadarScreen() {
 
   async function scan() {
     if (!user) return;
+    void soundService.play('radarScan');
     setLoading(true);
     try {
       const [found, activeDebugUids] = await Promise.all([

@@ -2,6 +2,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticBuildStart } from '@/constants/haptics';
+import { soundService } from '@/services/SoundService';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import Animated, {
   useSharedValue,
@@ -153,6 +154,7 @@ function BuildingCard({
 
   function handlePress() {
     hapticBuildStart();
+    void soundService.play('buildStart');
     onUpgrade();
   }
 
