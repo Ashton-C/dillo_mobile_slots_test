@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Pressable, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { hapticForSpinResult, hapticActivateBuff, hapticLevelUp } from '@/constants/haptics';
@@ -91,6 +93,7 @@ export default function SpinScreen() {
   const activeBgId = useCosmeticsStore((s) => s.active['BACKGROUND'] ?? 'bg_default');
   const bgTokens   = BACKGROUND_TOKENS[activeBgId] ?? BACKGROUND_TOKENS.bg_default;
   const { load: loadCosmetics } = useCosmeticsStore();
+  const tabBarHeight = useBottomTabBarHeight();
 
   useEffect(() => { loadCosmetics(); }, []);
 
@@ -263,7 +266,7 @@ export default function SpinScreen() {
   const milestone = useMemo(() => getMilestone(credits), [credits]);
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top']}>
 
       {/* Jackpot screen flash — outside shake so it fills the full screen */}
       <Animated.View
@@ -322,7 +325,7 @@ export default function SpinScreen() {
 
       <ModifierPanel />
 
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingBottom: tabBarHeight }]}>
         {/* Outcome banner + triple badge */}
         <View style={styles.outcomeArea}>
           <Animated.View pointerEvents="none" style={[styles.tripleBadgeWrap, tripleBadgeStyle]}>
@@ -432,7 +435,7 @@ export default function SpinScreen() {
       </Animated.View>{/* end shake wrapper */}
 
       {/* Ledger drawer + tab */}
-      <Pressable style={styles.historyTab} onPress={() => setHistoryVisible(true)}>
+      <Pressable style={[styles.historyTab, { bottom: tabBarHeight }]} onPress={() => setHistoryVisible(true)}>
         <Text style={styles.historyTabText}>LEDGER  ↑</Text>
       </Pressable>
       <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
@@ -681,7 +684,6 @@ const styles = StyleSheet.create({
   },
   historyTab: {
     position: 'absolute',
-    bottom: 0,
     alignSelf: 'center',
     paddingHorizontal: Spacing.md,
     paddingVertical: 6,
