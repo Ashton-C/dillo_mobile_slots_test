@@ -2,18 +2,38 @@ import { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { GameEvent } from '@/services/FirestoreService';
-import { ArmadilloAvatar } from '@/components/ArmadilloAvatar';
+import { ArmadilloAvatar, AvatarAccessory } from '@/components/ArmadilloAvatar';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
+
+const AVATAR_COLORS = [
+  { label: 'EMBER',   value: '#FF6B35' },
+  { label: 'VOID',    value: '#1A1A2E' },
+  { label: 'PLASMA',  value: '#9B59FF' },
+  { label: 'NEON',    value: '#FF1493' },
+  { label: 'ACID',    value: '#39FF14' },
+  { label: 'ICE',     value: '#00D4FF' },
+  { label: 'GOLD',    value: '#FFD700' },
+  { label: 'CRIMSON', value: '#CC2244' },
+];
+
+const AVATAR_ACCESSORIES: { label: string; value: AvatarAccessory }[] = [
+  { label: 'NONE',    value: 'none'    },
+  { label: 'VISOR',   value: 'visor'   },
+  { label: 'HELMET',  value: 'helmet'  },
+  { label: 'BADGE',   value: 'badge'   },
+  { label: 'CROWN',   value: 'crown'   },
+];
 
 function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
-  const { displayName, avatarColor, setDisplayName } = useAuthStore();
+  const { displayName, avatarColor, avatarAccessory, setDisplayName, setAvatarColor, setAvatarAccessory } = useAuthStore();
   const { credits, attacks, raids, shields, intrusions, extractions, level, xp } = useGameStore();
   const events = useEventStore((s) => s.events);
 
@@ -21,6 +41,7 @@ export default function PilotScreen() {
   const [legendVisible, setLegendVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [customizeVisible, setCustomizeVisible] = useState(false);
 
   const xpNeeded = xpToNextLevel(level);
   const xpPct = Math.min(1, xp / xpNeeded);
@@ -47,14 +68,19 @@ export default function PilotScreen() {
         >
           <View style={[styles.avatarRingOuter, { borderColor: Colors.accent }]}>
             <View style={[styles.avatarRingInner, { borderColor: Colors.primary }]}>
-              <ArmadilloAvatar color={avatarColor} size={80} />
+              <ArmadilloAvatar color={avatarColor} size={80} accessory={avatarAccessory as AvatarAccessory} />
             </View>
           </View>
           <Text style={styles.pilotTitle}>ARMADILLO PILOT</Text>
           <Text style={styles.pilotName}>{displayName ?? '—'}</Text>
-          <Pressable onPress={() => { setEditName(displayName ?? ''); setEditVisible(true); }} style={styles.editButton}>
-            <Text style={styles.editButtonText}>EDIT NAME</Text>
-          </Pressable>
+          <View style={styles.avatarActions}>
+            <Pressable onPress={() => { setEditName(displayName ?? ''); setEditVisible(true); }} style={styles.editButton}>
+              <Text style={styles.editButtonText}>EDIT NAME</Text>
+            </Pressable>
+            <Pressable onPress={() => setCustomizeVisible(true)} style={styles.editButton}>
+              <Text style={styles.editButtonText}>CUSTOMIZE</Text>
+            </Pressable>
+          </View>
         </LinearGradient>
 
         {/* Level & XP */}
@@ -135,6 +161,50 @@ export default function PilotScreen() {
       <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
+
+      {/* Customize modal */}
+      <Modal visible={customizeVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setCustomizeVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>CUSTOMIZE PILOT</Text>
+
+            {/* Live preview */}
+            <View style={styles.previewRow}>
+              <ArmadilloAvatar color={avatarColor} size={72} accessory={avatarAccessory as AvatarAccessory} />
+            </View>
+
+            {/* Color picker */}
+            <Text style={styles.pickerLabel}>SUIT COLOR</Text>
+            <View style={styles.colorGrid}>
+              {AVATAR_COLORS.map((c) => (
+                <Pressable
+                  key={c.value}
+                  onPress={() => { Haptics.selectionAsync(); setAvatarColor(c.value); }}
+                  style={[styles.colorSwatch, { backgroundColor: c.value }, avatarColor === c.value && styles.swatchActive]}
+                />
+              ))}
+            </View>
+
+            {/* Accessory picker */}
+            <Text style={styles.pickerLabel}>ACCESSORY</Text>
+            <View style={styles.accessoryRow}>
+              {AVATAR_ACCESSORIES.map((a) => (
+                <Pressable
+                  key={a.value}
+                  onPress={() => { Haptics.selectionAsync(); setAvatarAccessory(a.value); }}
+                  style={[styles.accessoryChip, avatarAccessory === a.value && styles.accessoryChipActive]}
+                >
+                  <Text style={[styles.accessoryText, avatarAccessory === a.value && { color: Colors.textPrimary }]}>{a.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable onPress={() => setCustomizeVisible(false)} style={styles.modalConfirm}>
+              <Text style={styles.modalConfirmText}>DONE</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="PILOT LEGEND" accentColor={Colors.info}>
         <LegendSection label="XP & LEVELING" />
@@ -411,6 +481,56 @@ const styles = StyleSheet.create({
   },
   logAge: {
     fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+  avatarActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  previewRow: {
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  pickerLabel: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 3,
+    alignSelf: 'flex-start',
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  colorSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  swatchActive: {
+    borderColor: Colors.textPrimary,
+  },
+  accessoryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  accessoryChip: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  accessoryChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  accessoryText: {
+    fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
     letterSpacing: 1,
   },

@@ -16,6 +16,7 @@ import Animated, {
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useEventStore } from '@/store/useEventStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { BACKGROUND_TOKENS } from '@/services/CosmeticsService';
 import { SpinButton } from '@/components/SpinButton';
@@ -25,6 +26,9 @@ import { RiftSelector } from '@/components/RiftSelector';
 import { ModifierPanel } from '@/components/ModifierPanel';
 import { JackpotBurst } from '@/components/JackpotBurst';
 import { LedgerDrawer } from '@/components/LedgerDrawer';
+import { ConfettiEmitter } from '@/components/ConfettiEmitter';
+import { OnboardingModal } from '@/components/OnboardingModal';
+import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { SpinResult, TemporalRiftTier } from '@/services/SlotsEngine';
 
@@ -76,6 +80,7 @@ export default function SpinScreen() {
   } = useGameStore();
 
   const { displayName } = useAuthStore();
+  const latestEvent = useEventStore((s) => s.events[0]);
   const generatorLevel = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
   const overclockBonusPreview = generatorLevel * 50 + 200;
 
@@ -86,10 +91,15 @@ export default function SpinScreen() {
   useEffect(() => { loadCosmetics(); }, []);
 
   const [burstVisible, setBurstVisible] = useState(false);
+  const [confettiActive, setConfettiActive] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const burstTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const confettiTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const spinHapticRef = useRef<ReturnType<typeof setInterval>>();
+  const lastEventId = useRef<string | undefined>(undefined);
+
+  const { shakeStyle, shake } = useShakeAnimation();
 
   // Rapid haptic ticks while the reels are spinning
   useEffect(() => {
@@ -107,10 +117,8 @@ export default function SpinScreen() {
   }, [isSpinning]);
 
   const flashOpacity = useSharedValue(0);
-  const shakeX = useSharedValue(0);
   const prevJackpot = useRef(false);
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
-  const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shakeX.value }] }));
 
   // W3: triple badge
   const tripleBadgeY     = useSharedValue(-40);
@@ -148,15 +156,11 @@ export default function SpinScreen() {
         withTiming(0.7, { duration: 60 }),
         withTiming(0, { duration: 400 }),
       );
-      shakeX.value = withSequence(
-        withTiming(9,  { duration: 55 }),
-        withTiming(-7, { duration: 55 }),
-        withTiming(5,  { duration: 50 }),
-        withTiming(-3, { duration: 50 }),
-        withTiming(0,  { duration: 40 }),
-      );
+      shake();
       setBurstVisible(true);
       burstTimerRef.current = setTimeout(() => setBurstVisible(false), 1100);
+      setConfettiActive(true);
+      confettiTimerRef.current = setTimeout(() => setConfettiActive(false), 2800);
     }
     prevJackpot.current = isJackpot;
     return () => clearTimeout(burstTimerRef.current);
@@ -223,6 +227,17 @@ export default function SpinScreen() {
     prevLevel.current = level;
   }, [level]);
 
+  // Shake screen on incoming attacks/raids
+  useEffect(() => {
+    if (!latestEvent) return;
+    if (latestEvent.id === lastEventId.current) return;
+    lastEventId.current = latestEvent.id;
+    if (latestEvent.type === 'ATTACK_INCOMING' || latestEvent.type === 'RAID_INCOMING' || latestEvent.type === 'ATTACK_RESOLVED' || latestEvent.type === 'RAID_RESOLVED') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      shake();
+    }
+  }, [latestEvent]);
+
   const reels = lastResult?.reels ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
   const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
@@ -247,6 +262,12 @@ export default function SpinScreen() {
 
       {/* Jackpot particle burst */}
       <JackpotBurst visible={burstVisible} creditsWon={lastResult?.creditsWon ?? 0} />
+
+      {/* Jackpot confetti rain */}
+      <ConfettiEmitter active={confettiActive} />
+
+      {/* First-run onboarding */}
+      <OnboardingModal onDone={() => {}} />
 
       {/* W4: scanner beam — sweeps top-to-bottom on level-up */}
       <Animated.View pointerEvents="none" style={[styles.scannerBeam, beamStyle]} />

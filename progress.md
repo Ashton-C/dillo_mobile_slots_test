@@ -1,7 +1,7 @@
 # Sovereign Slots — Progress & Roadmap
 
-**Current Phase:** Phase 3 (Social Combat) — mostly complete, Cloud Function pending
-**Last Updated:** 2026-04-29
+**Current Phase:** Phase 5 (Polish & Launch) — in progress
+**Last Updated:** 2026-05-01
 
 ---
 
@@ -35,7 +35,7 @@ The mechanics that differentiate Sovereign Slots from Coin Master.
 
 ---
 
-## Phase 3: Social Combat 🔨
+## Phase 3: Social Combat ✅ (code complete; deploy pending)
 
 PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with the slot theme.
 
@@ -56,37 +56,60 @@ PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with
 - [x] **Player index writes** — `useAuthStore` writes to `playerIndex` on login and on display name change
 - [x] **Resource deduction on launch** — BREACH/EXTRACT deduct from inventory before mini-game opens
 - [x] **Combat log on Pilot tab** — last 20 events with relative timestamps and color-coded dots
-
-### Remaining
 - [x] **Firebase security rules** — `playerIndex`, `users/{uid}/events`, `combatRequests` all covered
 - [x] **Cloud Function `resolveCombat`** — Firestore trigger on `combatRequests` create; computes outcome, applies VAULT/TURRET passives, writes events to both players, updates credits (`functions/src/index.ts`)
 - [x] **TURRET passive** — daily charge tracking (`turretCharges` + `turretResetAt` on habitat doc); auto-block consumes one charge per incoming attack up to TURRET level per day
 - [x] **VAULT passive** — reduces defender credit loss by `vaultLevel × 5%` (max 75%) on successful raid
+- [x] **Mock users script** — `scripts/seed-mock-users.js` (run once; populates AlphaRaider + BetaOps in playerIndex for RADAR testing)
+
+### Remaining (ops only)
 - [ ] **Deploy Cloud Function** — `cd functions && npm install && npm run build && firebase deploy --only functions`
-- [ ] **Seed mock users** — `node scripts/seed-mock-users.js` (run once; populates AlphaRaider + BetaOps in playerIndex for RADAR testing)
+- [ ] **Seed mock users** — `node scripts/seed-mock-users.js`
 
 ---
 
-## Phase 4: Monetization 📋
+## Phase 4: Monetization ✅ (cosmetics complete; IAP/ads pending)
 
 Hard currency, IAP, and rewarded ads. Build the social loop fully before adding monetization pressure.
 
+### Completed
+- [x] **IAP Credit Packs** — POCKET / HOARD / VAULT / STAR FORGE (credits); SPIN REFILL; FUEL TANK / SIGNAL ARRAY / BARRIER PACK; COMMANDER PACK / WAR CHEST (store tab, simulated flow)
+- [x] **Ad rewards** — +5 SPINS, +500 CR, +1 FUEL, +1 SIGNAL BOOSTER (rewarded ad buttons in store)
+- [x] **Cosmetics catalog** — 50 items across 9 categories: reel themes, symbol packs, spin button skins, HUD skins, ambient backgrounds, suit colors, pilot emblems, pilot titles, win celebration animations
+- [x] **`CosmeticsService.ts`** — full token maps for all categories; `COSMETIC_CATALOG` with credit/IAP pricing; `BUNDLE_GRANTS` for multi-item packs
+- [x] **`useCosmeticsStore.ts`** — Zustand store with AsyncStorage persistence; `buy()` / `equip()` / `isOwned()` actions; bundle grant expansion; free-item whitelist
+- [x] **Store tab cosmetics sections** — horizontal FlatList per category; `CosmeticCard` with ACTIVE / EQUIP / CR / IAP contextual button; buy/equip haptics + toast; IAP confirmation modal
+- [x] **Live cosmetic wiring** — `ReelDisplay` reads active reel theme + symbol pack; `SpinButton` reads active button skin; `ResourceBar` reads HUD skin + emblem + pilot title; `spin.tsx` reads ambient background
+
+### Remaining
 - [ ] **Temporal Crystals** — hard currency (distinct from Credits); earned via IAP or sparingly via gameplay
-- [ ] **RevenueCat integration** — Spin Packs, Builder Slots (parallel construction unlock), Shield Bundles
-- [ ] **AdMob rewarded ads** — "+5 spins" and "−30 min from active build timer" placements
-- [ ] **Instant build skip** — spend Temporal Crystals to instantly complete any build job
+- [ ] **RevenueCat integration** — real StoreKit/Play Billing for all IAP items
+- [ ] **AdMob rewarded ads** — real ad placements replacing simulated ad buttons
+- [ ] **Instant build skip** — spend hard currency to complete active build job instantly
 
 ---
 
-## Phase 5: Polish & Launch 📋
+## Phase 5: Polish & Launch 🔨
 
-- [ ] Unit tests — `SlotsEngine` payout math, weight normalization, Rift modifiers
+- [x] Unit tests — `SlotsEngine` payout math, weight normalization, Rift modifiers, multiline evaluation
 - [ ] Integration tests — Zustand store actions, Firestore write/read round-trips
-- [ ] Onboarding tutorial — first-run flow: spin → build → deploy drone
-- [ ] Armadillo customization — color/accessory picker on Pilot screen
-- [ ] Particle effects — jackpot confetti, screen shake on incoming attacks, reel symbol animations
+- [x] Onboarding tutorial — first-run overlay: spin → build → deploy drone (3-step modal, AsyncStorage gated)
+- [x] Armadillo customization — color + accessory picker on Pilot screen; `setAvatarColor` persists to Firestore
+- [x] Particle effects — jackpot confetti (`ConfettiEmitter`), screen shake on incoming attacks
 - [ ] Push notifications — "your build is complete", "you were raided" (FCM)
 - [ ] App Store / Play Store submission
+
+### Also shipped in Phase 5 session
+- [x] **Multiline slot machine** — 3×3 reel window; 1/3/5 paylines gated by Outpost Level; `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay
+- [x] **Winning number fix** — outcome banner now shows the fully boosted amount (drone × anomaly + overclock), matching the Ledger
+- [x] **Spin button physicality** — aggressive press spring animation + haptic ticks during spinning
+- [x] **Win ceremony animations** — JACKPOT burst, multi-line badge, cell highlights
+- [x] **Spin history drawer** — swipe-up log of last 20 spins with outcome icons
+- [x] **RADAR recent targets** — last 5 scanned players cached on device
+- [x] **Ledger receipts** — full breakdown modal per spin (base × drone × anomaly × overclock)
+- [x] **Combat math transparency** — modifier display in mini-game shows live power calculation
+- [x] **RIFT visual clarity** — tier glyphs + cost preview before activating
+- [x] **Base crash fix** — resolved undefined-habitat crash on cold start
 
 ---
 
@@ -94,18 +117,24 @@ Hard currency, IAP, and rewarded ads. Build the social loop fully before adding 
 
 | System | Status | Notes |
 |---|---|---|
-| SlotsEngine | ✅ Solid | 9 symbols, rift modifiers, signal boost, full payout table |
-| useGameStore | ✅ Solid | All resources, spin buffs, Firestore sync |
-| useHabitatStore | ✅ Solid | Outpost gate, build timers, Firestore persistence |
+| SlotsEngine | ✅ Solid | 9 symbols, rift modifiers, signal boost, multiline (1/3/5 paylines), full payout table |
+| useGameStore | ✅ Solid | All resources, spin buffs, Firestore sync, reelWindow + activeWinLines |
+| useHabitatStore | ✅ Solid | Outpost gate, build timers, Firestore persistence, `getNumActiveLines()` |
 | useDroneStore | ✅ Solid | Deploy/tick/expire lifecycle |
 | useAnomalyStore | ✅ Solid | Global sync via onSnapshot |
-| useEventStore | ✅ New | Firestore events subscription, needs CF to write events |
-| useAuthStore | ✅ Solid | Player index writes added |
+| useEventStore | ✅ Solid | Firestore events subscription, needs CF to write events |
+| useAuthStore | ✅ Solid | Player index writes, avatarColor, setAvatarColor |
+| useCosmeticsStore | ✅ New | AsyncStorage persistence, buy/equip/bundle, free-item whitelist |
 | FirestoreService | ✅ Solid | All collections covered; CF integration pending |
-| RADAR screen | ✅ New | Needs real playerIndex data to populate |
-| CombatMiniGame | ✅ New | Client-side only; outcomes pending CF |
-| EventBanner | ✅ New | Fully wired; events pending CF writes |
+| CosmeticsService | ✅ New | 50-item catalog, all token maps, bundle grants |
+| RADAR screen | ✅ Solid | Needs real playerIndex data to populate |
+| CombatMiniGame | ✅ Solid | Client-side only; outcomes pending CF |
+| EventBanner | ✅ Solid | Fully wired; events pending CF writes |
 | Cloud Function | ✅ Written | Needs deploy: `cd functions && npm run build && firebase deploy --only functions` |
 | TURRET/VAULT passives | ✅ Written | Wired inside resolveCombat CF |
 | Security rules | ✅ Complete | playerIndex, events subcollection, combatRequests all covered |
 | Mock users | ✅ Written | Run `node scripts/seed-mock-users.js` to populate RADAR targets |
+| Unit tests | ✅ New | SlotsEngine: evaluate, spinRows, rift modifiers, signal boost, weight normalization |
+| Onboarding | ✅ New | 3-step first-run modal, AsyncStorage gated |
+| Armadillo customization | ✅ New | Color + accessory picker on Pilot tab |
+| Particle effects | ✅ New | ConfettiEmitter (jackpot), screen shake (incoming attack) |

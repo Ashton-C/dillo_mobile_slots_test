@@ -21,17 +21,21 @@ interface AuthState {
   user: User | null;
   displayName: string | null;
   avatarColor: string;
+  avatarAccessory: string;
   needsUsername: boolean;
   isLoading: boolean;
   error: string | null;
   initialize: () => () => void;
   setDisplayName: (name: string) => Promise<void>;
+  setAvatarColor: (color: string) => Promise<void>;
+  setAvatarAccessory: (accessory: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   displayName: null,
   avatarColor: '#FF6B35',
+  avatarAccessory: 'none',
   needsUsername: false,
   isLoading: true,
   error: null,
@@ -75,6 +79,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             user: firebaseUser,
             displayName: profile.displayName,
             avatarColor: profile.avatarColor,
+            avatarAccessory: profile.avatarAccessory,
             needsUsername: !profile.hasSetUsername,
             isLoading: false,
             error: null,
@@ -110,20 +115,45 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
     set({ displayName: name, needsUsername: false });
 
+    const { avatarColor } = useAuthStore.getState();
     const gameState = useGameStore.getState();
     const outpostLevel = useHabitatStore.getState().outpostLevel;
     writePlayerIndex(uid, {
       displayName: name,
-      avatarColor: '#FF6B35',
+      avatarColor,
       outpostLevel,
       level: gameState.level,
     }).catch(console.error);
+  },
+
+  async setAvatarColor(color) {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    await updateDoc(doc(db, 'users', uid), { avatarColor: color, updatedAt: serverTimestamp() });
+    set({ avatarColor: color });
+    const { displayName } = useAuthStore.getState();
+    const gameState = useGameStore.getState();
+    const outpostLevel = useHabitatStore.getState().outpostLevel;
+    writePlayerIndex(uid, {
+      displayName: displayName ?? '',
+      avatarColor: color,
+      outpostLevel,
+      level: gameState.level,
+    }).catch(console.error);
+  },
+
+  async setAvatarAccessory(accessory) {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    await updateDoc(doc(db, 'users', uid), { avatarAccessory: accessory, updatedAt: serverTimestamp() });
+    set({ avatarAccessory: accessory });
   },
 }));
 
 interface UserProfile {
   displayName: string;
   avatarColor: string;
+  avatarAccessory: string;
   hasSetUsername: boolean;
 }
 
@@ -135,6 +165,7 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     return {
       displayName: d.displayName ?? `Pilot_${user.uid.slice(0, 5)}`,
       avatarColor: d.avatarColor ?? '#FF6B35',
+      avatarAccessory: d.avatarAccessory ?? 'none',
       hasSetUsername: d.hasSetUsername ?? false,
     };
   }
@@ -144,6 +175,7 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     uid: user.uid,
     displayName: defaultName,
     avatarColor: '#FF6B35',
+    avatarAccessory: 'none',
     hasSetUsername: false,
     credits: 500,
     attacks: 5,
@@ -158,5 +190,5 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     updatedAt: serverTimestamp(),
   });
 
-  return { displayName: defaultName, avatarColor: '#FF6B35', hasSetUsername: false };
+  return { displayName: defaultName, avatarColor: '#FF6B35', avatarAccessory: 'none', hasSetUsername: false };
 }
