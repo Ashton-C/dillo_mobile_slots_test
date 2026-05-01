@@ -13,6 +13,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 import { EventBanner } from '@/components/EventBanner';
+import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarousel';
 
 const queryClient = new QueryClient({
@@ -74,6 +75,7 @@ export default function RootLayout() {
           />
           <UsernameSetupModal />
           <EventBanner />
+          <BuildCompleteBanner />
           {showOnboarding && <OnboardingCarousel onDismiss={() => setShowOnboarding(false)} />}
         </View>
       </QueryClientProvider>

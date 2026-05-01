@@ -15,12 +15,14 @@ interface HabitatState {
   outpostLevel: number;
   activeBuildJob: ActiveBuildJob | null;
   msUntilComplete: number;
+  completedBuilding: BuildingType | null;
 
   setHabitatId: (id: string) => void;
   startBuild: (type: BuildingType, subtractCredits: (n: number) => boolean) => boolean;
   upgradeOutpost: (subtractCredits: (n: number) => boolean) => boolean;
   tick: () => void;
   syncFromFirestore: (data: HabitatSnapshot) => void;
+  clearCompletedBuilding: () => void;
 }
 
 function persist(habitatId: string | null, data: Partial<HabitatSnapshot>) {
@@ -33,6 +35,7 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
   outpostLevel: 1,
   activeBuildJob: null,
   msUntilComplete: 0,
+  completedBuilding: null,
 
   setHabitatId(id) {
     set({ habitatId: id });
@@ -94,7 +97,8 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
           ...buildingLevels,
           [activeBuildJob.type]: activeBuildJob.targetLevel,
         };
-        set({ buildingLevels: newLevels, activeBuildJob: null, msUntilComplete: 0 });
+        const completedType = activeBuildJob.type;
+        set({ buildingLevels: newLevels, activeBuildJob: null, msUntilComplete: 0, completedBuilding: completedType });
         persist(habitatId, { buildingLevels: newLevels, activeBuildJob: null });
       }
     } else {
@@ -110,5 +114,9 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
       activeBuildJob: job,
       msUntilComplete: job ? Math.max(0, job.completesAt - Date.now()) : 0,
     });
+  },
+
+  clearCompletedBuilding() {
+    set({ completedBuilding: null });
   },
 }));

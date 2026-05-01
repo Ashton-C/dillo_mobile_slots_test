@@ -6,8 +6,10 @@ import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/L
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  withDelay,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useEffect, useState } from 'react';
@@ -63,11 +65,12 @@ interface BuildingCardProps {
   builderBusy: boolean;
   msRemaining: number;
   totalBuildMs: number;
+  isCompleted: boolean;
   onUpgrade: () => void;
 }
 
 function BuildingCard({
-  type, level, outpostLevel, canAfford, upgradeCost, isBuilding, builderBusy, msRemaining, totalBuildMs, onUpgrade,
+  type, level, outpostLevel, canAfford, upgradeCost, isBuilding, builderBusy, msRemaining, totalBuildMs, isCompleted, onUpgrade,
 }: BuildingCardProps) {
   const color = BUILDING_COLOR[type];
   const meta = BUILDING_META[type];
@@ -87,6 +90,41 @@ function BuildingCard({
     }
   }, [isBuilding]);
   const iconAnimStyle = useAnimatedStyle(() => ({ opacity: iconOpacity.value }));
+
+  const ringScale   = useSharedValue(0.6);
+  const ringOpacity = useSharedValue(0);
+  const floatY      = useSharedValue(0);
+  const floatOpacity = useSharedValue(0);
+  const floatScale  = useSharedValue(0.5);
+
+  useEffect(() => {
+    if (!isCompleted) return;
+    ringScale.value   = 0.6;
+    ringOpacity.value = 0;
+    ringScale.value   = withTiming(2.8, { duration: 700 });
+    ringOpacity.value = withSequence(
+      withTiming(0.9, { duration: 80 }),
+      withDelay(200, withTiming(0, { duration: 450 })),
+    );
+    floatY.value      = 0;
+    floatScale.value  = 0;
+    floatOpacity.value = 0;
+    floatScale.value  = withSpring(1, { damping: 9, stiffness: 200 });
+    floatY.value      = withTiming(-56, { duration: 900 });
+    floatOpacity.value = withSequence(
+      withTiming(1, { duration: 100 }),
+      withDelay(500, withTiming(0, { duration: 320 })),
+    );
+  }, [isCompleted]);
+
+  const ringStyle  = useAnimatedStyle(() => ({
+    transform: [{ scale: ringScale.value }],
+    opacity: ringOpacity.value,
+  }));
+  const floatStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: floatY.value }, { scale: floatScale.value }],
+    opacity: floatOpacity.value,
+  }));
 
   let buttonLabel: string;
   let buttonDisabled: boolean;
@@ -127,9 +165,20 @@ function BuildingCard({
         style={styles.cardStripe}
       />
       <View style={styles.cardBody}>
-        <Animated.View style={[styles.iconBadge, { borderColor: color, backgroundColor: color + '18' }, iconAnimStyle]}>
-          <Text style={styles.cardIcon}>{meta.icon}</Text>
-        </Animated.View>
+        <View style={styles.iconWrap}>
+          <Animated.View style={[styles.iconBadge, { borderColor: color, backgroundColor: color + '18' }, iconAnimStyle]}>
+            <Text style={styles.cardIcon}>{meta.icon}</Text>
+          </Animated.View>
+          {/* Completion ring burst */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.completionRing, { borderColor: color }, ringStyle]}
+          />
+          {/* Floating level label */}
+          <Animated.View pointerEvents="none" style={[styles.floatLabel, floatStyle]}>
+            <Text style={[styles.floatLabelText, { color }]}>+LVL {level}</Text>
+          </Animated.View>
+        </View>
         <View style={styles.cardInfo}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.cardLabel}>{meta.label}</Text>
@@ -140,7 +189,7 @@ function BuildingCard({
           <Text style={[styles.cardEffect, { color }]}>{BUILDING_EFFECT[type](level)}</Text>
           <Text style={[styles.levelDots, { color }]}>{levelDots}</Text>
         </View>
-      </View>
+      </View>  {/* end cardBody */}
 
       {isBuilding && totalBuildMs > 0 && (
         <View style={styles.progressTrack}>
@@ -178,7 +227,7 @@ function BuildingCard({
 
 export default function HabitatScreen() {
   const { credits, subtractCredits } = useGameStore();
-  const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete, startBuild, upgradeOutpost } = useHabitatStore();
+  const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete, completedBuilding, startBuild, upgradeOutpost } = useHabitatStore();
   const [contractsVisible, setContractsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
 
@@ -280,6 +329,7 @@ export default function HabitatScreen() {
               builderBusy={builderBusy}
               msRemaining={isBuilding ? msUntilComplete : 0}
               totalBuildMs={totalBuildMs}
+              isCompleted={completedBuilding === type}
               onUpgrade={() => startBuild(type, subtractCredits)}
             />
           );
@@ -468,6 +518,13 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     gap: Spacing.md,
   },
+  iconWrap: {
+    width: 48,
+    height: 48,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconBadge: {
     width: 48,
     height: 48,
@@ -475,7 +532,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+  },
+  completionRing: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 2,
+  },
+  floatLabel: {
+    position: 'absolute',
+    top: 0,
+    alignItems: 'center',
+  },
+  floatLabelText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
   },
   cardIcon: { fontSize: Typography.sizes.xl },
   cardInfo: { flex: 1, gap: 3 },

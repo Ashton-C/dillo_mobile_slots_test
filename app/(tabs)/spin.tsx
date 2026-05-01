@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, Pressable, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticForSpinResult, hapticActivateBuff, hapticLevelUp } from '@/constants/haptics';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import Animated, {
+  Easing,
   useSharedValue,
   useAnimatedStyle,
+  withDelay,
   withSequence,
   withTiming,
   withSpring,
@@ -19,12 +21,28 @@ import { RiftSelector } from '@/components/RiftSelector';
 import { ModifierPanel } from '@/components/ModifierPanel';
 import { JackpotBurst } from '@/components/JackpotBurst';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
-import { TemporalRiftTier } from '@/services/SlotsEngine';
+import { SpinResult, TemporalRiftTier } from '@/services/SlotsEngine';
 
 const EMPTY_REELS: ['EMPTY', 'EMPTY', 'EMPTY'] = ['EMPTY', 'EMPTY', 'EMPTY'];
 const MAX_SPINS = 50;
 const LOW_SPIN_THRESHOLD = 5;
 const MILESTONES = [250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000];
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+const OUTCOME_COLOR: Record<string, string> = {
+  CREDITS:    Colors.credits,
+  ATTACK:     Colors.attack,
+  RAID:       Colors.raid,
+  SHIELD:     Colors.shield,
+  INTRUSION:  Colors.danger,
+  EXTRACTION: Colors.accent,
+};
+
+function isTriple(result: SpinResult): boolean {
+  return result.outcomeType !== 'NOTHING' &&
+    result.reels[0] === result.reels[1] &&
+    result.reels[1] === result.reels[2];
+}
 
 function formatRefillTimer(ms: number): string {
   const totalSec = Math.ceil(ms / 1000);
@@ -59,8 +77,36 @@ export default function SpinScreen() {
   const burstTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const flashOpacity = useSharedValue(0);
+  const shakeX = useSharedValue(0);
   const prevJackpot = useRef(false);
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
+  const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shakeX.value }] }));
+
+  // W3: triple badge
+  const tripleBadgeY     = useSharedValue(-40);
+  const tripleBadgeScale = useSharedValue(0.4);
+  const tripleBadgeOp    = useSharedValue(0);
+  const tripleBadgeStyle = useAnimatedStyle(() => ({
+    opacity: tripleBadgeOp.value,
+    transform: [{ translateY: tripleBadgeY.value }, { scale: tripleBadgeScale.value }],
+  }));
+
+  // W4: scanner beam
+  const beamY   = useSharedValue(-4);
+  const beamOp  = useSharedValue(0);
+  const beamStyle = useAnimatedStyle(() => ({
+    opacity: beamOp.value,
+    transform: [{ translateY: beamY.value }],
+  }));
+
+  // W4: level-up badge
+  const lvlBadgeY     = useSharedValue(-140);
+  const lvlBadgeScale = useSharedValue(0);
+  const lvlBadgeOp    = useSharedValue(0);
+  const lvlBadgeStyle = useAnimatedStyle(() => ({
+    opacity: lvlBadgeOp.value,
+    transform: [{ translateY: lvlBadgeY.value }, { scale: lvlBadgeScale.value }],
+  }));
 
   useEffect(() => {
     const isJackpot = lastResult?.isJackpot ?? false;
@@ -72,8 +118,15 @@ export default function SpinScreen() {
         withTiming(0.7, { duration: 60 }),
         withTiming(0, { duration: 400 }),
       );
+      shakeX.value = withSequence(
+        withTiming(9,  { duration: 55 }),
+        withTiming(-7, { duration: 55 }),
+        withTiming(5,  { duration: 50 }),
+        withTiming(-3, { duration: 50 }),
+        withTiming(0,  { duration: 40 }),
+      );
       setBurstVisible(true);
-      burstTimerRef.current = setTimeout(() => setBurstVisible(false), 1000);
+      burstTimerRef.current = setTimeout(() => setBurstVisible(false), 1100);
     }
     prevJackpot.current = isJackpot;
     return () => clearTimeout(burstTimerRef.current);
@@ -87,6 +140,18 @@ export default function SpinScreen() {
         withTiming(1.08, { duration: 90 }),
         withSpring(1, { damping: 10, stiffness: 150 }),
       );
+      // W3: triple badge pop
+      if (isTriple(lastResult)) {
+        tripleBadgeY.value     = -40;
+        tripleBadgeScale.value = 0.4;
+        tripleBadgeOp.value    = 0;
+        tripleBadgeY.value     = withSpring(0, { damping: 9, stiffness: 220 });
+        tripleBadgeScale.value = withSpring(1, { damping: 7, stiffness: 240 });
+        tripleBadgeOp.value    = withSequence(
+          withTiming(1, { duration: 70 }),
+          withDelay(1000, withTiming(0, { duration: 400 })),
+        );
+      }
     }
   }, [lastResult]);
   const bannerStyle = useAnimatedStyle(() => ({
@@ -106,6 +171,24 @@ export default function SpinScreen() {
         withTiming(1, { duration: 80 }),
         withTiming(0, { duration: 500 }),
       );
+      // W4: scanner beam sweep
+      beamY.value  = -4;
+      beamOp.value = 0;
+      beamOp.value = withSequence(
+        withTiming(1, { duration: 60 }),
+        withDelay(650, withTiming(0, { duration: 200 })),
+      );
+      beamY.value = withTiming(SCREEN_HEIGHT + 4, { duration: 820, easing: Easing.inOut(Easing.quad) });
+      // W4: level badge spring-drop
+      lvlBadgeY.value     = -140;
+      lvlBadgeScale.value = 0;
+      lvlBadgeOp.value    = 0;
+      lvlBadgeScale.value = withDelay(280, withSpring(1, { damping: 10, stiffness: 200 }));
+      lvlBadgeY.value     = withDelay(280, withSpring(0, { damping: 12, stiffness: 200 }));
+      lvlBadgeOp.value    = withDelay(280, withSequence(
+        withTiming(1, { duration: 120 }),
+        withDelay(1500, withTiming(0, { duration: 400 })),
+      ));
     }
     prevLevel.current = level;
   }, [level]);
@@ -120,7 +203,7 @@ export default function SpinScreen() {
   return (
     <SafeAreaView style={styles.root}>
 
-      {/* Jackpot screen flash */}
+      {/* Jackpot screen flash — outside shake so it fills the full screen */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, styles.jackpotFlash, flashStyle]}
@@ -132,8 +215,25 @@ export default function SpinScreen() {
         style={[StyleSheet.absoluteFill, styles.levelUpFlash, levelFlashStyle]}
       />
 
-      {/* Jackpot particle burst — centered over reel area */}
-      <JackpotBurst visible={burstVisible} />
+      {/* Jackpot particle burst */}
+      <JackpotBurst visible={burstVisible} creditsWon={lastResult?.creditsWon ?? 0} />
+
+      {/* W4: scanner beam — sweeps top-to-bottom on level-up */}
+      <Animated.View pointerEvents="none" style={[styles.scannerBeam, beamStyle]} />
+
+      {/* W4: level-up badge */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.levelBadgeOverlay]}
+      >
+        <Animated.View style={[styles.levelBadgeCard, lvlBadgeStyle]}>
+          <Text style={styles.levelBadgeLabel}>LEVEL UP</Text>
+          <Text style={styles.levelBadgeNum}>{level}</Text>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Everything below shakes on jackpot */}
+      <Animated.View style={[{ flex: 1 }, shakeStyle]}>
 
       {/* Gradient header */}
       <LinearGradient
@@ -157,16 +257,23 @@ export default function SpinScreen() {
       <ModifierPanel />
 
       <View style={styles.content}>
-        {/* Outcome banner */}
-        <Animated.View style={[styles.outcomeBanner, bannerStyle]}>
-          {lastResult && lastResult.outcomeType !== 'NOTHING' ? (
-            <Text style={styles.outcomeText}>{outcomeMessage(lastResult)}</Text>
-          ) : (
-            <Text style={styles.outcomeTextMuted}>
-              {spinsRemaining > 0 ? 'Awaiting spin…' : 'No spins left'}
+        {/* Outcome banner + triple badge */}
+        <View style={styles.outcomeArea}>
+          <Animated.View pointerEvents="none" style={[styles.tripleBadgeWrap, tripleBadgeStyle]}>
+            <Text style={[styles.tripleBadgeText, { color: OUTCOME_COLOR[lastResult?.outcomeType ?? ''] ?? Colors.primary }]}>
+              TRIPLE!
             </Text>
-          )}
-        </Animated.View>
+          </Animated.View>
+          <Animated.View style={[styles.outcomeBanner, bannerStyle]}>
+            {lastResult && lastResult.outcomeType !== 'NOTHING' ? (
+              <Text style={styles.outcomeText}>{outcomeMessage(lastResult)}</Text>
+            ) : (
+              <Text style={styles.outcomeTextMuted}>
+                {spinsRemaining > 0 ? 'Awaiting spin…' : 'No spins left'}
+              </Text>
+            )}
+          </Animated.View>
+        </View>
 
         {/* Credit milestone bar */}
         <View style={styles.milestoneContainer}>
@@ -250,6 +357,7 @@ export default function SpinScreen() {
           onSelect={(tier: TemporalRiftTier) => setRiftTier(tier)}
         />
       </View>
+      </Animated.View>{/* end shake wrapper */}
 
       <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
@@ -317,6 +425,20 @@ const styles = StyleSheet.create({
 
   content: { flex: 1, paddingTop: Spacing.sm, gap: Spacing.md },
 
+  outcomeArea: {
+    alignItems: 'center',
+  },
+  tripleBadgeWrap: {
+    position: 'absolute',
+    top: -32,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  tripleBadgeText: {
+    fontSize: Typography.sizes.xl,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 4,
+  },
   outcomeBanner: {
     alignItems: 'center',
     minHeight: 48,
@@ -448,6 +570,41 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
     marginLeft: Spacing.xs,
+  },
+  scannerBeam: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 3,
+    backgroundColor: Colors.accent + 'DD',
+    zIndex: 97,
+  },
+  levelBadgeOverlay: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 96,
+  },
+  levelBadgeCard: {
+    backgroundColor: Colors.surface,
+    borderWidth: 2,
+    borderColor: Colors.accent,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    gap: 4,
+  },
+  levelBadgeLabel: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 4,
+  },
+  levelBadgeNum: {
+    fontSize: Typography.sizes.hero,
+    fontWeight: Typography.weights.bold,
+    color: Colors.accent,
+    lineHeight: 56,
   },
   legendBtn: {
     position: 'absolute',
