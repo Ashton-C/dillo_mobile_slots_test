@@ -29,6 +29,12 @@ function persist(habitatId: string | null, data: Partial<HabitatSnapshot>) {
   if (habitatId) writeHabitatState(habitatId, data).catch(console.error);
 }
 
+export function getNumActiveLines(outpostLevel: number): 1 | 3 | 5 {
+  if (outpostLevel >= 6) return 5;
+  if (outpostLevel >= 3) return 3;
+  return 1;
+}
+
 export const useHabitatStore = create<HabitatState>((set, get) => ({
   habitatId: null,
   buildingLevels: {},

@@ -1,7 +1,10 @@
 import { create } from 'zustand';
-import { SpinResult, SlotSymbol, SpinOutcomeType, slotsEngine, TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
+import {
+  SpinResult, SlotSymbol, SpinOutcomeType, slotsEngine, TemporalRiftTier, RIFT_COSTS,
+  MultiSpinResult, ReelWindow, WinLine,
+} from '@/services/SlotsEngine';
 import { useDroneStore } from '@/store/useDroneStore';
-import { useHabitatStore } from '@/store/useHabitatStore';
+import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
 import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
 import { auth } from '@/lib/firebase';
@@ -46,6 +49,8 @@ interface Resources {
 interface SpinState {
   isSpinning: boolean;
   lastResult: SpinResult | null;
+  reelWindow: ReelWindow | null;
+  activeWinLines: WinLine[] | null;
   riftTier: TemporalRiftTier;
   msUntilNextSpin: number;
   msUntilFull: number;
@@ -97,10 +102,22 @@ function persistResources(data: Partial<Resources>) {
   if (uid) writeUserResources(uid, data).catch(console.error);
 }
 
+function deriveOutcomeType(multi: MultiSpinResult): SpinOutcomeType {
+  if (multi.creditsWon > 0)     return 'CREDITS';
+  if (multi.attacksWon > 0)     return 'ATTACK';
+  if (multi.raidsWon > 0)       return 'RAID';
+  if (multi.shieldsWon > 0)     return 'SHIELD';
+  if (multi.intrusionsWon > 0)  return 'INTRUSION';
+  if (multi.extractionsWon > 0) return 'EXTRACTION';
+  return 'NOTHING';
+}
+
 export const useGameStore = create<GameState>((set, get) => ({
   ...INITIAL_RESOURCES,
   isSpinning: false,
   lastResult: null,
+  reelWindow: null,
+  activeWinLines: null,
   riftTier: 0,
   msUntilNextSpin: 0,
   msUntilFull: 0,
@@ -119,10 +136,26 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     set({ isSpinning: true, overclockActive: false, signalBoostActive: false });
 
+    const outpostLevel = useHabitatStore.getState().outpostLevel;
+    const numLines = getNumActiveLines(outpostLevel);
+
     slotsEngine.setRiftTier(riftTier);
     if (signalBoostActive) slotsEngine.setSignalBoost(true);
-    const result = slotsEngine.spin();
+    const multi = slotsEngine.spinRows(numLines);
     if (signalBoostActive) slotsEngine.setSignalBoost(false);
+
+    // Build a synthetic SpinResult from the multiline data for backwards compat
+    const result: SpinResult = {
+      reels: multi.reelWindow[1],
+      outcomeType: deriveOutcomeType(multi),
+      creditsWon: multi.creditsWon,
+      attacksWon: multi.attacksWon,
+      raidsWon: multi.raidsWon,
+      shieldsWon: multi.shieldsWon,
+      intrusionsWon: multi.intrusionsWon,
+      extractionsWon: multi.extractionsWon,
+      isJackpot: multi.isJackpot,
+    };
 
     const droneEffects = useDroneStore.getState().getEffects();
     useDroneStore.getState().tickSpins();
@@ -182,7 +215,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       return {
         ...nextState,
-        lastResult: result,
+        lastResult: { ...result, creditsWon: boostedCreditsWon },
+        reelWindow: multi.reelWindow,
+        activeWinLines: multi.winLines,
         isSpinning: false,
         spinHistory: newHistory,
         sessionSpins: state.sessionSpins + 1,

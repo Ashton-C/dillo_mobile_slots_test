@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { Pressable, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
   Easing,
 } from 'react-native-reanimated';
@@ -47,9 +49,11 @@ export function SpinButton({ onPress, disabled, isSpinning }: Props) {
   }));
 
   function handlePress() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     scale.value = withSequence(
-      withTiming(0.93, { duration: 80 }),
-      withTiming(1, { duration: 120 }),
+      withTiming(0.86, { duration: 55 }),
+      withSpring(1.04, { damping: 5, stiffness: 300 }),
+      withSpring(1, { damping: 8, stiffness: 200 }),
     );
     onPress();
   }

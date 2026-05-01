@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Pressable, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { hapticForSpinResult, hapticActivateBuff, hapticLevelUp } from '@/constants/haptics';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import Animated, {
@@ -66,7 +67,7 @@ function getMilestone(credits: number): { next: number; progress: number } {
 export default function SpinScreen() {
   const {
     credits, attacks, raids, shields, intrusions, extractions, spinsRemaining,
-    isSpinning, lastResult, riftTier, level,
+    isSpinning, lastResult, reelWindow, activeWinLines, riftTier, level,
     msUntilNextSpin, msUntilFull,
     overclockActive, signalBoostActive,
     spin, setRiftTier, activateOverclock, activateSignalBoost,
@@ -80,6 +81,22 @@ export default function SpinScreen() {
   const [legendVisible, setLegendVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const burstTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const spinHapticRef = useRef<ReturnType<typeof setInterval>>();
+
+  // Rapid haptic ticks while the reels are spinning
+  useEffect(() => {
+    if (isSpinning) {
+      let ticks = 0;
+      spinHapticRef.current = setInterval(() => {
+        ticks++;
+        Haptics.selectionAsync();
+        if (ticks >= 5) clearInterval(spinHapticRef.current);
+      }, 110);
+    } else {
+      clearInterval(spinHapticRef.current);
+    }
+    return () => clearInterval(spinHapticRef.current);
+  }, [isSpinning]);
 
   const flashOpacity = useSharedValue(0);
   const shakeX = useSharedValue(0);
@@ -142,8 +159,8 @@ export default function SpinScreen() {
     if (lastResult && lastResult.outcomeType !== 'NOTHING') {
       if (!lastResult.isJackpot) hapticForSpinResult(lastResult);
       bannerScale.value = withSequence(
-        withTiming(1.08, { duration: 90 }),
-        withSpring(1, { damping: 10, stiffness: 150 }),
+        withTiming(1.18, { duration: 70 }),
+        withSpring(1, { damping: 5, stiffness: 200 }),
       );
       // W3: triple badge pop
       if (isTriple(lastResult)) {
@@ -288,7 +305,13 @@ export default function SpinScreen() {
           <Text style={styles.milestoneLabel}>{milestone.next.toLocaleString()} CR</Text>
         </View>
 
-        <ReelDisplay reels={reels} isSpinning={isSpinning} lastResult={lastResult} />
+        <ReelDisplay
+          reels={reels}
+          isSpinning={isSpinning}
+          lastResult={lastResult}
+          reelWindow={reelWindow}
+          activeWinLines={activeWinLines}
+        />
 
         <View style={styles.spinZone}>
           <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />

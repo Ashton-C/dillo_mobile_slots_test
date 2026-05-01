@@ -39,6 +39,33 @@ export const SpinResult = z.object({
 });
 export type SpinResult = z.infer<typeof SpinResult>;
 
+export type WinLineId = 'MID' | 'TOP' | 'BOT' | 'DIAG_DOWN' | 'DIAG_UP';
+
+export interface WinLine {
+  id: WinLineId;
+  result: SpinResult;
+}
+
+// reelWindow[row][col] — row 0=top, row 1=mid, row 2=bot
+export type ReelWindow = [
+  [SlotSymbol, SlotSymbol, SlotSymbol],
+  [SlotSymbol, SlotSymbol, SlotSymbol],
+  [SlotSymbol, SlotSymbol, SlotSymbol],
+];
+
+export interface MultiSpinResult {
+  reelWindow: ReelWindow;
+  winLines: WinLine[];
+  creditsWon: number;
+  attacksWon: number;
+  raidsWon: number;
+  shieldsWon: number;
+  intrusionsWon: number;
+  extractionsWon: number;
+  isJackpot: boolean;
+  primaryResult: SpinResult;
+}
+
 // --- Weight Tables ---
 
 const BASE_WEIGHTS: Record<SlotSymbol, number> = {
@@ -94,6 +121,23 @@ const PAIR_PAYOUTS: Partial<Record<SlotSymbol, Partial<SpinResult>>> = {
   EXTRACTION:    { extractionsWon: 1, outcomeType: 'EXTRACTION' },
 };
 
+// --- Multiline Patterns ---
+
+// LINE_PATTERNS[id] = [rowForCol0, rowForCol1, rowForCol2]
+export const LINE_PATTERNS: Record<WinLineId, [number, number, number]> = {
+  MID:       [1, 1, 1],
+  TOP:       [0, 0, 0],
+  BOT:       [2, 2, 2],
+  DIAG_DOWN: [0, 1, 2],
+  DIAG_UP:   [2, 1, 0],
+};
+
+const ACTIVE_LINES: Record<1 | 3 | 5, WinLineId[]> = {
+  1: ['MID'],
+  3: ['MID', 'TOP', 'BOT'],
+  5: ['MID', 'TOP', 'BOT', 'DIAG_DOWN', 'DIAG_UP'],
+};
+
 // --- Core Engine ---
 
 export class SlotsEngine {
@@ -121,6 +165,54 @@ export class SlotsEngine {
     const reel1 = this.drawSymbol();
     const reel2 = this.drawSymbol();
     return this.evaluate([reel0, reel1, reel2]);
+  }
+
+  spinRows(numLines: 1 | 3 | 5): MultiSpinResult {
+    const col0 = [this.drawSymbol(), this.drawSymbol(), this.drawSymbol()] as [SlotSymbol, SlotSymbol, SlotSymbol];
+    const col1 = [this.drawSymbol(), this.drawSymbol(), this.drawSymbol()] as [SlotSymbol, SlotSymbol, SlotSymbol];
+    const col2 = [this.drawSymbol(), this.drawSymbol(), this.drawSymbol()] as [SlotSymbol, SlotSymbol, SlotSymbol];
+
+    const reelWindow: ReelWindow = [
+      [col0[0], col1[0], col2[0]],
+      [col0[1], col1[1], col2[1]],
+      [col0[2], col1[2], col2[2]],
+    ];
+
+    const activeLineIds = ACTIVE_LINES[numLines];
+    const winLines: WinLine[] = [];
+    let creditsWon = 0, attacksWon = 0, raidsWon = 0, shieldsWon = 0;
+    let intrusionsWon = 0, extractionsWon = 0, isJackpot = false;
+
+    for (const lineId of activeLineIds) {
+      const [r0, r1, r2] = LINE_PATTERNS[lineId];
+      const lineReels: [SlotSymbol, SlotSymbol, SlotSymbol] = [
+        reelWindow[r0][0], reelWindow[r1][1], reelWindow[r2][2],
+      ];
+      const lineResult = this.evaluate(lineReels);
+      if (lineResult.outcomeType !== 'NOTHING') {
+        winLines.push({ id: lineId, result: lineResult });
+        creditsWon     += lineResult.creditsWon;
+        attacksWon     += lineResult.attacksWon;
+        raidsWon       += lineResult.raidsWon;
+        shieldsWon     += lineResult.shieldsWon;
+        intrusionsWon  += lineResult.intrusionsWon;
+        extractionsWon += lineResult.extractionsWon;
+        if (lineResult.isJackpot) isJackpot = true;
+      }
+    }
+
+    return {
+      reelWindow,
+      winLines,
+      creditsWon,
+      attacksWon,
+      raidsWon,
+      shieldsWon,
+      intrusionsWon,
+      extractionsWon,
+      isJackpot,
+      primaryResult: this.evaluate(reelWindow[1]),
+    };
   }
 
   evaluate(reels: [SlotSymbol, SlotSymbol, SlotSymbol]): SpinResult {
