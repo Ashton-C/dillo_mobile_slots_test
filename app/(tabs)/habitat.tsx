@@ -189,7 +189,7 @@ function BuildingCard({
           <Text style={[styles.cardEffect, { color }]}>{BUILDING_EFFECT[type](level)}</Text>
           <Text style={[styles.levelDots, { color }]}>{levelDots}</Text>
         </View>
-      </View>  {/* end cardBody */}
+      </View>
 
       {isBuilding && totalBuildMs > 0 && (
         <View style={styles.progressTrack}>

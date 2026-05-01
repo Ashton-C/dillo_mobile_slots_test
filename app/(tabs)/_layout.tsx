@@ -59,6 +59,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="store"
+        options={{
+          title: 'Store',
+          tabBarIcon: ({ focused }) => <TabIcon label="STORE" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="dev"
         options={{
           title: 'Dev',

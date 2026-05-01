@@ -34,12 +34,30 @@ function buildReel(): MiniReel {
   return { symbols: shuffled, locked: false, index: 0 };
 }
 
-function evaluatePower(reels: MiniReel[], outpostLevel: number): number {
+interface PowerBreakdown {
+  base: number;
+  matchBonus: number;
+  outpostBonus: number;
+  variance: number;
+  total: number;
+}
+
+function evaluateAttackerPower(reels: MiniReel[], outpostLevel: number): PowerBreakdown {
   const values = reels.map((r) => r.symbols[r.index % r.symbols.length]);
   const unique = new Set(values).size;
-  const matchBonus = unique === 1 ? 30 : unique === 2 ? 15 : 0;
-  const base = Math.floor(Math.random() * 40) + 30; // 30–70
-  return base + matchBonus + outpostLevel * 10;
+  const matchBonus = unique === 1 ? 40 : unique === 2 ? 20 : 0;
+  const base = 50;
+  const outpostBonus = outpostLevel * 15;
+  const variance = Math.floor(Math.random() * 21) - 10; // ±10
+  return { base, matchBonus, outpostBonus, variance, total: base + matchBonus + outpostBonus + variance };
+}
+
+function evaluateDefenderPower(targetOutpostLevel: number): PowerBreakdown {
+  const base = 30;
+  const matchBonus = 0;
+  const outpostBonus = targetOutpostLevel * 15;
+  const variance = Math.floor(Math.random() * 31) - 15; // ±15
+  return { base, matchBonus, outpostBonus, variance, total: base + matchBonus + outpostBonus + variance };
 }
 
 interface Props {
@@ -50,12 +68,38 @@ interface Props {
   onResult: (won: boolean) => void;
 }
 
+interface PowerColumnProps {
+  title: string;
+  color: string;
+  pb: PowerBreakdown;
+  showMatch?: boolean;
+}
+
+function PowerColumn({ title, color, pb, showMatch }: PowerColumnProps) {
+  return (
+    <View style={styles.powerCol}>
+      <Text style={styles.powerTitle}>{title}</Text>
+      <Text style={[styles.powerTotal, { color }]}>{pb.total}</Text>
+      <Text style={styles.powerLine}>BASE  {pb.base}</Text>
+      {showMatch && pb.matchBonus > 0 && (
+        <Text style={[styles.powerLine, { color: Colors.warning }]}>MATCH  +{pb.matchBonus}</Text>
+      )}
+      {pb.outpostBonus > 0 && (
+        <Text style={styles.powerLine}>OUTPOST  +{pb.outpostBonus}</Text>
+      )}
+      <Text style={styles.powerLine}>RNG  {pb.variance >= 0 ? '+' : ''}{pb.variance}</Text>
+    </View>
+  );
+}
+
 export function CombatMiniGame({ visible, target, combatType, onClose, onResult }: Props) {
   const [reels, setReels] = useState<MiniReel[]>([buildReel(), buildReel(), buildReel()]);
   const [phase, setPhase] = useState<'SPINNING' | 'RESOLVING' | 'DONE'>('SPINNING');
   const [resultText, setResultText] = useState('');
   const [resultColor, setResultColor] = useState<string>(Colors.textPrimary);
-  const [powerValue, setPowerValue] = useState(0);
+  const [attackerPower, setAttackerPower] = useState<PowerBreakdown | null>(null);
+  const [defenderPower, setDefenderPower] = useState<PowerBreakdown | null>(null);
+  const [didWin, setDidWin] = useState(false);
   const timersRef = useRef<ReturnType<typeof setInterval>[]>([]);
   const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
@@ -68,6 +112,8 @@ export function CombatMiniGame({ visible, target, combatType, onClose, onResult 
     setReels(fresh);
     setPhase('SPINNING');
     setResultText('');
+    setAttackerPower(null);
+    setDefenderPower(null);
 
     // Start cycling each reel at its own speed
     const newTimers = fresh.map((_, i) => {
@@ -128,11 +174,12 @@ export function CombatMiniGame({ visible, target, combatType, onClose, onResult 
 
   function resolveWithReels(lockedReels: MiniReel[]) {
     setPhase('RESOLVING');
-    const power = evaluatePower(lockedReels, outpostLevel);
-    setPowerValue(power);
-
-    const defenderPower = (target?.outpostLevel ?? 1) * 10 + Math.floor(Math.random() * 50);
-    const won = power > defenderPower;
+    const aPower = evaluateAttackerPower(lockedReels, outpostLevel);
+    const dPower = evaluateDefenderPower(target?.outpostLevel ?? 1);
+    const won = aPower.total > dPower.total;
+    setAttackerPower(aPower);
+    setDefenderPower(dPower);
+    setDidWin(won);
 
     // Fire the combat request — Cloud Function resolves actual resource changes
     const uid = auth.currentUser?.uid;
@@ -141,20 +188,15 @@ export function CombatMiniGame({ visible, target, combatType, onClose, onResult 
         attackerUid: uid,
         defenderUid: target.uid,
         type: combatType,
-        attackerPower: power,
+        attackerPower: aPower.total,
       }).catch(console.error);
     }
 
     flashOpacity.value = withRepeat(withTiming(1, { duration: 80 }), 4, true);
 
     const label = combatType === 'INTRUSION' ? 'BREACH' : 'EXTRACTION';
-    if (won) {
-      setResultText(`${label} SUCCESSFUL  ·  POWER ${power}`);
-      setResultColor(Colors.success);
-    } else {
-      setResultText(`${label} REPELLED  ·  POWER ${power}`);
-      setResultColor(Colors.danger);
-    }
+    setResultText(won ? `${label} SUCCESSFUL` : `${label} REPELLED`);
+    setResultColor(won ? Colors.success : Colors.danger);
 
     Haptics.notificationAsync(
       won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error,
@@ -163,7 +205,7 @@ export function CombatMiniGame({ visible, target, combatType, onClose, onResult 
     setTimeout(() => {
       setPhase('DONE');
       onResult(won);
-    }, 1800);
+    }, 2400);
   }
 
   const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
@@ -225,6 +267,24 @@ export function CombatMiniGame({ visible, target, combatType, onClose, onResult 
           {/* Result text */}
           {resultText !== '' && (
             <Text style={[styles.resultText, { color: resultColor }]}>{resultText}</Text>
+          )}
+
+          {/* Power breakdown — visible during RESOLVING + DONE */}
+          {attackerPower && defenderPower && (
+            <View style={styles.powerBlock}>
+              <PowerColumn
+                title="YOUR POWER"
+                color={didWin ? Colors.success : Colors.textSecondary}
+                pb={attackerPower}
+                showMatch
+              />
+              <Text style={styles.vs}>VS</Text>
+              <PowerColumn
+                title="DEFENDER"
+                color={didWin ? Colors.textSecondary : Colors.danger}
+                pb={defenderPower}
+              />
+            </View>
           )}
 
           {phase === 'DONE' && (
@@ -328,6 +388,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
+  },
+  powerBlock: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  powerCol: {
+    flex: 1,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    gap: 2,
+  },
+  powerTitle: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  powerTotal: {
+    fontSize: Typography.sizes.xxl,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  powerLine: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    letterSpacing: 1,
+  },
+  vs: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    fontWeight: Typography.weights.bold,
+    paddingTop: Spacing.md,
   },
   closeButton: {
     marginHorizontal: Spacing.lg,

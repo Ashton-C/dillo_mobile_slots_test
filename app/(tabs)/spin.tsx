@@ -13,6 +13,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useGameStore } from '@/store/useGameStore';
+import { useHabitatStore } from '@/store/useHabitatStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { SpinButton } from '@/components/SpinButton';
 import { ReelDisplay } from '@/components/ReelDisplay';
@@ -20,7 +21,7 @@ import { ResourceBar } from '@/components/ResourceBar';
 import { RiftSelector } from '@/components/RiftSelector';
 import { ModifierPanel } from '@/components/ModifierPanel';
 import { JackpotBurst } from '@/components/JackpotBurst';
-import { SpinHistoryDrawer } from '@/components/SpinHistoryDrawer';
+import { LedgerDrawer } from '@/components/LedgerDrawer';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { SpinResult, TemporalRiftTier } from '@/services/SlotsEngine';
 
@@ -72,6 +73,8 @@ export default function SpinScreen() {
   } = useGameStore();
 
   const { displayName } = useAuthStore();
+  const generatorLevel = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
+  const overclockBonusPreview = generatorLevel * 50 + 200;
 
   const [burstVisible, setBurstVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
@@ -318,7 +321,7 @@ export default function SpinScreen() {
                   {overclockActive ? '⚡ OVERCLOCK  ACTIVE' : `⚡ OVERCLOCK  ${attacks} FUEL`}
                 </Text>
                 <Text style={styles.quickButtonSub}>
-                  {overclockActive ? 'Bonus lands on next spin' : '+CR bonus next spin'}
+                  {overclockActive ? `+${overclockBonusPreview} CR next spin` : `+${overclockBonusPreview} CR · 1 FUEL`}
                 </Text>
               </Pressable>
             )}
@@ -361,11 +364,11 @@ export default function SpinScreen() {
       </View>
       </Animated.View>{/* end shake wrapper */}
 
-      {/* Q3: Spin history drawer + tab */}
+      {/* Ledger drawer + tab */}
       <Pressable style={styles.historyTab} onPress={() => setHistoryVisible(true)}>
-        <Text style={styles.historyTabText}>HISTORY  ↑</Text>
+        <Text style={styles.historyTabText}>LEDGER  ↑</Text>
       </Pressable>
-      <SpinHistoryDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
+      <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
 
       <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
@@ -379,15 +382,16 @@ export default function SpinScreen() {
         <LegendRow left="● CR Small" right="+20 CR  /  +100 CR" />
         <LegendRow left="●● CR Medium" right="+100 CR  /  +500 CR" />
         <LegendRow left="★ CR Large" right="+400 CR  /  +2000 CR ★" color={Colors.credits} />
-        <LegendSection label="RIFT COSTS PER SPIN" />
-        <LegendRow left="Tier 0  —  free" />
-        <LegendRow left="Tier 1  —  50 CR" />
-        <LegendRow left="Tier 2  —  150 CR" />
-        <LegendRow left="Tier 3  —  400 CR" />
-        <LegendSection label="BUFFS" />
-        <LegendRow left="⚡ OVERCLOCK" right="1 FUEL → flat CR bonus" />
-        <LegendRow left="◈ BOOST" right="1 SIGNAL → cred weights ×1.5" />
-        <LegendNote text="Bonus = Generator level × 50 + 200 credits." />
+        <LegendSection label="RIFT — COST · WEIGHT DELTAS" />
+        <LegendRow left="T0 free" right="standard odds" />
+        <LegendRow left="T1 50 CR" right="+5 ●  +3 ●●  −4 EMPTY" color={Colors.success} />
+        <LegendRow left="T2 150 CR" right="+8 ●●  +5 ★  −5 EMPTY" color={Colors.success} />
+        <LegendRow left="T3 400 CR" right="+12 ★  +6 ●●  −10 ●" color={Colors.credits} />
+        <LegendSection label="SPIN ABILITIES" />
+        <LegendRow left="⚡ OVERCLOCK" right={`+${overclockBonusPreview} CR · 1 FUEL`} color={Colors.attack} />
+        <LegendRow left="" right={`= GEN LVL ${generatorLevel} × 50 + 200`} />
+        <LegendRow left="◈ BOOST" right="1 SIGNAL · ×1.5 CR weights" color={Colors.raid} />
+        <LegendNote text="Multipliers stack: base × DRONE × ANOMALY + OVERCLOCK − RIFT cost. See LEDGER for the receipt." />
       </LegendCard>
     </SafeAreaView>
   );

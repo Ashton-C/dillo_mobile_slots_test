@@ -50,6 +50,14 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
   const threatColor = threatDiff >= 2 ? Colors.success : threatDiff >= 0 ? Colors.warning : Colors.danger;
   const threatLabel = threatDiff >= 2 ? 'WEAK' : threatDiff >= 0 ? 'EVEN' : 'STRONG';
 
+  // Power estimate ranges (mirrors CombatMiniGame math)
+  // Attacker: 50 base + 0/20/40 match + outpost*15 + ±10 variance
+  // Defender: 30 base + targetOutpost*15 + ±15 variance
+  const youMin = 50 + 0  + outpostLevel * 15 - 10;
+  const youMax = 50 + 40 + outpostLevel * 15 + 10;
+  const themMin = 30 + target.outpostLevel * 15 - 15;
+  const themMax = 30 + target.outpostLevel * 15 + 15;
+
   return (
     <View style={[styles.targetCard, dimmed && styles.targetCardDimmed]}>
       <LinearGradient
@@ -74,6 +82,11 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
           </View>
           <Text style={styles.targetMeta}>
             OUTPOST LVL {target.outpostLevel}  ·  PILOT LVL {target.level}
+          </Text>
+          <Text style={styles.powerPreview}>
+            <Text style={{ color: Colors.success }}>YOU {youMin}–{youMax}</Text>
+            <Text style={{ color: Colors.textMuted }}>  vs  </Text>
+            <Text style={{ color: Colors.danger }}>THEM {themMin}–{themMax}</Text>
           </Text>
         </View>
       </View>
@@ -300,6 +313,11 @@ export default function RadarScreen() {
         <LegendRow left="" right="Winner steals credits from loser" />
         <LegendRow left="EXTRACTION" right="Spend 1 Beam token" color={Colors.accent} />
         <LegendRow left="" right="Higher loot — harder to win" />
+        <LegendSection label="POWER MATH" />
+        <LegendRow left="YOUR" right="50 base + match + LVL × 15 ± 10" color={Colors.success} />
+        <LegendRow left="" right="match: triple +40 · pair +20" />
+        <LegendRow left="THEIR" right="30 base + LVL × 15 ± 15" color={Colors.danger} />
+        <LegendRow left="OUTCOME" right="Higher TOTAL wins" />
         <LegendSection label="THREAT RATING" />
         <LegendRow left="WEAK   — your outpost leads by 2+" color={Colors.success} />
         <LegendRow left="EVEN   — within 1 outpost level" color={Colors.warning} />
@@ -307,7 +325,7 @@ export default function RadarScreen() {
         <LegendSection label="PASSIVE DEFENSES" />
         <LegendRow left="VAULT" right="Absorbs % of credits lost" />
         <LegendRow left="TURRET" right="Auto-blocks N attacks/day" />
-        <LegendNote text="Combat is resolved server-side. Results appear in your event log." />
+        <LegendNote text="Combat is resolved server-side. Local POWER preview is the math the server uses; results land in your LEDGER." />
       </LegendCard>
     </SafeAreaView>
   );
@@ -483,6 +501,12 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
     letterSpacing: 1,
+  },
+  powerPreview: {
+    fontSize: 10,
+    letterSpacing: 1,
+    fontWeight: Typography.weights.bold,
+    marginTop: 2,
   },
   cardActions: {
     flexDirection: 'row',

@@ -1,10 +1,31 @@
 import { create } from 'zustand';
-import { SpinResult, slotsEngine, TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
+import { SpinResult, SlotSymbol, SpinOutcomeType, slotsEngine, TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
 import { useDroneStore } from '@/store/useDroneStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
 import { auth } from '@/lib/firebase';
+
+export interface SpinHistoryEntry {
+  reels: [SlotSymbol, SlotSymbol, SlotSymbol];
+  outcomeType: SpinOutcomeType;
+  isJackpot: boolean;
+  baseCreditsWon: number;
+  finalCreditsWon: number;
+  attacksWon: number;
+  raidsWon: number;
+  shieldsWon: number;
+  intrusionsWon: number;
+  extractionsWon: number;
+  riftTier: number;
+  riftCost: number;
+  overclockUsed: boolean;
+  overclockBonus: number;
+  signalBoostUsed: boolean;
+  droneMultiplier: number;
+  anomalyMultiplier: number;
+  timestamp: number;
+}
 
 const MAX_SPINS = 50;
 const SPIN_REFILL_MS = 5 * 60_000; // 1 spin every 5 minutes
@@ -30,7 +51,7 @@ interface SpinState {
   msUntilFull: number;
   overclockActive: boolean;
   signalBoostActive: boolean;
-  spinHistory: SpinResult[];
+  spinHistory: SpinHistoryEntry[];
   sessionSpins: number;
   sessionCreditsEarned: number;
 }
@@ -49,6 +70,7 @@ interface GameState extends Resources, SpinState {
   activateOverclock: () => boolean;
   activateSignalBoost: () => boolean;
   subtractResources: (costs: Partial<Pick<Resources, 'credits' | 'attacks' | 'raids' | 'shields' | 'intrusions' | 'extractions'>>) => boolean;
+  grantResources: (rewards: { credits?: number; fuel?: number; boost?: number; shields?: number; spinRefill?: boolean }) => void;
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
   debugSetResources: (delta: Partial<Resources>) => void;
@@ -106,8 +128,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     useDroneStore.getState().tickSpins();
     const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
     const overclockBonus = overclockActive ? genLevel * 50 + 200 : 0;
+    const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
     const boostedCreditsWon = Math.floor(
-      result.creditsWon * droneEffects.creditMultiplier * (anomalyService.getDefinition()?.creditMultiplier ?? 1),
+      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier,
     ) + overclockBonus;
 
     let nextState: Partial<Resources> = {};
@@ -135,8 +158,27 @@ export const useGameStore = create<GameState>((set, get) => ({
         level: leveledUp ? state.level + 1 : state.level,
       };
 
-      const historyEntry: SpinResult = { ...result, creditsWon: boostedCreditsWon };
-      const newHistory = [historyEntry, ...state.spinHistory].slice(0, 10);
+      const historyEntry: SpinHistoryEntry = {
+        reels: result.reels,
+        outcomeType: result.outcomeType,
+        isJackpot: result.isJackpot,
+        baseCreditsWon: result.creditsWon,
+        finalCreditsWon: boostedCreditsWon,
+        attacksWon: result.attacksWon,
+        raidsWon: result.raidsWon,
+        shieldsWon: result.shieldsWon,
+        intrusionsWon: result.intrusionsWon,
+        extractionsWon: result.extractionsWon,
+        riftTier,
+        riftCost,
+        overclockUsed: overclockActive,
+        overclockBonus,
+        signalBoostUsed: signalBoostActive,
+        droneMultiplier: droneEffects.creditMultiplier,
+        anomalyMultiplier,
+        timestamp: Date.now(),
+      };
+      const newHistory = [historyEntry, ...state.spinHistory].slice(0, 25);
 
       return {
         ...nextState,
@@ -263,6 +305,21 @@ export const useGameStore = create<GameState>((set, get) => ({
   refillSpins() {
     const next = { spinsRemaining: MAX_SPINS, spinRefillStart: 0 };
     set(next);
+    persistResources(next);
+  },
+
+  grantResources(rewards) {
+    const s = get();
+    const next: Partial<Resources> = {};
+    if (rewards.credits) next.credits = s.credits + rewards.credits;
+    if (rewards.fuel)    next.attacks = Math.min(MAX_SPINS, s.attacks + rewards.fuel);
+    if (rewards.boost)   next.raids   = Math.min(MAX_SPINS, s.raids   + rewards.boost);
+    if (rewards.shields) next.shields = Math.min(MAX_SPINS, s.shields + rewards.shields);
+    if (rewards.spinRefill) {
+      next.spinsRemaining  = MAX_SPINS;
+      next.spinRefillStart = 0;
+    }
+    set((state) => ({ ...state, ...next }));
     persistResources(next);
   },
 
