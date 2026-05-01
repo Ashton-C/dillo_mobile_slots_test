@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -12,7 +13,97 @@ import { DEBUG_PLAYERS, loadActiveDebugUids } from '@/constants/debugPlayers';
 import { CombatMiniGame } from '@/components/CombatMiniGame';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
+const RECENT_TARGETS_KEY = 'recentRadarTargets';
+type StoredTarget = Pick<PlayerIndexEntry, 'uid' | 'displayName' | 'avatarColor' | 'outpostLevel' | 'level'>;
+
+async function loadRecentTargets(): Promise<PlayerIndexEntry[]> {
+  try {
+    const raw = await AsyncStorage.getItem(RECENT_TARGETS_KEY);
+    if (!raw) return [];
+    const stored = JSON.parse(raw) as StoredTarget[];
+    return stored.map((t) => ({ ...t, updatedAt: null }));
+  } catch { return []; }
+}
+
+async function saveRecentTargets(fresh: PlayerIndexEntry[]): Promise<void> {
+  try {
+    const stored: StoredTarget[] = fresh.slice(0, 3).map(({ uid, displayName, avatarColor, outpostLevel, level }) => ({
+      uid, displayName, avatarColor, outpostLevel, level,
+    }));
+    await AsyncStorage.setItem(RECENT_TARGETS_KEY, JSON.stringify(stored));
+  } catch { /* non-critical */ }
+}
+
 type CombatType = 'INTRUSION' | 'EXTRACTION';
+
+interface TargetCardProps {
+  target: PlayerIndexEntry;
+  outpostLevel: number;
+  intrusions: number;
+  extractions: number;
+  onAttack: (target: PlayerIndexEntry, type: CombatType) => void;
+  dimmed?: boolean;
+}
+
+function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, dimmed }: TargetCardProps) {
+  const threatDiff = outpostLevel - target.outpostLevel;
+  const threatColor = threatDiff >= 2 ? Colors.success : threatDiff >= 0 ? Colors.warning : Colors.danger;
+  const threatLabel = threatDiff >= 2 ? 'WEAK' : threatDiff >= 0 ? 'EVEN' : 'STRONG';
+
+  return (
+    <View style={[styles.targetCard, dimmed && styles.targetCardDimmed]}>
+      <LinearGradient
+        colors={[Colors.danger + '11', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.cardStripe}
+      />
+      <View style={styles.cardBody}>
+        <View style={[styles.avatarBadge, { backgroundColor: target.avatarColor + '22', borderColor: target.avatarColor }]}>
+          <Text style={[styles.avatarText, { color: target.avatarColor }]}>
+            {target.displayName.slice(0, 2).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.cardInfo}>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.targetName}>{target.displayName}</Text>
+            <View style={[styles.threatBadge, { borderColor: threatColor }]}>
+              <Text style={[styles.threatText, { color: threatColor }]}>{threatLabel}</Text>
+            </View>
+            {dimmed && <Text style={styles.recentBadge}>RECENT</Text>}
+          </View>
+          <Text style={styles.targetMeta}>
+            OUTPOST LVL {target.outpostLevel}  ·  PILOT LVL {target.level}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.cardActions}>
+        <Pressable
+          onPress={() => onAttack(target, 'INTRUSION')}
+          disabled={intrusions <= 0}
+          style={[
+            styles.actionButton,
+            intrusions <= 0 ? styles.actionDisabled : { backgroundColor: Colors.danger + '22', borderColor: Colors.danger },
+          ]}
+        >
+          <Text style={[styles.actionText, { color: intrusions <= 0 ? Colors.textMuted : Colors.danger }]}>⚔  BREACH</Text>
+          <Text style={[styles.actionCost,  { color: intrusions <= 0 ? Colors.textMuted : Colors.danger }]}>1 INTRUSION</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onAttack(target, 'EXTRACTION')}
+          disabled={extractions <= 0}
+          style={[
+            styles.actionButton,
+            extractions <= 0 ? styles.actionDisabled : { backgroundColor: Colors.accent + '22', borderColor: Colors.accent },
+          ]}
+        >
+          <Text style={[styles.actionText, { color: extractions <= 0 ? Colors.textMuted : Colors.accent }]}>⛏  EXTRACT</Text>
+          <Text style={[styles.actionCost,  { color: extractions <= 0 ? Colors.textMuted : Colors.accent }]}>1 EXTRACTION</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export default function RadarScreen() {
   const user = useAuthStore((s) => s.user);
@@ -20,6 +111,7 @@ export default function RadarScreen() {
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
 
   const [targets, setTargets] = useState<PlayerIndexEntry[]>([]);
+  const [recentTargets, setRecentTargets] = useState<PlayerIndexEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<PlayerIndexEntry | null>(null);
   const [combatType, setCombatType] = useState<CombatType>('INTRUSION');
@@ -38,6 +130,15 @@ export default function RadarScreen() {
       const debugEntries = DEBUG_PLAYERS.filter((p) => activeDebugUids.includes(p.uid));
       setTargets([...debugEntries, ...found]);
       setScanCount((n) => n + 1);
+      // Persist up to 3 live (non-debug) targets as recent
+      if (found.length > 0) {
+        const merged = [
+          ...found,
+          ...recentTargets.filter((r) => !found.some((f) => f.uid === r.uid)),
+        ].slice(0, 3);
+        setRecentTargets(merged);
+        saveRecentTargets(merged);
+      }
     } catch (e) {
       console.error('Radar scan failed:', e);
     } finally {
@@ -46,6 +147,7 @@ export default function RadarScreen() {
   }
 
   useEffect(() => {
+    loadRecentTargets().then(setRecentTargets);
     scan();
   }, []);
 
@@ -110,84 +212,64 @@ export default function RadarScreen() {
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {targets.length === 0 && !loading && (
+        {/* Q4: Recent targets */}
+        {recentTargets.length > 0 && targets.length === 0 && !loading && (
+          <>
+            <Text style={styles.sectionHeader}>RECENT</Text>
+            {recentTargets.map((target) => (
+              <TargetCard
+                key={`recent-${target.uid}`}
+                target={target}
+                outpostLevel={outpostLevel}
+                intrusions={intrusions}
+                extractions={extractions}
+                onAttack={launchAttack}
+                dimmed
+              />
+            ))}
+            <View style={styles.divider} />
+          </>
+        )}
+
+        {targets.length === 0 && !loading && recentTargets.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>NO SIGNALS DETECTED</Text>
             <Text style={styles.emptyHint}>Tap SCAN to sweep nearby space</Text>
           </View>
         )}
 
-        {targets.map((target) => {
-          const threatDiff = outpostLevel - target.outpostLevel;
-          const threatColor = threatDiff >= 2 ? Colors.success : threatDiff >= 0 ? Colors.warning : Colors.danger;
-          const threatLabel = threatDiff >= 2 ? 'WEAK' : threatDiff >= 0 ? 'EVEN' : 'STRONG';
+        {targets.length > 0 && (
+          <>
+            {recentTargets.length > 0 && (
+              <>
+                <Text style={styles.sectionHeader}>RECENT</Text>
+                {recentTargets.map((target) => (
+                  <TargetCard
+                    key={`recent-${target.uid}`}
+                    target={target}
+                    outpostLevel={outpostLevel}
+                    intrusions={intrusions}
+                    extractions={extractions}
+                    onAttack={launchAttack}
+                    dimmed
+                  />
+                ))}
+                <Text style={styles.sectionHeader}>LIVE SCAN</Text>
+              </>
+            )}
+          </>
+        )}
 
-          return (
-            <View key={target.uid} style={styles.targetCard}>
-              <LinearGradient
-                colors={[Colors.danger + '11', 'transparent']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.cardStripe}
-              />
-
-              <View style={styles.cardBody}>
-                {/* Avatar */}
-                <View style={[styles.avatarBadge, { backgroundColor: target.avatarColor + '22', borderColor: target.avatarColor }]}>
-                  <Text style={[styles.avatarText, { color: target.avatarColor }]}>
-                    {target.displayName.slice(0, 2).toUpperCase()}
-                  </Text>
-                </View>
-
-                <View style={styles.cardInfo}>
-                  <View style={styles.cardTitleRow}>
-                    <Text style={styles.targetName}>{target.displayName}</Text>
-                    <View style={[styles.threatBadge, { borderColor: threatColor }]}>
-                      <Text style={[styles.threatText, { color: threatColor }]}>{threatLabel}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.targetMeta}>
-                    OUTPOST LVL {target.outpostLevel}  ·  PILOT LVL {target.level}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.cardActions}>
-                <Pressable
-                  onPress={() => launchAttack(target, 'INTRUSION')}
-                  disabled={intrusions <= 0}
-                  style={[
-                    styles.actionButton,
-                    intrusions <= 0 ? styles.actionDisabled : { backgroundColor: Colors.danger + '22', borderColor: Colors.danger },
-                  ]}
-                >
-                  <Text style={[styles.actionText, { color: intrusions <= 0 ? Colors.textMuted : Colors.danger }]}>
-                    ⚔  BREACH
-                  </Text>
-                  <Text style={[styles.actionCost, { color: intrusions <= 0 ? Colors.textMuted : Colors.danger }]}>
-                    1 INTRUSION
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => launchAttack(target, 'EXTRACTION')}
-                  disabled={extractions <= 0}
-                  style={[
-                    styles.actionButton,
-                    extractions <= 0 ? styles.actionDisabled : { backgroundColor: Colors.accent + '22', borderColor: Colors.accent },
-                  ]}
-                >
-                  <Text style={[styles.actionText, { color: extractions <= 0 ? Colors.textMuted : Colors.accent }]}>
-                    ⛏  EXTRACT
-                  </Text>
-                  <Text style={[styles.actionCost, { color: extractions <= 0 ? Colors.textMuted : Colors.accent }]}>
-                    1 EXTRACTION
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          );
-        })}
+        {targets.map((target) => (
+          <TargetCard
+            key={target.uid}
+            target={target}
+            outpostLevel={outpostLevel}
+            intrusions={intrusions}
+            extractions={extractions}
+            onAttack={launchAttack}
+          />
+        ))}
 
         {targets.length > 0 && (
           <Pressable onPress={scan} disabled={loading} style={styles.rescanRow}>
@@ -301,6 +383,31 @@ const styles = StyleSheet.create({
   list: {
     padding: Spacing.md,
     gap: Spacing.sm,
+  },
+  sectionHeader: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 3,
+    marginTop: Spacing.xs,
+    marginBottom: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: Spacing.xs,
+  },
+  targetCardDimmed: {
+    opacity: 0.65,
+  },
+  recentBadge: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
   },
   empty: {
     alignItems: 'center',

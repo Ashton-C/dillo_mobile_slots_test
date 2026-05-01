@@ -20,6 +20,7 @@ import { ResourceBar } from '@/components/ResourceBar';
 import { RiftSelector } from '@/components/RiftSelector';
 import { ModifierPanel } from '@/components/ModifierPanel';
 import { JackpotBurst } from '@/components/JackpotBurst';
+import { SpinHistoryDrawer } from '@/components/SpinHistoryDrawer';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { SpinResult, TemporalRiftTier } from '@/services/SlotsEngine';
 
@@ -74,6 +75,7 @@ export default function SpinScreen() {
 
   const [burstVisible, setBurstVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const burstTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const flashOpacity = useSharedValue(0);
@@ -359,6 +361,12 @@ export default function SpinScreen() {
       </View>
       </Animated.View>{/* end shake wrapper */}
 
+      {/* Q3: Spin history drawer + tab */}
+      <Pressable style={styles.historyTab} onPress={() => setHistoryVisible(true)}>
+        <Text style={styles.historyTabText}>HISTORY  ↑</Text>
+      </Pressable>
+      <SpinHistoryDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
+
       <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
@@ -570,6 +578,27 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
     marginLeft: Spacing.xs,
+  },
+  historyTab: {
+    position: 'absolute',
+    bottom: 0,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    backgroundColor: Colors.surfaceElevated,
+    borderTopLeftRadius: BorderRadius.sm,
+    borderTopRightRadius: BorderRadius.sm,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Colors.border,
+    zIndex: 40,
+  },
+  historyTabText: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    fontWeight: Typography.weights.bold,
   },
   scannerBeam: {
     position: 'absolute',

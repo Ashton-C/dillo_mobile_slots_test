@@ -30,6 +30,9 @@ interface SpinState {
   msUntilFull: number;
   overclockActive: boolean;
   signalBoostActive: boolean;
+  spinHistory: SpinResult[];
+  sessionSpins: number;
+  sessionCreditsEarned: number;
 }
 
 interface GameState extends Resources, SpinState {
@@ -81,6 +84,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   msUntilFull: 0,
   overclockActive: false,
   signalBoostActive: false,
+  spinHistory: [],
+  sessionSpins: 0,
+  sessionCreditsEarned: 0,
 
   spin() {
     const { spinsRemaining, riftTier, credits, spinRefillStart, overclockActive, signalBoostActive } = get();
@@ -129,7 +135,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         level: leveledUp ? state.level + 1 : state.level,
       };
 
-      return { ...nextState, lastResult: result, isSpinning: false };
+      const historyEntry: SpinResult = { ...result, creditsWon: boostedCreditsWon };
+      const newHistory = [historyEntry, ...state.spinHistory].slice(0, 10);
+
+      return {
+        ...nextState,
+        lastResult: result,
+        isSpinning: false,
+        spinHistory: newHistory,
+        sessionSpins: state.sessionSpins + 1,
+        sessionCreditsEarned: state.sessionCreditsEarned + boostedCreditsWon,
+      };
     });
 
     persistResources(nextState);
