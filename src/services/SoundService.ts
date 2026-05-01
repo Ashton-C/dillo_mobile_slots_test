@@ -1,4 +1,3 @@
-import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type SoundKey =
@@ -38,12 +37,25 @@ const ASSET_MAP: Record<SoundKey, number | null> = {
 const MUTE_STORAGE_KEY = 'settings:muted';
 
 class SoundService {
-  private sounds: Map<SoundKey, Audio.Sound> = new Map();
+  // Using unknown here because expo-av is loaded lazily; typed internally via cast
+  private sounds: Map<SoundKey, unknown> = new Map();
   private muted = false;
+  private avLoaded = false;
 
   async preload(): Promise<void> {
     this.muted = (await AsyncStorage.getItem(MUTE_STORAGE_KEY)) === 'true';
-    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+
+    let Audio: typeof import('expo-av').Audio;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const av = require('expo-av') as typeof import('expo-av');
+      Audio = av.Audio;
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+      this.avLoaded = true;
+    } catch {
+      // expo-av native module not available — stay silent
+      return;
+    }
 
     for (const [key, asset] of Object.entries(ASSET_MAP) as [SoundKey, number | null][]) {
       if (asset === null) continue;
@@ -57,8 +69,8 @@ class SoundService {
   }
 
   async play(key: SoundKey, volume = 1.0): Promise<void> {
-    if (this.muted) return;
-    const sound = this.sounds.get(key);
+    if (this.muted || !this.avLoaded) return;
+    const sound = this.sounds.get(key) as { setVolumeAsync: (v: number) => Promise<void>; replayAsync: () => Promise<void> } | undefined;
     if (!sound) return;
     try {
       await sound.setVolumeAsync(volume);
@@ -88,13 +100,6 @@ class SoundService {
 
   getMuted(): boolean {
     return this.muted;
-  }
-
-  async unloadAll(): Promise<void> {
-    for (const sound of this.sounds.values()) {
-      try { await sound.unloadAsync(); } catch { /* ignore */ }
-    }
-    this.sounds.clear();
   }
 }
 
