@@ -10,6 +10,8 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
+import { BUTTON_SKIN_TOKENS } from '@/services/CosmeticsService';
+import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { Colors, Typography, BorderRadius } from '@/constants/theme';
 
 interface Props {
@@ -19,6 +21,9 @@ interface Props {
 }
 
 export function SpinButton({ onPress, disabled, isSpinning }: Props) {
+  const activeSkinId = useCosmeticsStore((s) => s.active['SPIN_BUTTON'] ?? 'btn_default');
+  const skin = BUTTON_SKIN_TOKENS[activeSkinId] ?? BUTTON_SKIN_TOKENS.btn_default;
+
   const scale = useSharedValue(1);
   const pulseScale = useSharedValue(1);
   const pulseOpacity = useSharedValue(0);
@@ -61,13 +66,13 @@ export function SpinButton({ onPress, disabled, isSpinning }: Props) {
   return (
     <View style={styles.wrapper}>
       {/* Pulsing glow ring */}
-      <Animated.View style={[styles.glowRing, pulseStyle]} />
+      <Animated.View style={[styles.glowRing, { backgroundColor: skin.glowColor + '55' }, pulseStyle]} />
       {/* Button */}
       <Animated.View style={[styles.buttonContainer, buttonStyle]}>
         <Pressable
           onPress={handlePress}
           disabled={disabled || isSpinning}
-          style={[styles.button, (disabled || isSpinning) && styles.buttonDisabled]}
+          style={[styles.button, { backgroundColor: skin.color, shadowColor: skin.glowColor }, (disabled || isSpinning) && { backgroundColor: skin.dimColor }]}
         >
           {isSpinning ? (
             <ActivityIndicator color={Colors.textPrimary} size="small" />

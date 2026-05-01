@@ -11,19 +11,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useEffect, useMemo, useRef } from 'react';
 import { SlotSymbol, SpinResult, ReelWindow, WinLine, LINE_PATTERNS } from '@/services/SlotsEngine';
+import {
+  SYMBOL_PACK_GLYPHS,
+  REEL_THEME_TOKENS,
+  ReelThemeTokens,
+} from '@/services/CosmeticsService';
+import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { Colors, BorderRadius, Typography } from '@/constants/theme';
 
-const SYMBOL_GLYPHS: Record<SlotSymbol, string> = {
-  CREDIT_SMALL:  '◈',
-  CREDIT_MEDIUM: '◈◈',
-  CREDIT_LARGE:  '◈◈◈',
-  ATTACK:        '⚡',
-  RAID:          '▲▲',
-  SHIELD:        '◉',
-  INTRUSION:     '⚔',
-  EXTRACTION:    '⛏',
-  EMPTY:         '·',
-};
 
 const SYMBOL_COLORS: Record<SlotSymbol, string> = {
   CREDIT_SMALL:  Colors.credits,
@@ -45,9 +40,11 @@ interface ReelProps {
   highlightColor?: string | null;
   cellHeight?: number;
   symbolSize?: number;
+  glyphs: Record<SlotSymbol, string>;
+  cellBg: string;
 }
 
-function Reel({ symbol, isSpinning, isWinning, delayMs = 0, highlightColor, cellHeight = 100, symbolSize }: ReelProps) {
+function Reel({ symbol, isSpinning, isWinning, delayMs = 0, highlightColor, cellHeight = 100, symbolSize, glyphs, cellBg }: ReelProps) {
   const opacity = useSharedValue(1);
   const translateY = useSharedValue(0);
   const glowOp = useSharedValue(0);
@@ -87,13 +84,13 @@ function Reel({ symbol, isSpinning, isWinning, delayMs = 0, highlightColor, cell
   const fontSize = symbolSize ?? (cellHeight >= 90 ? Typography.sizes.hero : Typography.sizes.xl);
 
   return (
-    <View style={[styles.reelCell, { height: cellHeight }]}>
+    <View style={[styles.reelCell, { height: cellHeight, backgroundColor: cellBg }]}>
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: glowColor + '28' }, glowStyle]}
       />
       <Animated.View style={animatedStyle}>
         <Text style={[styles.symbol, { color: symbolColor, fontSize, lineHeight: fontSize + 8 }]}>
-          {SYMBOL_GLYPHS[symbol]}
+          {glyphs[symbol]}
         </Text>
       </Animated.View>
     </View>
@@ -125,6 +122,11 @@ function winLineColor(wl: WinLine): string {
 }
 
 export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeWinLines }: Props) {
+  const activeThemeId  = useCosmeticsStore((s) => s.active['REEL_THEME']  ?? 'theme_standard');
+  const activeSymbolId = useCosmeticsStore((s) => s.active['SYMBOL_PACK'] ?? 'sym_default');
+  const theme: ReelThemeTokens = REEL_THEME_TOKENS[activeThemeId] ?? REEL_THEME_TOKENS.theme_standard;
+  const glyphs = SYMBOL_PACK_GLYPHS[activeSymbolId] ?? SYMBOL_PACK_GLYPHS.sym_default;
+
   const trackScale = useSharedValue(1);
   const prevSpinningRef = useRef(isSpinning);
 
@@ -198,14 +200,14 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
 
     return (
       <View style={styles.container}>
-        <Animated.View style={[styles.track, styles.multiTrack, trackScaleStyle]}>
+        <Animated.View style={[styles.track, styles.multiTrack, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
           {([0, 1, 2] as const).map((rowIdx) => (
             <View key={rowIdx}>
-              {rowIdx > 0 && <View style={styles.hDivider} />}
-              <View style={[styles.multiRow, rowIdx === 1 && styles.multiRowMid]}>
+              {rowIdx > 0 && <View style={[styles.hDivider, { backgroundColor: theme.borderColor + '66' }]} />}
+              <View style={[styles.multiRow, rowIdx === 1 && { backgroundColor: theme.midRowBg }]}>
                 {([0, 1, 2] as const).map((col) => (
                   <View key={col} style={styles.multiCellWrap}>
-                    {col > 0 && <View style={styles.divider} />}
+                    {col > 0 && <View style={[styles.divider, { backgroundColor: theme.borderColor + '66' }]} />}
                     <Reel
                       symbol={reelWindow[rowIdx][col]}
                       isSpinning={isSpinning}
@@ -214,6 +216,8 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
                       delayMs={col * 60 + rowIdx * 20}
                       cellHeight={CELL_H}
                       symbolSize={Typography.sizes.xl}
+                      glyphs={glyphs}
+                      cellBg={theme.cellBg}
                     />
                   </View>
                 ))}
@@ -233,12 +237,12 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
   // --- Single-row rendering (original) ---
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.track, trackScaleStyle]}>
-        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} delayMs={0} />
-        <View style={styles.divider} />
-        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} delayMs={80} />
-        <View style={styles.divider} />
-        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} delayMs={160} />
+      <Animated.View style={[styles.track, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
+        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} delayMs={0}   glyphs={glyphs} cellBg={theme.cellBg} />
+        <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
+        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} delayMs={80}  glyphs={glyphs} cellBg={theme.cellBg} />
+        <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
+        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} delayMs={160} glyphs={glyphs} cellBg={theme.cellBg} />
       </Animated.View>
       {winLabel !== '' && !isSpinning && (
         <View style={[styles.winBadge, { backgroundColor: winColor }]}>

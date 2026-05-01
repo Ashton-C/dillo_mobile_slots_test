@@ -16,6 +16,8 @@ import Animated, {
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useCosmeticsStore } from '@/store/useCosmeticsStore';
+import { BACKGROUND_TOKENS } from '@/services/CosmeticsService';
 import { SpinButton } from '@/components/SpinButton';
 import { ReelDisplay } from '@/components/ReelDisplay';
 import { ResourceBar } from '@/components/ResourceBar';
@@ -76,6 +78,12 @@ export default function SpinScreen() {
   const { displayName } = useAuthStore();
   const generatorLevel = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
   const overclockBonusPreview = generatorLevel * 50 + 200;
+
+  const activeBgId = useCosmeticsStore((s) => s.active['BACKGROUND'] ?? 'bg_default');
+  const bgTokens   = BACKGROUND_TOKENS[activeBgId] ?? BACKGROUND_TOKENS.bg_default;
+  const { load: loadCosmetics } = useCosmeticsStore();
+
+  useEffect(() => { loadCosmetics(); }, []);
 
   const [burstVisible, setBurstVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
@@ -257,21 +265,19 @@ export default function SpinScreen() {
       {/* Everything below shakes on jackpot */}
       <Animated.View style={[{ flex: 1 }, shakeStyle]}>
 
-      {/* Gradient header */}
+      {/* Gradient header — color driven by active background cosmetic */}
       <LinearGradient
-        colors={[Colors.gradientStart + '55', Colors.gradientMid + '33', Colors.background]}
+        colors={bgTokens.gradientColors as [string, string, string]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
       >
-        {displayName && (
-          <Text style={styles.pilotBadge}>◎ {displayName}</Text>
-        )}
         <ResourceBar
           credits={credits}
           attacks={attacks}
           raids={raids}
           shields={shields}
           spinsRemaining={spinsRemaining}
+          displayName={displayName ?? undefined}
           style={styles.resourceBarTransparent}
         />
       </LinearGradient>
