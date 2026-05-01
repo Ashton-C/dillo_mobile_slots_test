@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, Pressable, Dimensions, ScrollView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -94,6 +94,7 @@ export default function SpinScreen() {
   const bgTokens   = BACKGROUND_TOKENS[activeBgId] ?? BACKGROUND_TOKENS.bg_default;
   const { load: loadCosmetics } = useCosmeticsStore();
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => { loadCosmetics(); }, []);
 
@@ -325,7 +326,12 @@ export default function SpinScreen() {
 
       <ModifierPanel />
 
-      <View style={[styles.content, { paddingBottom: tabBarHeight }]}>
+      <ScrollView
+        style={styles.contentScroll}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Outcome banner + triple badge */}
         <View style={styles.outcomeArea}>
           <Animated.View pointerEvents="none" style={[styles.tripleBadgeWrap, tripleBadgeStyle]}>
@@ -431,7 +437,7 @@ export default function SpinScreen() {
           availableCredits={credits}
           onSelect={(tier: TemporalRiftTier) => setRiftTier(tier)}
         />
-      </View>
+      </ScrollView>
       </Animated.View>{/* end shake wrapper */}
 
       {/* Ledger drawer + tab */}
@@ -441,7 +447,7 @@ export default function SpinScreen() {
       <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
 
       <Pressable
-        style={[styles.legendBtn, { right: Spacing.md + 72 }]}
+        style={[styles.legendBtn, { right: Spacing.md + 72, top: insets.top + 6 }]}
         onPress={() => setOddsVisible(true)}
         hitSlop={12}
       >
@@ -449,7 +455,7 @@ export default function SpinScreen() {
       </Pressable>
 
       <Pressable
-        style={[styles.legendBtn, { right: Spacing.md + 36 }]}
+        style={[styles.legendBtn, { right: Spacing.md + 36, top: insets.top + 6 }]}
         onPress={() => {
           const next = !muted;
           setMuted(next);
@@ -460,7 +466,7 @@ export default function SpinScreen() {
         <Text style={styles.legendBtnText}>{muted ? 'M' : 'S'}</Text>
       </Pressable>
 
-      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
 
@@ -534,7 +540,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border + '55',
   },
 
-  content: { flex: 1, paddingTop: Spacing.sm, gap: Spacing.md },
+  contentScroll: { flex: 1 },
+  content: { paddingTop: Spacing.sm, gap: Spacing.md },
 
   outcomeArea: {
     alignItems: 'center',
@@ -739,7 +746,7 @@ const styles = StyleSheet.create({
   },
   legendBtn: {
     position: 'absolute',
-    top: 14,
+    top: 6,
     right: Spacing.md,
     width: 26,
     height: 26,

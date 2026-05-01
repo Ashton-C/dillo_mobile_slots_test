@@ -75,8 +75,11 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
       translateY.value = 0;
       glowOp.value = 0;
 
-      // Phase 1: fast symbol cycling
-      const fast = setInterval(() => setDisplaySymbol(randomSymbol()), 70);
+      // Immediate first symbol change so there's no dead frame before cycling begins
+      setDisplaySymbol(randomSymbol());
+
+      // Phase 1: fast symbol cycling (100ms — still clearly rapid, less JS-thread pressure)
+      const fast = setInterval(() => setDisplaySymbol(randomSymbol()), 100);
       intervalsRef.current.push(fast);
 
       // Phase 2: medium speed after decelStartMs

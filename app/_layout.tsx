@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, LogBox } from 'react-native';
+
+LogBox.ignoreLogs(['It looks like you might be using shared value']);
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
