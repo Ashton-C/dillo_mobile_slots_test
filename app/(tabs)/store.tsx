@@ -48,6 +48,18 @@ function formatCooldown(ms: number): string {
   return `${s}s`;
 }
 
+const CATEGORY_DESCRIPTIONS: Partial<Record<CosmeticCategory, string>> = {
+  REEL_THEME:  'Reskins the slot reel track — background color, cell tints, and border glow.',
+  SYMBOL_PACK: 'Replaces all 9 slot symbols with a themed icon set. Odds are never affected.',
+  SUIT_COLOR:  'Tints your pilot avatar and badge across every screen.',
+  EMBLEM:      'Adds a small icon badge next to your pilot name in the resource bar and RADAR.',
+  TITLE:       'Prefixes your pilot name (e.g. "COMMANDER ASHTON") — shown in HUD and on RADAR.',
+  SPIN_BUTTON: 'Changes the spin button shape, glow color, and border animation.',
+  BACKGROUND:  'Sets the animated ambient background visible behind the reels on the Spin screen.',
+  HUD_SKIN:    'Reskins the top resource bar showing credits, fuel, and spins.',
+  BUNDLE:      'A curated bundle combining cosmetics and/or bonus resources at a reduced price.',
+};
+
 const CATEGORY_LABELS: Partial<Record<CosmeticCategory, string>> = {
   REEL_THEME:  'REEL THEMES',
   SYMBOL_PACK: 'SYMBOL PACKS',
@@ -71,46 +83,50 @@ function CosmeticCard({
   item,
   owned,
   active,
-  onBuy,
-  onEquip,
+  onPress,
 }: {
   item: CosmeticItem;
   owned: boolean;
   active: boolean;
-  onBuy: (item: CosmeticItem) => void;
-  onEquip: (item: CosmeticItem) => void;
+  onPress: (item: CosmeticItem) => void;
 }) {
   const accent = item.previewColor ?? Colors.primary;
 
+  let chipLabel: string;
+  let chipExtraStyle: object = {};
+  let chipTextColor: string = Colors.textSecondary;
+  if (active) {
+    chipExtraStyle = { backgroundColor: accent + '33', borderColor: accent };
+    chipTextColor = accent;
+    chipLabel = 'ACTIVE';
+  } else if (owned) {
+    chipExtraStyle = { borderColor: Colors.success + '88' };
+    chipLabel = 'OWNED';
+  } else if (item.creditCost > 0) {
+    chipLabel = `${item.creditCost.toLocaleString()} CR`;
+  } else {
+    chipExtraStyle = { borderColor: Colors.credits + '88' };
+    chipTextColor = Colors.credits;
+    chipLabel = item.iapPrice ?? '';
+  }
+
   return (
-    <View style={[styles.cosCard, active && { borderColor: accent, borderWidth: 2 }, item.featured && styles.cosCardFeatured]}>
+    <Pressable
+      onPress={() => onPress(item)}
+      style={[styles.cosCard, active && { borderColor: accent, borderWidth: 2 }, item.featured && styles.cosCardFeatured]}
+    >
       {item.featured && <Text style={[styles.cosCardBadge, { color: accent }]}>★</Text>}
-      <View style={[styles.cosSwatchRow]}>
+      <View style={styles.cosSwatchRow}>
         <View style={[styles.cosSwatch, { backgroundColor: accent + '33', borderColor: accent + '88' }]}>
-          <Text style={[styles.cosSwatchText, { color: accent }]}>{accent.slice(0, 2).toUpperCase()}</Text>
+          <Text style={[styles.cosSwatchText, { color: accent }]}>{item.name.slice(0, 2).toUpperCase()}</Text>
         </View>
       </View>
       <Text style={styles.cosName} numberOfLines={1}>{item.name}</Text>
       <Text style={styles.cosDesc} numberOfLines={2}>{item.description}</Text>
-
-      {active ? (
-        <View style={[styles.cosActionChip, { backgroundColor: accent + '33', borderColor: accent }]}>
-          <Text style={[styles.cosActionText, { color: accent }]}>ACTIVE</Text>
-        </View>
-      ) : owned ? (
-        <Pressable onPress={() => onEquip(item)} style={[styles.cosActionChip, styles.cosEquipChip]}>
-          <Text style={styles.cosActionText}>EQUIP</Text>
-        </Pressable>
-      ) : item.creditCost > 0 ? (
-        <Pressable onPress={() => onBuy(item)} style={styles.cosActionChip}>
-          <Text style={styles.cosActionText}>{item.creditCost.toLocaleString()} CR</Text>
-        </Pressable>
-      ) : (
-        <Pressable onPress={() => onBuy(item)} style={[styles.cosActionChip, styles.cosIapChip]}>
-          <Text style={[styles.cosActionText, { color: Colors.credits }]}>{item.iapPrice}</Text>
-        </Pressable>
-      )}
-    </View>
+      <View style={[styles.cosActionChip, chipExtraStyle]}>
+        <Text style={[styles.cosActionText, { color: chipTextColor }]}>{chipLabel}</Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -145,8 +161,13 @@ export default function StoreScreen() {
   const [adActive, setAdActive]   = useState<AdReward | null>(null);
   const [pendingPack, setPendingPack] = useState<StorePack | null>(null);
   const [pendingCosmetic, setPendingCosmetic] = useState<CosmeticItem | null>(null);
+  const [cosmeticDetail, setCosmeticDetail] = useState<CosmeticItem | null>(null);
   const [toast, setToast]         = useState<string | null>(null);
   const [legendVisible, setLegendVisible] = useState(false);
+
+  const detailAccent   = cosmeticDetail?.previewColor ?? Colors.primary;
+  const detailIsOwned  = cosmeticDetail ? isOwned(cosmeticDetail.id) : false;
+  const detailIsActive = cosmeticDetail ? getActive(cosmeticDetail.category) === cosmeticDetail.id : false;
 
   useEffect(() => {
     loadCosmetics();
@@ -319,8 +340,7 @@ export default function StoreScreen() {
                   item={item}
                   owned={isOwned(item.id)}
                   active={getActive(item.category) === item.id}
-                  onBuy={handleCosmeticBuy}
-                  onEquip={handleCosmeticEquip}
+                  onPress={setCosmeticDetail}
                 />
               )}
             />
@@ -349,6 +369,38 @@ export default function StoreScreen() {
               <Text style={styles.confirmTitle}>CONFIRM PURCHASE</Text>
               <Text style={styles.confirmLabel}>{pendingPack.label}</Text>
               <Text style={styles.confirmDesc}>{pendingPack.description}</Text>
+              <View style={styles.packDetailBox}>
+                {pendingPack.rewards.credits && (
+                  <View style={styles.packDetailLine}>
+                    <Text style={[styles.packDetailIcon, { color: Colors.credits }]}>★</Text>
+                    <Text style={styles.packDetailText}>+{pendingPack.rewards.credits.toLocaleString()} Credits</Text>
+                  </View>
+                )}
+                {pendingPack.rewards.spinRefill && (
+                  <View style={styles.packDetailLine}>
+                    <Text style={[styles.packDetailIcon, { color: Colors.primary }]}>↺</Text>
+                    <Text style={styles.packDetailText}>Spins refilled to 50/50</Text>
+                  </View>
+                )}
+                {pendingPack.rewards.fuel && (
+                  <View style={styles.packDetailLine}>
+                    <Text style={[styles.packDetailIcon, { color: Colors.attack }]}>⚡</Text>
+                    <Text style={styles.packDetailText}>+{pendingPack.rewards.fuel} Fuel Cell{pendingPack.rewards.fuel !== 1 ? 's' : ''} · each = 1 OVERCLOCK charge</Text>
+                  </View>
+                )}
+                {pendingPack.rewards.boost && (
+                  <View style={styles.packDetailLine}>
+                    <Text style={[styles.packDetailIcon, { color: Colors.raid }]}>◈</Text>
+                    <Text style={styles.packDetailText}>+{pendingPack.rewards.boost} Signal Booster{pendingPack.rewards.boost !== 1 ? 's' : ''} · ×1.5 credit weights for 1 spin</Text>
+                  </View>
+                )}
+                {pendingPack.rewards.shields && (
+                  <View style={styles.packDetailLine}>
+                    <Text style={[styles.packDetailIcon, { color: Colors.shield }]}>◎</Text>
+                    <Text style={styles.packDetailText}>+{pendingPack.rewards.shields} Shield{pendingPack.rewards.shields !== 1 ? 's' : ''} · blocks 1 incoming attack each</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.confirmPrice}>{pendingPack.price}</Text>
               <Text style={styles.confirmDisclaimer}>Simulated · no real charge</Text>
               <View style={styles.confirmRow}>
@@ -385,6 +437,67 @@ export default function StoreScreen() {
             </View>
           )}
         </View>
+      </Modal>
+
+      {/* Cosmetic detail modal */}
+      <Modal visible={!!cosmeticDetail} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setCosmeticDetail(null)}>
+        <Pressable style={styles.detailOverlay} onPress={() => setCosmeticDetail(null)}>
+          <Pressable style={styles.detailPanel} onPress={() => {}}>
+            <View style={styles.detailDragBar} />
+            {cosmeticDetail && (
+              <>
+                <Text style={styles.detailCategory}>{CATEGORY_LABELS[cosmeticDetail.category] ?? cosmeticDetail.category}</Text>
+                <View style={[styles.detailSwatchWrap, { borderColor: detailAccent + '66' }]}>
+                  <Text style={[styles.detailSwatchGlyph, { color: detailAccent }]}>
+                    {cosmeticDetail.name.slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={styles.detailName}>{cosmeticDetail.name}</Text>
+                <Text style={styles.detailDesc}>{cosmeticDetail.description}</Text>
+                {CATEGORY_DESCRIPTIONS[cosmeticDetail.category] && (
+                  <View style={[styles.detailEffectBox, { borderColor: detailAccent + '44' }]}>
+                    <Text style={styles.detailEffectLabel}>CHANGES</Text>
+                    <Text style={styles.detailEffectText}>{CATEGORY_DESCRIPTIONS[cosmeticDetail.category]}</Text>
+                  </View>
+                )}
+                {cosmeticDetail.featured && (
+                  <Text style={[styles.detailFeaturedBadge, { color: detailAccent }]}>★ FEATURED ITEM</Text>
+                )}
+                <View style={styles.detailActions}>
+                  <Pressable onPress={() => setCosmeticDetail(null)} style={styles.detailClose}>
+                    <Text style={styles.detailCloseText}>CLOSE</Text>
+                  </Pressable>
+                  {detailIsActive ? (
+                    <View style={[styles.detailBuyBtn, { backgroundColor: detailAccent + '33' }]}>
+                      <Text style={[styles.detailBuyText, { color: detailAccent }]}>EQUIPPED</Text>
+                    </View>
+                  ) : detailIsOwned ? (
+                    <Pressable
+                      style={[styles.detailBuyBtn, { backgroundColor: detailAccent }]}
+                      onPress={() => { handleCosmeticEquip(cosmeticDetail); setCosmeticDetail(null); }}
+                    >
+                      <Text style={styles.detailBuyText}>EQUIP</Text>
+                    </Pressable>
+                  ) : cosmeticDetail.creditCost > 0 ? (
+                    <Pressable
+                      style={[styles.detailBuyBtn, { backgroundColor: Colors.credits }]}
+                      onPress={() => { setCosmeticDetail(null); handleCosmeticBuy(cosmeticDetail); }}
+                    >
+                      <Text style={styles.detailBuyText}>BUY — {cosmeticDetail.creditCost.toLocaleString()} CR</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={[styles.detailBuyBtn, { backgroundColor: Colors.accent }]}
+                      onPress={() => { setCosmeticDetail(null); handleCosmeticBuy(cosmeticDetail); }}
+                    >
+                      <Text style={styles.detailBuyText}>UNLOCK — {cosmeticDetail.iapPrice}</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Toast */}
@@ -485,6 +598,29 @@ const styles = StyleSheet.create({
   confirmCancelText: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 2 },
   confirmAccept:     { flex: 1, backgroundColor: Colors.primary, paddingVertical: Spacing.sm, borderRadius: BorderRadius.sm, alignItems: 'center' },
   confirmAcceptText: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.background, letterSpacing: 3 },
+
+  packDetailBox:  { gap: 6, marginVertical: Spacing.sm, paddingVertical: Spacing.sm, borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.border },
+  packDetailLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  packDetailIcon: { fontSize: Typography.sizes.sm, fontWeight: Typography.weights.bold, width: 18, textAlign: 'center' },
+  packDetailText: { flex: 1, fontSize: Typography.sizes.xs, color: Colors.textSecondary, letterSpacing: 0.5, lineHeight: 18 },
+
+  detailOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
+  detailPanel:     { backgroundColor: Colors.surface, borderTopLeftRadius: BorderRadius.lg, borderTopRightRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, paddingBottom: Spacing.xl, gap: Spacing.sm },
+  detailDragBar:   { width: 36, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: Spacing.sm },
+  detailCategory:  { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 4, textAlign: 'center' },
+  detailSwatchWrap: { alignSelf: 'center', width: 72, height: 72, borderRadius: BorderRadius.md, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceElevated, marginVertical: Spacing.sm },
+  detailSwatchGlyph: { fontSize: Typography.sizes.xxl, fontWeight: Typography.weights.bold, letterSpacing: 2 },
+  detailName:      { fontSize: Typography.sizes.xl, fontWeight: Typography.weights.bold, color: Colors.textPrimary, letterSpacing: 2, textAlign: 'center' },
+  detailDesc:      { fontSize: Typography.sizes.sm, color: Colors.textSecondary, letterSpacing: 0.5, textAlign: 'center', lineHeight: 20 },
+  detailEffectBox: { borderWidth: 1, borderRadius: BorderRadius.sm, padding: Spacing.sm, gap: 4, marginTop: 4 },
+  detailEffectLabel: { fontSize: 9, color: Colors.textMuted, letterSpacing: 3 },
+  detailEffectText:  { fontSize: Typography.sizes.xs, color: Colors.textSecondary, letterSpacing: 0.5, lineHeight: 18 },
+  detailFeaturedBadge: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, letterSpacing: 2, textAlign: 'center' },
+  detailActions:   { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
+  detailClose:     { flex: 1, paddingVertical: Spacing.sm, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' },
+  detailCloseText: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 2 },
+  detailBuyBtn:    { flex: 2, paddingVertical: Spacing.sm, borderRadius: BorderRadius.sm, alignItems: 'center' },
+  detailBuyText:   { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.background, letterSpacing: 2 },
 
   toast:     { position: 'absolute', bottom: 80, left: Spacing.md, right: Spacing.md, backgroundColor: Colors.surfaceElevated, borderColor: Colors.success, borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, alignItems: 'center' },
   toastText: { fontSize: Typography.sizes.xs, color: Colors.success, letterSpacing: 2, fontWeight: Typography.weights.bold },
