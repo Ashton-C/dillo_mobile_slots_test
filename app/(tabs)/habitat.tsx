@@ -36,12 +36,59 @@ const BUILDING_COLOR: Record<BuildingType, string> = {
   HANGAR:    Colors.primary,
 };
 
-const BUILDING_EFFECT: Record<BuildingType, (level: number) => string> = {
-  GENERATOR: (l) => l === 0 ? 'Passive credit income' : `+${l * 20} CR / 30s passive`,
-  ARMORY:    (l) => l === 0 ? 'Fuel cell capacity' : `Max ${50 + l * 5} fuel cells`,
-  VAULT:     (l) => l === 0 ? 'Raid loss protection' : `${l * 5}% credits protected`,
-  TURRET:    (l) => l === 0 ? 'Auto-defense system' : `Blocks ${l} attack${l > 1 ? 's' : ''}/day`,
-  HANGAR:    (l) => l === 0 ? 'Drone bay — unlock contracts' : `${l} drone slot${l > 1 ? 's' : ''} online`,
+interface BuildingDetail {
+  summary: string;
+  mechanic: string;
+  nextSummary: string | null;
+}
+
+const BUILDING_DETAIL: Record<BuildingType, (level: number) => BuildingDetail> = {
+  GENERATOR: (l) => {
+    const ocBonus = l * 40 + 100;
+    return {
+      summary:    l === 0 ? 'No passive income yet' : `+${l * 20} CR / 30s  ·  ${l * 40} CR/min`,
+      mechanic:   l === 0
+        ? 'Earns credits every 30s. Each level adds +20 CR/tick.'
+        : `OVERCLOCK bonus at LVL ${l}: +${ocBonus} CR flat per spin`,
+      nextSummary: l < 10
+        ? `+${(l + 1) * 20} CR/30s  ·  OVERCLOCK +${(l + 1) * 40 + 100} CR`
+        : null,
+    };
+  },
+  ARMORY: (l) => ({
+    summary:    l === 0 ? 'Base storage: 50 fuel cells' : `Max ${50 + l * 5} fuel cells stored`,
+    mechanic:   l === 0
+      ? 'Raises the fuel cell storage cap. 1 fuel cell = 1 OVERCLOCK charge.'
+      : '1 fuel cell consumed per OVERCLOCK activation',
+    nextSummary: l < 10 ? `Max ${50 + (l + 1) * 5} fuel cells` : null,
+  }),
+  VAULT: (l) => {
+    const stealPct = (30 * (1 - Math.min(l * 0.05, 0.5))).toFixed(1);
+    const nextSteal = (30 * (1 - Math.min((l + 1) * 0.05, 0.5))).toFixed(1);
+    return {
+      summary:    l === 0
+        ? 'Raiders steal 30% of your credits'
+        : `Raiders steal ${stealPct}% of credits`,
+      mechanic:   l === 0
+        ? 'Each VAULT level cuts raid loot by 1.5pp · base = 30% · max protection 50% at LVL 10'
+        : `${l * 5}% of base loot absorbed · max 50% protection at LVL 10`,
+      nextSummary: l < 10 ? `Raiders steal ${nextSteal}% of credits` : null,
+    };
+  },
+  TURRET: (l) => ({
+    summary:    l === 0 ? 'No auto-defense' : `Auto-blocks ${l} attack${l !== 1 ? 's' : ''}/day`,
+    mechanic:   l === 0
+      ? 'Absorbs incoming attacks before HP damage is dealt. No shield required.'
+      : 'Blocked attacks deal no HP damage · ignores shields · resets daily',
+    nextSummary: l < 10 ? `Auto-blocks ${l + 1} attack${l + 1 !== 1 ? 's' : ''}/day` : null,
+  }),
+  HANGAR: (l) => ({
+    summary:    l === 0 ? 'No drone slots' : `${l} drone slot${l !== 1 ? 's' : ''} online`,
+    mechanic:   l === 0
+      ? 'Each level adds 1 contract slot. Drones grant credit multipliers & bonuses.'
+      : `Deploy ${l} mercenary contract${l !== 1 ? 's' : ''} simultaneously`,
+    nextSummary: l < 10 ? `${l + 1} drone slot${l + 1 !== 1 ? 's' : ''}` : null,
+  }),
 };
 
 const ALL_BUILDINGS: BuildingType[] = ['GENERATOR', 'ARMORY', 'VAULT', 'TURRET', 'HANGAR'];
@@ -75,6 +122,7 @@ function BuildingCard({
 }: BuildingCardProps) {
   const color = BUILDING_COLOR[type];
   const meta = BUILDING_META[type];
+  const detail = BUILDING_DETAIL[type](level);
   const maxed = level >= 10;
   const blocked = builderBusy && !isBuilding;
   const gatedByOutpost = !maxed && (level + 1) > outpostLevel;
@@ -188,7 +236,11 @@ function BuildingCard({
               {level === 0 ? 'NEW' : `LVL ${level}`}
             </Text>
           </View>
-          <Text style={[styles.cardEffect, { color }]}>{BUILDING_EFFECT[type](level)}</Text>
+          <Text style={[styles.cardEffect, { color }]}>{detail.summary}</Text>
+          <Text style={styles.cardMechanic}>{detail.mechanic}</Text>
+          {!maxed && detail.nextSummary !== null && (
+            <Text style={styles.cardNextLevel}>→ LVL {level + 1}: {detail.nextSummary}</Text>
+          )}
           <Text style={[styles.levelDots, { color }]}>{levelDots}</Text>
         </View>
       </View>
@@ -563,6 +615,8 @@ const styles = StyleSheet.create({
   },
   cardLevel: { fontSize: Typography.sizes.xs, letterSpacing: 2 },
   cardEffect: { fontSize: Typography.sizes.xs, letterSpacing: 0.5 },
+  cardMechanic: { fontSize: 10, color: Colors.textMuted, letterSpacing: 0.3 },
+  cardNextLevel: { fontSize: 9, color: Colors.textMuted + '88', letterSpacing: 0.3 },
   levelDots: { fontSize: 9, letterSpacing: 2, marginTop: 1 },
 
   progressTrack: {
