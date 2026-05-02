@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -7,13 +7,14 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SlotSymbol, SpinResult, ReelWindow, WinLine, LINE_PATTERNS } from '@/services/SlotsEngine';
+import { SlotSymbol, SpinResult, ReelWindow, WinLine, WinLineId, LINE_PATTERNS } from '@/services/SlotsEngine';
 import {
   SYMBOL_PACK_GLYPHS,
   REEL_THEME_TOKENS,
   ReelThemeTokens,
 } from '@/services/CosmeticsService';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
+import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
 import { soundService, SoundKey } from '@/services/SoundService';
 import { Colors, BorderRadius, Typography } from '@/constants/theme';
 
@@ -171,6 +172,105 @@ const WIN_COLORS: Record<string, string> = {
   PAIR:    Colors.success,
 };
 
+// Color assigned to each payline (consistent across guides and highlights)
+const PAYLINE_COLORS: Record<WinLineId, string> = {
+  MID:       Colors.credits,
+  TOP:       Colors.attack,
+  BOT:       Colors.raid,
+  DIAG_DOWN: Colors.accent,
+  DIAG_UP:   Colors.success,
+};
+
+const ALL_LINE_IDS: WinLineId[] = ['MID', 'TOP', 'BOT', 'DIAG_DOWN', 'DIAG_UP'];
+const ACTIVE_LINE_IDS: Record<1 | 3 | 5, WinLineId[]> = {
+  1: ['MID'],
+  3: ['MID', 'TOP', 'BOT'],
+  5: ['MID', 'TOP', 'BOT', 'DIAG_DOWN', 'DIAG_UP'],
+};
+
+// Container has paddingHorizontal: 24, so track width = screen width - 48
+const TRACK_W = Dimensions.get('window').width - 48;
+
+interface PaylineGuidesProps {
+  numLines: 1 | 3 | 5;
+  winLineIds: Set<WinLineId>;
+  isSpinning: boolean;
+  CELL_H: number;
+}
+
+function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuidesProps) {
+  const activeIds = ACTIVE_LINE_IDS[numLines];
+  const ROW_H = CELL_H + 1; // +1 for divider
+  const cellW = TRACK_W / 3;
+
+  // Center y of a given row
+  const rowY = (r: number) => r * ROW_H + CELL_H / 2;
+  // Center x of a given column
+  const colX = (c: number) => c * cellW + cellW / 2;
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' as any }]}>
+      {ALL_LINE_IDS.map((lineId) => {
+        const pattern = LINE_PATTERNS[lineId];
+        const isEnabled = activeIds.includes(lineId);
+        const isWinning = !isSpinning && winLineIds.has(lineId);
+        const color = PAYLINE_COLORS[lineId];
+
+        if (!isEnabled) return null;
+
+        const opacity = isWinning ? 0.75 : 0.12;
+        const isStraight = pattern[0] === pattern[1] && pattern[1] === pattern[2];
+
+        if (isStraight) {
+          const y = rowY(pattern[0]);
+          return (
+            <View
+              key={lineId}
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: y - 1,
+                height: 2,
+                backgroundColor: color,
+                opacity,
+              }}
+            />
+          );
+        }
+
+        // Diagonal: draw a rotated bar from col0 center to col2 center
+        const x0 = colX(0);
+        const y0 = rowY(pattern[0]);
+        const x2 = colX(2);
+        const y2 = rowY(pattern[2]);
+        const dx = x2 - x0;
+        const dy = y2 - y0;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        const cx = (x0 + x2) / 2;
+        const cy = (y0 + y2) / 2;
+
+        return (
+          <View
+            key={lineId}
+            style={{
+              position: 'absolute',
+              left: cx - length / 2,
+              top: cy - 1,
+              width: length,
+              height: 2,
+              backgroundColor: color,
+              opacity,
+              transform: [{ rotate: `${angle}deg` }],
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 function winLineColor(wl: WinLine): string {
   if (wl.result.creditsWon > 0)     return Colors.credits;
   if (wl.result.attacksWon > 0)     return Colors.attack;
@@ -186,6 +286,7 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
   const activeSymbolId = useCosmeticsStore((s) => s.active['SYMBOL_PACK'] ?? 'sym_default');
   const theme: ReelThemeTokens = REEL_THEME_TOKENS[activeThemeId] ?? REEL_THEME_TOKENS.theme_standard;
   const glyphs = SYMBOL_PACK_GLYPHS[activeSymbolId] ?? SYMBOL_PACK_GLYPHS.sym_default;
+  const outpostLevel = useHabitatStore((s) => s.outpostLevel);
 
   const trackScale = useSharedValue(1);
   const prevSpinningRef = useRef(isSpinning);
@@ -257,9 +358,19 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
                        : displayLabel === 'TRIPLE'  ? Colors.primary
                        : Colors.success;
 
+    const numLines = getNumActiveLines(outpostLevel);
+    const winIds = new Set<WinLineId>((activeWinLines ?? []).map((wl) => wl.id));
+
+    // Unlock info for lines not yet available
+    const nextUnlock = numLines < 3 ? { lines: 3, level: 3 }
+                     : numLines < 5 ? { lines: 5, level: 6 }
+                     : null;
+
     return (
       <View style={styles.container}>
         <Animated.View style={[styles.track, styles.multiTrack, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
+          {/* Payline guides rendered behind the cells */}
+          <PaylineGuides numLines={numLines} winLineIds={winIds} isSpinning={isSpinning} CELL_H={CELL_H} />
           {([0, 1, 2] as const).map((rowIdx) => (
             <View key={rowIdx}>
               {rowIdx > 0 && <View style={[styles.hDivider, { backgroundColor: theme.borderColor + '66' }]} />}
@@ -290,6 +401,13 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
             <Text style={styles.winBadgeText}>{displayLabel}</Text>
           </View>
         )}
+        {/* Active paylines + unlock hint */}
+        <View style={styles.linesRow}>
+          <Text style={styles.linesActive}>{numLines} PAYLINE{numLines !== 1 ? 'S' : ''}</Text>
+          {nextUnlock && (
+            <Text style={styles.linesUnlock}>+{nextUnlock.lines - numLines} at Outpost Lv.{nextUnlock.level}</Text>
+          )}
+        </View>
       </View>
     );
   }
@@ -370,5 +488,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.background,
     letterSpacing: 2,
+  },
+  linesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 18,
+  },
+  linesActive: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    fontWeight: '600',
+  },
+  linesUnlock: {
+    fontSize: 9,
+    color: Colors.accent + '99',
+    letterSpacing: 1,
   },
 });

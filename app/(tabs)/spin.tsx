@@ -328,7 +328,7 @@ export default function SpinScreen() {
 
       <ScrollView
         style={styles.contentScroll}
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 44 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -455,7 +455,7 @@ export default function SpinScreen() {
       </Pressable>
 
       <Pressable
-        style={[styles.legendBtn, { right: Spacing.md + 36, top: insets.top + 6 }]}
+        style={[styles.legendBtn, { right: Spacing.md + 36, top: insets.top + 6 }, muted && styles.legendBtnMuted]}
         onPress={() => {
           const next = !muted;
           setMuted(next);
@@ -463,7 +463,7 @@ export default function SpinScreen() {
         }}
         hitSlop={12}
       >
-        <Text style={styles.legendBtnText}>{muted ? 'M' : 'S'}</Text>
+        <Text style={[styles.legendBtnText, !muted && { color: Colors.accent }]}>{muted ? '✕' : '♪'}</Text>
       </Pressable>
 
       <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
@@ -757,6 +757,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 50,
+  },
+  legendBtnMuted: {
+    opacity: 0.45,
   },
   legendBtnText: {
     fontSize: Typography.sizes.xs,

@@ -8,11 +8,35 @@ import { TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
 import { anomalyService } from '@/services/AnomalyService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
-const RIFT_DETAILS: Record<TemporalRiftTier, { label: string; effect: string; color: string }> = {
-  0: { label: 'NO RIFT', effect: 'Standard probability. No modifiers.', color: Colors.textMuted },
-  1: { label: 'RIFT I', effect: '+5 to CREDIT_SMALL weight, +3 to CREDIT_MEDIUM. Shift toward frequent small wins.', color: '#7B9FFF' },
-  2: { label: 'RIFT II', effect: '+8 to CREDIT_MEDIUM, +5 to CREDIT_LARGE. Amplify mid-tier credit rewards.', color: Colors.accent },
-  3: { label: 'RIFT III', effect: '+12 to CREDIT_LARGE. Maximize jackpot probability. High risk, high reward.', color: Colors.primary },
+const RIFT_DETAILS: Record<TemporalRiftTier, { label: string; effect: string; weights: string; penalty: string; color: string }> = {
+  0: {
+    label: 'NO RIFT',
+    effect: 'Standard probability. No cost, no modifiers.',
+    weights: 'CREDIT_SMALL ×30  ·  CREDIT_MEDIUM ×20  ·  CREDIT_LARGE ×10',
+    penalty: '—',
+    color: Colors.textMuted,
+  },
+  1: {
+    label: 'RIFT I',
+    effect: 'Shift toward frequent small wins. Best for credit farming.',
+    weights: 'CREDIT_SMALL +5 → ×35  ·  CREDIT_MEDIUM +3 → ×23',
+    penalty: 'EMPTY −4 → ×11',
+    color: '#7B9FFF',
+  },
+  2: {
+    label: 'RIFT II',
+    effect: 'Amplify mid-tier and jackpot credit rewards.',
+    weights: 'CREDIT_MEDIUM +8 → ×28  ·  CREDIT_LARGE +5 → ×15',
+    penalty: 'EMPTY −5 → ×10',
+    color: Colors.accent,
+  },
+  3: {
+    label: 'RIFT III',
+    effect: 'Maximize jackpot probability. High risk, high reward.',
+    weights: 'CREDIT_LARGE +12 → ×22  ·  CREDIT_MEDIUM +6 → ×26',
+    penalty: 'CREDIT_SMALL −10 → ×20  ·  EMPTY −8 → ×7',
+    color: Colors.primary,
+  },
 };
 
 function formatMs(ms: number): string {
@@ -35,11 +59,26 @@ export default function RiftScreen() {
 
   const tiers: TemporalRiftTier[] = [0, 1, 2, 3];
 
+  const activeDetails = RIFT_DETAILS[riftTier];
+  const activeCost = anomalyService.applyToRiftCost(RIFT_COSTS[riftTier]);
+
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.title}>TEMPORAL RIFT</Text>
-        <Text style={styles.subtitle}>Bend probability. Pay the price.</Text>
+        <Text style={styles.subtitle}>You choose the rift before each spin. Cost is deducted on press.</Text>
+      </View>
+
+      {/* Next spin callout */}
+      <View style={[styles.nextSpinBanner, { borderColor: activeDetails.color + '88' }]}>
+        <View style={styles.nextSpinRow}>
+          <Text style={styles.nextSpinLabel}>NEXT SPIN USES</Text>
+          <Text style={[styles.nextSpinTier, { color: activeDetails.color }]}>{activeDetails.label}</Text>
+          <Text style={styles.nextSpinCost}>
+            {activeCost > 0 ? `−${activeCost} CR` : 'FREE'}
+          </Text>
+        </View>
+        <Text style={styles.nextSpinEffect}>{activeDetails.effect}</Text>
       </View>
 
       {/* Anomaly banner */}
@@ -68,7 +107,7 @@ export default function RiftScreen() {
       )}
 
       <ScrollView contentContainerStyle={styles.list}>
-        <Text style={styles.sectionHeader}>SELECT RIFT TIER</Text>
+        <Text style={styles.sectionHeader}>ALL RIFT TIERS</Text>
 
         {tiers.map((tier) => {
           const rawCost = RIFT_COSTS[tier];
@@ -104,19 +143,26 @@ export default function RiftScreen() {
                       <Text style={styles.costStrike}>{rawCost} CR</Text>
                     )}
                     <Text style={[styles.costValue, { color: canAfford ? Colors.credits : Colors.textMuted }]}>
-                      {actualCost} CR
+                      {actualCost} CR / spin
                     </Text>
                   </View>
                 )}
               </View>
               <Text style={styles.effectText}>{details.effect}</Text>
+              {tier > 0 && (
+                <View style={styles.weightBlock}>
+                  <Text style={[styles.weightRow, { color: Colors.success }]}>↑ {details.weights}</Text>
+                  <Text style={[styles.weightRow, { color: Colors.danger }]}>↓ {details.penalty}</Text>
+                </View>
+              )}
             </Pressable>
           );
         })}
 
         <Text style={styles.footnote}>
-          Rift tier is set per spin. Cost is deducted each time you press SPIN.
-          Anomaly events may reduce costs or amplify outcomes.
+          Rifts are not on a schedule — you pick the tier before each spin.
+          Cost is deducted the moment you press SPIN. If you can't afford the
+          active tier, it auto-resets to Tier 0. Anomaly events may reduce costs.
         </Text>
       </ScrollView>
 
@@ -145,6 +191,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.sm,
+  },
+  nextSpinBanner: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    backgroundColor: Colors.surfaceElevated,
+    gap: 4,
+  },
+  nextSpinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  nextSpinLabel: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  nextSpinTier: {
+    flex: 1,
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
+  },
+  nextSpinCost: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.credits,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
+  },
+  nextSpinEffect: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textSecondary,
+    lineHeight: 16,
   },
   title: {
     fontSize: Typography.sizes.xxl,
@@ -244,6 +327,15 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.xs,
     color: Colors.textSecondary,
     lineHeight: 18,
+  },
+  weightBlock: {
+    marginTop: 4,
+    gap: 2,
+  },
+  weightRow: {
+    fontSize: 10,
+    letterSpacing: 0.5,
+    lineHeight: 15,
   },
   footnote: {
     fontSize: Typography.sizes.xs,
