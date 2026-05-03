@@ -38,8 +38,7 @@ interface HabitatDoc {
 // ---------------------------------------------------------------------------
 
 const VAULT_REDUCTION_PER_LEVEL = 0.05; // 5% credit loss reduction per VAULT level
-const BASE_CREDIT_LOSS = 200;           // flat credits lost on a successful raid
-const BASE_CREDIT_GAIN = 150;           // flat credits gained by the attacker
+const VALID_POWERS = new Set([8, 75, 110, 145]);
 
 function vaultReduction(vaultLevel: number): number {
   return Math.min(0.75, vaultLevel * VAULT_REDUCTION_PER_LEVEL);
@@ -105,6 +104,11 @@ export const resolveCombat = functions.firestore
     const { attackerUid, defenderUid, type, attackerPower } = request;
     const requestRef = snap.ref;
 
+    if (!VALID_POWERS.has(attackerPower)) {
+      await requestRef.update({ status: 'ERROR', error: 'Invalid attackerPower' });
+      return;
+    }
+
     // Mark in-flight immediately to prevent double-processing
     await requestRef.update({ status: 'PROCESSING' });
 
@@ -168,10 +172,11 @@ export const resolveCombat = functions.firestore
       const attackerWon = attackerPower > defenderPower;
 
       if (attackerWon) {
-        // --- Apply VAULT reduction to defender credit loss ---
+        // --- Tiered loot based on roulette bet tier ---
+        const creditsGained   = attackerPower >= 130 ? 350 : attackerPower >= 100 ? 225 : 150;
+        const creditsLostBase = attackerPower >= 130 ? 400 : attackerPower >= 100 ? 270 : 200;
         const reduction = vaultReduction(vaultLevel);
-        const creditsLost  = Math.round(BASE_CREDIT_LOSS * (1 - reduction));
-        const creditsGained = BASE_CREDIT_GAIN;
+        const creditsLost = Math.round(creditsLostBase * (1 - reduction));
 
         const defenderNewCredits  = Math.max(0, defender.credits - creditsLost);
         const attackerNewCredits  = attacker.credits + creditsGained;

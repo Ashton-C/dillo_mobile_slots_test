@@ -11,7 +11,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { fetchRadarTargets, PlayerIndexEntry } from '@/services/FirestoreService';
 import { DEBUG_PLAYERS, loadActiveDebugUids } from '@/constants/debugPlayers';
-import { CombatMiniGame } from '@/components/CombatMiniGame';
+import { RouletteGame } from '@/components/RouletteGame';
 import { SectorMap } from '@/components/SectorMap';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -52,13 +52,9 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
   const threatColor = threatDiff >= 2 ? Colors.success : threatDiff >= 0 ? Colors.warning : Colors.danger;
   const threatLabel = threatDiff >= 2 ? 'WEAK' : threatDiff >= 0 ? 'EVEN' : 'STRONG';
 
-  // Power estimate ranges (mirrors CombatMiniGame math)
-  // Attacker: 50 base + 0/20/40 match + outpost*15 + ±10 variance
-  // Defender: 30 base + targetOutpost*15 + ±15 variance
-  const youMin = 50 + 0  + outpostLevel * 15 - 10;
-  const youMax = 50 + 40 + outpostLevel * 15 + 10;
-  const themMin = 30 + target.outpostLevel * 15 - 15;
-  const themMax = 30 + target.outpostLevel * 15 + 15;
+  // Defender power range (server roll: outpostLevel×10 + rand(0–49))
+  const themMin = target.outpostLevel * 10;
+  const themMax = target.outpostLevel * 10 + 49;
 
   return (
     <View style={[styles.targetCard, dimmed && styles.targetCardDimmed]}>
@@ -86,9 +82,12 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
             OUTPOST LVL {target.outpostLevel}  ·  PILOT LVL {target.level}
           </Text>
           <Text style={styles.powerPreview}>
-            <Text style={{ color: Colors.success }}>YOU {youMin}–{youMax}</Text>
-            <Text style={{ color: Colors.textMuted }}>  vs  </Text>
-            <Text style={{ color: Colors.danger }}>THEM {themMin}–{themMax}</Text>
+            <Text style={{ color: Colors.primary }}>EVEN 75  </Text>
+            <Text style={{ color: Colors.accent }}>SECTOR 110  </Text>
+            <Text style={{ color: Colors.credits }}>JACKPOT 145</Text>
+          </Text>
+          <Text style={styles.powerPreview}>
+            <Text style={{ color: Colors.textMuted }}>DEFENDER  {themMin}–{themMax}</Text>
           </Text>
         </View>
       </View>
@@ -305,11 +304,11 @@ export default function RadarScreen() {
         )}
 
         <Text style={styles.footnote}>
-          Combat power = reel locks + OUTPOST LVL bonus. Win to siphon credits. Defender's VAULT and TURRET passively resist.
+          Spin the roulette and pick your bet tier. Higher risk = higher loot. Defender's VAULT and TURRET passively resist.
         </Text>
       </ScrollView>
 
-      <CombatMiniGame
+      <RouletteGame
         visible={miniGameVisible}
         target={selectedTarget}
         combatType={combatType}
@@ -327,11 +326,14 @@ export default function RadarScreen() {
         <LegendRow left="" right="Winner steals credits from loser" />
         <LegendRow left="EXTRACTION" right="Spend 1 Beam token" color={Colors.accent} />
         <LegendRow left="" right="Higher loot — harder to win" />
-        <LegendSection label="POWER MATH" />
-        <LegendRow left="YOUR" right="50 base + match + LVL × 15 ± 10" color={Colors.success} />
-        <LegendRow left="" right="match: triple +40 · pair +20" />
-        <LegendRow left="THEIR" right="30 base + LVL × 15 ± 15" color={Colors.danger} />
-        <LegendRow left="OUTCOME" right="Higher TOTAL wins" />
+        <LegendSection label="BET TIERS" />
+        <LegendRow left="EVEN" right="50% · Power 75 · Loot 150 CR" color={Colors.primary} />
+        <LegendRow left="SECTOR" right="33% · Power 110 · Loot 225 CR" color={Colors.accent} />
+        <LegendRow left="JACKPOT" right="17% · Power 145 · Loot 350 CR" color={Colors.credits} />
+        <LegendRow left="MISS" right="Power 8 · Lose your bet resource" />
+        <LegendSection label="DEFENDER POWER" />
+        <LegendRow left="THEIR" right="Outpost × 10 + rand(0–49)" color={Colors.danger} />
+        <LegendRow left="OUTCOME" right="Attacker power must exceed defender" />
         <LegendSection label="THREAT RATING" />
         <LegendRow left="WEAK   — your outpost leads by 2+" color={Colors.success} />
         <LegendRow left="EVEN   — within 1 outpost level" color={Colors.warning} />
