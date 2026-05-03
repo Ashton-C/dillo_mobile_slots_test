@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -41,7 +41,6 @@ import { SpinResult, TemporalRiftTier } from '@/services/SlotsEngine';
 const EMPTY_REELS: ['EMPTY', 'EMPTY', 'EMPTY'] = ['EMPTY', 'EMPTY', 'EMPTY'];
 const MAX_SPINS = 50;
 const LOW_SPIN_THRESHOLD = 5;
-const MILESTONES = [250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000];
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 const OUTCOME_COLOR: Record<string, string> = {
@@ -68,13 +67,6 @@ function formatRefillTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function getMilestone(credits: number): { next: number; progress: number } {
-  const nextIdx = MILESTONES.findIndex((m) => m > credits);
-  if (nextIdx === -1) return { next: MILESTONES[MILESTONES.length - 1], progress: 1 };
-  const next = MILESTONES[nextIdx];
-  const prev = nextIdx > 0 ? MILESTONES[nextIdx - 1] : 0;
-  return { next, progress: Math.min(1, Math.max(0, (credits - prev) / (next - prev))) };
-}
 
 export default function SpinScreen() {
   const {
@@ -264,7 +256,6 @@ export default function SpinScreen() {
   const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
   const showCombatResources = intrusions > 0 || extractions > 0;
   const spinsLow = spinsRemaining <= LOW_SPIN_THRESHOLD;
-  const milestone = useMemo(() => getMilestone(credits), [credits]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -328,7 +319,7 @@ export default function SpinScreen() {
 
       <ScrollView
         style={styles.contentScroll}
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 36 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -350,14 +341,6 @@ export default function SpinScreen() {
           </Animated.View>
         </View>
 
-        {/* Credit milestone bar */}
-        <View style={styles.milestoneContainer}>
-          <View style={styles.milestoneTrack}>
-            <View style={[styles.milestoneFill, { width: `${milestone.progress * 100}%` }]} />
-          </View>
-          <Text style={styles.milestoneLabel}>{milestone.next.toLocaleString()} CR</Text>
-        </View>
-
         <ReelDisplay
           reels={reels}
           isSpinning={isSpinning}
@@ -367,7 +350,15 @@ export default function SpinScreen() {
         />
 
         <View style={styles.spinZone}>
-          <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
+          {/* SpinButton centred with Ledger to its left and matching spacer to right */}
+          <View style={styles.spinButtonRow}>
+            <Pressable style={styles.ledgerBtn} onPress={() => setHistoryVisible(true)}>
+              <Text style={styles.ledgerBtnLabel}>LEDGER</Text>
+              <Text style={styles.ledgerBtnArrow}>↑</Text>
+            </Pressable>
+            <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
+            <View style={styles.ledgerBtnSpacer} />
+          </View>
           <Text style={[styles.spinsLabel, spinsLow && styles.spinsLabelLow]}>
             {spinsRemaining} / {MAX_SPINS} spins
           </Text>
@@ -440,12 +431,6 @@ export default function SpinScreen() {
       </ScrollView>
       </Animated.View>{/* end shake wrapper */}
 
-      {/* Ledger drawer + tab — wrapper provides reliable centering at tab bar edge */}
-      <View style={[styles.historyTabWrap, { bottom: tabBarHeight }]} pointerEvents="box-none">
-        <Pressable style={styles.historyTab} onPress={() => setHistoryVisible(true)}>
-          <Text style={styles.historyTabText}>LEDGER  ↑</Text>
-        </Pressable>
-      </View>
       <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
 
       <Pressable
@@ -575,33 +560,37 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  milestoneContainer: {
+  spinZone: { alignItems: 'center', gap: Spacing.sm },
+  spinButtonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
-  milestoneTrack: {
-    flex: 1,
-    height: 3,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    overflow: 'hidden',
+  ledgerBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
   },
-  milestoneFill: {
-    height: '100%',
-    backgroundColor: Colors.credits + 'AA',
-    borderRadius: 2,
-  },
-  milestoneLabel: {
-    fontSize: 9,
+  ledgerBtnLabel: {
+    fontSize: 8,
     color: Colors.textMuted,
-    letterSpacing: 1,
-    minWidth: 52,
-    textAlign: 'right',
+    letterSpacing: 2,
+    fontWeight: Typography.weights.bold,
   },
-
-  spinZone: { alignItems: 'center', gap: Spacing.sm },
+  ledgerBtnArrow: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.textMuted,
+  },
+  ledgerBtnSpacer: {
+    width: 52,
+    height: 52,
+  },
   spinsLabel: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
@@ -690,30 +679,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
     marginLeft: Spacing.xs,
-  },
-  historyTabWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 40,
-  },
-  historyTab: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 5,
-    backgroundColor: Colors.surfaceElevated,
-    borderTopLeftRadius: BorderRadius.sm,
-    borderTopRightRadius: BorderRadius.sm,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: Colors.border,
-  },
-  historyTabText: {
-    fontSize: 9,
-    color: Colors.textMuted,
-    letterSpacing: 2,
-    fontWeight: Typography.weights.bold,
   },
   scannerBeam: {
     position: 'absolute',
