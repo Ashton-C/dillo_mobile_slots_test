@@ -62,13 +62,10 @@ export function RiftSelector({ currentTier, availableCredits, onSelect }: Props)
                 {cost > 0 ? `${cost} CR` : 'free'}
               </Text>
               {tier > 0 && (
-                <>
-                  <Text style={styles.tierBoost} numberOfLines={1}>{RIFT_BOOSTS[tier]}</Text>
-                  <Text style={styles.tierPenalty} numberOfLines={1}>{RIFT_PENALTIES[tier]}</Text>
-                </>
+                <Text style={styles.tierBoost} numberOfLines={1}>{RIFT_BOOSTS[tier]}</Text>
               )}
               {tier === 0 && (
-                <Text style={styles.tierDesc}>Standard odds</Text>
+                <Text style={styles.tierDesc}>Base odds</Text>
               )}
             </Pressable>
           );
@@ -94,13 +91,12 @@ const styles = StyleSheet.create({
   },
   tierButton: {
     flex: 1,
-    minHeight: 92,
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 2,

@@ -5,8 +5,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
-import { anomalyService } from '@/services/AnomalyService';
+import { anomalyService, ANOMALIES, AnomalyId } from '@/services/AnomalyService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
+
+// Weighted pool: CALM × 1, all others × 2 → 11 total
+const ANOMALY_ORDER: AnomalyId[] = ['SOLAR_SURGE', 'VOID_STORM', 'CREDIT_BLOOM', 'SHIELD_PULSE', 'RAID_SHADOW', 'CALM'];
+const ANOMALY_CHANCE: Record<AnomalyId, string> = {
+  SOLAR_SURGE:  '18%',
+  VOID_STORM:   '18%',
+  CREDIT_BLOOM: '18%',
+  SHIELD_PULSE: '18%',
+  RAID_SHADOW:  '18%',
+  CALM:          '9%',
+};
 
 const RIFT_DETAILS: Record<TemporalRiftTier, { label: string; effect: string; weights: string; penalty: string; color: string }> = {
   0: {
@@ -162,8 +173,72 @@ export default function RiftScreen() {
         <Text style={styles.footnote}>
           Rifts are not on a schedule — you pick the tier before each spin.
           Cost is deducted the moment you press SPIN. If you can't afford the
-          active tier, it auto-resets to Tier 0. Anomaly events may reduce costs.
+          active tier, it auto-resets to Tier 0.
         </Text>
+
+        {/* ── Anomaly catalog ── */}
+        <Text style={[styles.sectionHeader, { marginTop: Spacing.lg }]}>SECTOR ANOMALIES</Text>
+        <Text style={styles.anomalyCatalogNote}>
+          A new anomaly activates every 4 hours. The next one is drawn at random — odds below.
+          Active anomaly is shown at the top of this screen.
+        </Text>
+        {ANOMALY_ORDER.map((id) => {
+          const def = ANOMALIES[id];
+          const isCurrent = definition?.id === id;
+          return (
+            <View
+              key={id}
+              style={[styles.anomalyCard, isCurrent && { borderColor: def.color }]}
+            >
+              <View style={styles.anomalyCardHeader}>
+                <View style={[styles.anomalyDot, { backgroundColor: def.color }]} />
+                <Text style={[styles.anomalyCardName, { color: isCurrent ? def.color : Colors.textSecondary }]}>
+                  {def.name}
+                </Text>
+                {isCurrent && (
+                  <View style={[styles.activeBadge, { backgroundColor: def.color }]}>
+                    <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                  </View>
+                )}
+                <View style={styles.chanceBadge}>
+                  <Text style={styles.chanceText}>{ANOMALY_CHANCE[id]}</Text>
+                </View>
+              </View>
+              <Text style={styles.anomalyCardDesc}>{def.description}</Text>
+              {/* Show specific modifiers */}
+              <View style={styles.anomalyModRow}>
+                {def.creditMultiplier !== 1 && (
+                  <Text style={[styles.anomalyMod, { color: def.creditMultiplier > 1 ? Colors.credits : Colors.danger }]}>
+                    CR ×{def.creditMultiplier}
+                  </Text>
+                )}
+                {def.attackMultiplier !== 1 && (
+                  <Text style={[styles.anomalyMod, { color: def.attackMultiplier > 1 ? Colors.attack : Colors.textMuted }]}>
+                    ATK ×{def.attackMultiplier}
+                  </Text>
+                )}
+                {def.shieldBonus > 0 && (
+                  <Text style={[styles.anomalyMod, { color: Colors.shield }]}>
+                    +{def.shieldBonus} SHIELD/spin
+                  </Text>
+                )}
+                {def.raidLootBonus > 0 && (
+                  <Text style={[styles.anomalyMod, { color: Colors.raid }]}>
+                    RAID +{Math.round(def.raidLootBonus * 100)}%
+                  </Text>
+                )}
+                {def.riftCostMultiplier < 1 && (
+                  <Text style={[styles.anomalyMod, { color: Colors.accent }]}>
+                    RIFT cost ×{def.riftCostMultiplier}
+                  </Text>
+                )}
+                {def.id === 'CALM' && (
+                  <Text style={[styles.anomalyMod, { color: Colors.textMuted }]}>No modifiers</Text>
+                )}
+              </View>
+            </View>
+          );
+        })}
       </ScrollView>
 
       <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
@@ -342,6 +417,65 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
     marginTop: Spacing.sm,
+  },
+  anomalyCatalogNote: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    lineHeight: 17,
+    marginBottom: Spacing.sm,
+  },
+  anomalyCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.sm,
+    gap: 4,
+    marginBottom: Spacing.sm,
+  },
+  anomalyCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  anomalyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  anomalyCardName: {
+    flex: 1,
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
+  },
+  anomalyCardDesc: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+  },
+  anomalyModRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginTop: 2,
+  },
+  anomalyMod: {
+    fontSize: 10,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
+  },
+  chanceBadge: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  chanceText: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+    fontWeight: Typography.weights.bold,
   },
   legendBtn: {
     position: 'absolute',

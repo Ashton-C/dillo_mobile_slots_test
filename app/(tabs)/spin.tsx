@@ -328,7 +328,7 @@ export default function SpinScreen() {
 
       <ScrollView
         style={styles.contentScroll}
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 44 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 36 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -440,10 +440,12 @@ export default function SpinScreen() {
       </ScrollView>
       </Animated.View>{/* end shake wrapper */}
 
-      {/* Ledger drawer + tab */}
-      <Pressable style={[styles.historyTab, { bottom: tabBarHeight }]} onPress={() => setHistoryVisible(true)}>
-        <Text style={styles.historyTabText}>LEDGER  ↑</Text>
-      </Pressable>
+      {/* Ledger drawer + tab — wrapper provides reliable centering at tab bar edge */}
+      <View style={[styles.historyTabWrap, { bottom: tabBarHeight }]} pointerEvents="box-none">
+        <Pressable style={styles.historyTab} onPress={() => setHistoryVisible(true)}>
+          <Text style={styles.historyTabText}>LEDGER  ↑</Text>
+        </Pressable>
+      </View>
       <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
 
       <Pressable
@@ -689,11 +691,16 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginLeft: Spacing.xs,
   },
-  historyTab: {
+  historyTabWrap: {
     position: 'absolute',
-    alignSelf: 'center',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 40,
+  },
+  historyTab: {
     paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
+    paddingVertical: 5,
     backgroundColor: Colors.surfaceElevated,
     borderTopLeftRadius: BorderRadius.sm,
     borderTopRightRadius: BorderRadius.sm,
@@ -701,7 +708,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: Colors.border,
-    zIndex: 40,
   },
   historyTabText: {
     fontSize: 9,

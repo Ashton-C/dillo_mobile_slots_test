@@ -218,7 +218,8 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
 
         if (!isEnabled) return null;
 
-        const opacity = isWinning ? 0.75 : 0.12;
+        const opacity = isWinning ? 0.92 : 0.30;
+        const thickness = isWinning ? 3 : 2;
         const isStraight = pattern[0] === pattern[1] && pattern[1] === pattern[2];
 
         if (isStraight) {
@@ -230,8 +231,8 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
                 position: 'absolute',
                 left: 0,
                 right: 0,
-                top: y - 1,
-                height: 2,
+                top: y - Math.floor(thickness / 2),
+                height: thickness,
                 backgroundColor: color,
                 opacity,
               }}
@@ -257,9 +258,9 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
             style={{
               position: 'absolute',
               left: cx - length / 2,
-              top: cy - 1,
+              top: cy - Math.floor(thickness / 2),
               width: length,
-              height: 2,
+              height: thickness,
               backgroundColor: color,
               opacity,
               transform: [{ rotate: `${angle}deg` }],
@@ -369,8 +370,6 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
     return (
       <View style={styles.container}>
         <Animated.View style={[styles.track, styles.multiTrack, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
-          {/* Payline guides rendered behind the cells */}
-          <PaylineGuides numLines={numLines} winLineIds={winIds} isSpinning={isSpinning} CELL_H={CELL_H} />
           {([0, 1, 2] as const).map((rowIdx) => (
             <View key={rowIdx}>
               {rowIdx > 0 && <View style={[styles.hDivider, { backgroundColor: theme.borderColor + '66' }]} />}
@@ -395,6 +394,8 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
               </View>
             </View>
           ))}
+          {/* Payline guides rendered AFTER cells so they appear on top */}
+          <PaylineGuides numLines={numLines} winLineIds={winIds} isSpinning={isSpinning} CELL_H={CELL_H} />
         </Animated.View>
         {displayLabel !== '' && !isSpinning && (
           <View style={[styles.winBadge, { backgroundColor: displayColor }]}>
