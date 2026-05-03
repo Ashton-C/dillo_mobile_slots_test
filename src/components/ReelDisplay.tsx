@@ -5,6 +5,8 @@ import Animated, {
   withTiming,
   withSequence,
   withSpring,
+  cancelAnimation,
+  Easing,
 } from 'react-native-reanimated';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SlotSymbol, SpinResult, ReelWindow, WinLine, WinLineId, LINE_PATTERNS } from '@/services/SlotsEngine';
@@ -53,14 +55,30 @@ interface ReelProps {
   cellBg: string;
 }
 
+// Each reel renders a clipped strip of STRIP_LEN + 1 cells that scrolls vertically.
+// Symbols slide upward — new symbols enter from the bottom, old ones exit at the top.
+// This gives the "continuous scroll" look of a physical reel instead of random flashing.
+const STRIP_LEN = 20;
+// Strip cells are slightly smaller than the container so partial cells are visible
+// above and below the center, revealing ~3 symbol positions to the eye at once.
+const STRIP_CELL_RATIO = 0.72;
+
 function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500, highlightColor, cellHeight = 100, symbolSize, glyphs, cellBg }: ReelProps) {
-  const [displaySymbol, setDisplaySymbol] = useState<SlotSymbol>(symbol);
+  const STRIP_CELL_H = Math.round(cellHeight * STRIP_CELL_RATIO);
+  const TOTAL_H = (STRIP_LEN + 1) * STRIP_CELL_H;
+
+  // translateY = position of the top of the strip relative to the container.
+  // Centered on cell i: translateY = (cellHeight - STRIP_CELL_H) / 2 - i * STRIP_CELL_H
+  const centerOn = (i: number) => (cellHeight - STRIP_CELL_H) / 2 - i * STRIP_CELL_H;
+
+  const stripRef = useRef<SlotSymbol[]>(Array.from({ length: STRIP_LEN + 1 }, () => symbol));
+  const [, forceUpdate] = useState(0);
+
+  const translateY = useSharedValue(centerOn(0));
+  const glowOp = useSharedValue(0);
+
   const intervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const opacity = useSharedValue(1);
-  const translateY = useSharedValue(0);
-  const glowOp = useSharedValue(0);
 
   function clearAll() {
     intervalsRef.current.forEach(clearInterval);
@@ -72,51 +90,63 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
   useEffect(() => {
     if (isSpinning) {
       clearAll();
-      opacity.value = 1;
-      translateY.value = 0;
       glowOp.value = 0;
 
-      // Immediate first symbol change so there's no dead frame before cycling begins
-      setDisplaySymbol(randomSymbol());
+      // Build strip: STRIP_LEN random symbols, target symbol at the end
+      const strip = Array.from({ length: STRIP_LEN }, randomSymbol) as SlotSymbol[];
+      strip.push(symbol);
+      stripRef.current = strip;
+      forceUpdate(n => n + 1);
 
-      // Phase 1: fast symbol cycling (100ms — still clearly rapid, less JS-thread pressure)
-      const fast = setInterval(() => setDisplaySymbol(randomSymbol()), 100);
+      // Start at top of strip
+      cancelAnimation(translateY);
+      translateY.value = centerOn(0);
+
+      // Phase 1 — fast scroll: animate one cell per 95ms interval, symbols slide upward
+      let currentIdx = 0;
+      const scrollToNext = (duration: number) => {
+        currentIdx = Math.min(currentIdx + 1, STRIP_LEN - 1);
+        translateY.value = withTiming(centerOn(currentIdx), {
+          duration,
+          easing: Easing.linear,
+        });
+      };
+
+      const fast = setInterval(() => scrollToNext(90), 95);
       intervalsRef.current.push(fast);
 
-      // Phase 2: medium speed after decelStartMs
+      // Phase 2 — medium after decelStartMs
       timersRef.current.push(setTimeout(() => {
         clearInterval(fast);
         intervalsRef.current = intervalsRef.current.filter(i => i !== fast);
-
-        const medium = setInterval(() => setDisplaySymbol(randomSymbol()), 140);
+        const medium = setInterval(() => scrollToNext(130), 140);
         intervalsRef.current.push(medium);
 
-        // Phase 3: slow speed after 220ms
+        // Phase 3 — slow deceleration
         timersRef.current.push(setTimeout(() => {
           clearInterval(medium);
           intervalsRef.current = intervalsRef.current.filter(i => i !== medium);
-
-          const slow = setInterval(() => setDisplaySymbol(randomSymbol()), 260);
+          const slow = setInterval(() => scrollToNext(230), 250);
           intervalsRef.current.push(slow);
 
-          // Phase 4: land on target after 220ms
+          // Phase 4 — land on target (index STRIP_LEN)
           timersRef.current.push(setTimeout(() => {
             clearInterval(slow);
             intervalsRef.current = intervalsRef.current.filter(i => i !== slow);
-
-            setDisplaySymbol(symbol);
             void soundService.play((`reelStop${colIndex}` as SoundKey));
-            translateY.value = -14;
-            translateY.value = withSpring(0, { damping: 9, stiffness: 280 });
-          }, 220));
-        }, 220));
+            // Overshoot slightly then spring back for the physical "clunk"
+            translateY.value = withSequence(
+              withTiming(centerOn(STRIP_LEN) - 10, { duration: 180, easing: Easing.out(Easing.quad) }),
+              withSpring(centerOn(STRIP_LEN), { damping: 12, stiffness: 300 }),
+            );
+          }, 280));
+        }, 300));
       }, decelStartMs));
 
     } else if (isWinning) {
       clearAll();
-      setDisplaySymbol(symbol);
-      opacity.value = 1;
-      translateY.value = withTiming(0, { duration: 150 });
+      // Ensure target is visible after spin resolves
+      translateY.value = withTiming(centerOn(STRIP_LEN), { duration: 120 });
       glowOp.value = withSequence(
         withTiming(1, { duration: 180 }),
         withTiming(0.45, { duration: 500 }),
@@ -125,34 +155,45 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
       );
     } else {
       clearAll();
-      setDisplaySymbol(symbol);
-      opacity.value = withTiming(1, { duration: 200 });
-      translateY.value = withTiming(0, { duration: 150 });
+      translateY.value = withTiming(centerOn(STRIP_LEN), { duration: 150 });
       glowOp.value = withTiming(0, { duration: 200 });
     }
 
     return clearAll;
   }, [isSpinning, isWinning]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
+  // Update strip target when symbol prop changes between spins
+  useEffect(() => {
+    if (!isSpinning) {
+      stripRef.current = Array.from({ length: STRIP_LEN + 1 }, () => symbol);
+      translateY.value = centerOn(STRIP_LEN);
+      forceUpdate(n => n + 1);
+    }
+  }, [symbol, isSpinning]);
+
+  const stripStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
-
   const glowStyle = useAnimatedStyle(() => ({ opacity: glowOp.value }));
-  const symbolColor = SYMBOL_COLORS[displaySymbol];
+
   const glowColor = highlightColor ?? SYMBOL_COLORS[symbol];
-  const fontSize = symbolSize ?? (cellHeight >= 90 ? Typography.sizes.hero : Typography.sizes.xl);
+  const fontSize = symbolSize ?? (cellHeight >= 90 ? Typography.sizes.hero : Math.round(Typography.sizes.xl * STRIP_CELL_RATIO));
 
   return (
-    <View style={[styles.reelCell, { height: cellHeight, backgroundColor: cellBg }]}>
+    <View style={[styles.reelCell, { height: cellHeight, backgroundColor: cellBg, overflow: 'hidden' }]}>
+      {/* Win glow backdrop */}
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: glowColor + '28' }, glowStyle]}
       />
-      <Animated.View style={animatedStyle}>
-        <Text style={[styles.symbol, { color: symbolColor, fontSize, lineHeight: fontSize + 8 }]}>
-          {glyphs[displaySymbol]}
-        </Text>
+      {/* Scrolling symbol strip */}
+      <Animated.View style={[{ position: 'absolute', left: 0, right: 0, top: 0, height: TOTAL_H }, stripStyle]}>
+        {stripRef.current.map((sym, i) => (
+          <View key={i} style={{ height: STRIP_CELL_H, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={[styles.symbol, { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 }]}>
+              {glyphs[sym]}
+            </Text>
+          </View>
+        ))}
       </Animated.View>
     </View>
   );

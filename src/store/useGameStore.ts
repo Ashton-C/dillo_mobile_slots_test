@@ -7,6 +7,7 @@ import { useDroneStore } from '@/store/useDroneStore';
 import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
 import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
+import { getMaxSpins } from '@/models/Habitat';
 import { auth } from '@/lib/firebase';
 
 export interface SpinHistoryEntry {
@@ -242,8 +243,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   tickSpinRefill() {
     const { spinsRemaining, spinRefillStart } = get();
+    const barracksLevel = useHabitatStore.getState().buildingLevels['BARRACKS'] ?? 0;
+    const spinCap = getMaxSpins(barracksLevel);
 
-    if (spinsRemaining >= MAX_SPINS || spinRefillStart === 0) {
+    if (spinsRemaining >= spinCap || spinRefillStart === 0) {
       set({ msUntilNextSpin: 0, msUntilFull: 0 });
       return;
     }
@@ -253,17 +256,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     const earned = Math.floor(elapsed / SPIN_REFILL_MS);
 
     if (earned > 0) {
-      const newSpins = Math.min(MAX_SPINS, spinsRemaining + earned);
+      const newSpins = Math.min(spinCap, spinsRemaining + earned);
       const newRefillStart = spinRefillStart + earned * SPIN_REFILL_MS;
 
-      if (newSpins >= MAX_SPINS) {
+      if (newSpins >= spinCap) {
         const update = { spinsRemaining: newSpins, spinRefillStart: 0 };
         set({ ...update, msUntilNextSpin: 0, msUntilFull: 0 });
         persistResources(update);
       } else {
         const msInCycle = now - newRefillStart;
         const msUntilNextSpin = SPIN_REFILL_MS - msInCycle;
-        const spinsNeeded = MAX_SPINS - newSpins;
+        const spinsNeeded = spinCap - newSpins;
         const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
         const update = { spinsRemaining: newSpins, spinRefillStart: newRefillStart };
         set({ ...update, msUntilNextSpin, msUntilFull });
@@ -271,7 +274,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     } else {
       const msUntilNextSpin = SPIN_REFILL_MS - (elapsed % SPIN_REFILL_MS);
-      const spinsNeeded = MAX_SPINS - spinsRemaining;
+      const spinsNeeded = spinCap - spinsRemaining;
       const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
       set({ msUntilNextSpin, msUntilFull });
     }

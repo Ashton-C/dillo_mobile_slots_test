@@ -30,6 +30,7 @@ import { JackpotBurst } from '@/components/JackpotBurst';
 import { LedgerDrawer } from '@/components/LedgerDrawer';
 import { ConfettiEmitter } from '@/components/ConfettiEmitter';
 import { OnboardingModal } from '@/components/OnboardingModal';
+import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { soundService } from '@/services/SoundService';
 import { OddsModal } from '@/components/OddsModal';
@@ -274,6 +275,7 @@ export default function SpinScreen() {
 
       {/* Jackpot particle burst */}
       <JackpotBurst visible={burstVisible} creditsWon={lastResult?.creditsWon ?? 0} />
+      <BuildCompleteBanner />
 
       {/* Jackpot confetti rain */}
       <ConfettiEmitter active={confettiActive} />

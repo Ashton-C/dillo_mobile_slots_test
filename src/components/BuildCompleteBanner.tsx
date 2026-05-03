@@ -19,6 +19,7 @@ const BUILDING_META: Record<BuildingType, { icon: string; label: string; color: 
   VAULT:     { icon: '◈', label: 'VAULT',      color: Colors.shield },
   TURRET:    { icon: '◎', label: 'TURRET',     color: Colors.accent },
   HANGAR:    { icon: '▲', label: 'HANGAR',     color: Colors.primary },
+  BARRACKS:  { icon: '◉', label: 'BARRACKS',  color: Colors.success },
 };
 
 export function BuildCompleteBanner() {

@@ -166,10 +166,11 @@ All buildings are gated by **Outpost Level** — a building can't exceed the cur
 | Building | Effect |
 |---|---|
 | GENERATOR | Passive credit income (+level × 20 CR every 30s) |
-| ARMORY | Fuel Cell storage cap (+5 per level) |
-| VAULT | Reduces credit loss when raided (% per level) |
-| TURRET | Auto-blocks N incoming attacks per day |
+| ARMORY | Fuel Cell storage cap (+5 per level, base 50) |
+| VAULT | Reduces credit loss when raided (5% per level, max 50%) |
+| TURRET | Auto-blocks N incoming attacks per day (no credit loss when active) |
 | HANGAR | Unlocks drone slots (1 slot per level) |
+| BARRACKS | Spin storage cap (+5 per level, base 50) |
 
 ### PvP (RADAR Screen)
 
@@ -215,3 +216,42 @@ Deployed from the **CONTRACTS** modal on the Habitat screen (requires HANGAR ≥
 - **Path alias:** `@/*` maps to `./src/*` — configured in `tsconfig.json` and `babel.config.js`.
 - **Type checking:** `npx tsc --noEmit`
 - **No test suite yet** — SlotsEngine unit tests are on the Phase 4 backlog.
+
+---
+
+## Appendix: Max Upgrade Credit Costs
+
+Total credits required to max-level every building and the Outpost from scratch.
+
+Upgrade cost formula: `COST(level) = base_rate × level`, summed level 1 → 10.  
+Sum of levels 1–10 = 55. Sum of levels 1–9 (Outpost starting at Lv1) = 45.
+
+### Buildings (Lv 0 → 10)
+
+| Building | Rate / level | Total to Lv 10 | Effect at max |
+|---|---|---|---|
+| GENERATOR | 200 CR × lvl | **11,000 CR** | +200 CR/30s · Overclock +500 CR flat |
+| ARMORY | 300 CR × lvl | **16,500 CR** | Max 100 fuel cells stored |
+| VAULT | 350 CR × lvl | **19,250 CR** | Raiders steal 15% of credits (−50% base) |
+| TURRET | 500 CR × lvl | **27,500 CR** | Auto-blocks 10 attacks/day |
+| HANGAR | 1,000 CR × lvl | **55,000 CR** | 10 drone contract slots |
+| BARRACKS | 200 CR × lvl | **11,000 CR** | Max 100 spins stored |
+
+### Outpost (Lv 1 → 10)
+
+| Outpost upgrade | Cost | Rate |
+|---|---|---|
+| Lv 1 → 2 | 500 CR | — |
+| … | … | 500 CR × current level |
+| Lv 9 → 10 | 4,500 CR | — |
+| **Total** | **22,500 CR** | Sum levels 1–9 × 500 |
+
+### Grand Total
+
+| Category | Credits |
+|---|---|
+| All 6 buildings to Lv 10 | 140,250 CR |
+| Outpost to Lv 10 | 22,500 CR |
+| **Full base max-out** | **162,750 CR** |
+
+> Note: only one building slot can be under construction at a time. Sequential build time to max everything is on the order of weeks at high tiers (Lv 8–10 takes 24–72 hours each).

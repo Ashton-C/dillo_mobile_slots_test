@@ -10,6 +10,7 @@ export const BuildingType = z.enum([
   'VAULT',        // reduces credit loss on raid
   'TURRET',       // auto-defends against 1 attack per day
   'HANGAR',       // drone bay — unlocks Mercenary Contracts (Phase 2)
+  'BARRACKS',     // increases max spin storage cap
 ]);
 export type BuildingType = z.infer<typeof BuildingType>;
 
@@ -27,7 +28,12 @@ export const BUILDING_UPGRADE_COST: Record<BuildingType, (level: number) => numb
   VAULT: (lvl) => 350 * lvl,
   TURRET: (lvl) => 500 * lvl,
   HANGAR: (lvl) => 1000 * lvl,
+  BARRACKS: (lvl) => 200 * lvl,
 };
+
+export function getMaxSpins(barracksLevel: number): number {
+  return 50 + barracksLevel * 5;
+}
 
 // Build duration (ms) to upgrade TO the given level (level 1 is free/instant on first build)
 export const BUILD_DURATION_MS: { [targetLevel: number]: number } = {

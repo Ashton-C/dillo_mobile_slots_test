@@ -26,6 +26,7 @@ const BUILDING_META: Record<BuildingType, { icon: string; label: string }> = {
   VAULT:     { icon: '◈', label: 'VAULT' },
   TURRET:    { icon: '◎', label: 'TURRET' },
   HANGAR:    { icon: '▲', label: 'HANGAR' },
+  BARRACKS:  { icon: '◉', label: 'BARRACKS' },
 };
 
 const BUILDING_COLOR: Record<BuildingType, string> = {
@@ -34,6 +35,7 @@ const BUILDING_COLOR: Record<BuildingType, string> = {
   VAULT:     Colors.shield,
   TURRET:    Colors.accent,
   HANGAR:    Colors.primary,
+  BARRACKS:  Colors.success,
 };
 
 interface BuildingDetail {
@@ -78,8 +80,8 @@ const BUILDING_DETAIL: Record<BuildingType, (level: number) => BuildingDetail> =
   TURRET: (l) => ({
     summary:    l === 0 ? 'No auto-defense' : `Auto-blocks ${l} attack${l !== 1 ? 's' : ''}/day`,
     mechanic:   l === 0
-      ? 'Absorbs incoming attacks before HP damage is dealt. No shield required.'
-      : 'Blocked attacks deal no HP damage · ignores shields · resets daily',
+      ? 'Automatically blocks incoming attacks before any credits are lost. No shields required.'
+      : 'Blocked attacks steal no credits · ignores shields · charges reset daily',
     nextSummary: l < 10 ? `Auto-blocks ${l + 1} attack${l + 1 !== 1 ? 's' : ''}/day` : null,
   }),
   HANGAR: (l) => ({
@@ -89,9 +91,16 @@ const BUILDING_DETAIL: Record<BuildingType, (level: number) => BuildingDetail> =
       : `Deploy ${l} mercenary contract${l !== 1 ? 's' : ''} simultaneously`,
     nextSummary: l < 10 ? `${l + 1} drone slot${l + 1 !== 1 ? 's' : ''}` : null,
   }),
+  BARRACKS: (l) => ({
+    summary:    l === 0 ? 'Base capacity: 50 spins' : `Max ${50 + l * 5} spins stored`,
+    mechanic:   l === 0
+      ? 'Raises the maximum spin storage cap. Spins refill at 1 per 5 min regardless.'
+      : `${l * 5} bonus spin slots · refill rate unchanged`,
+    nextSummary: l < 10 ? `Max ${50 + (l + 1) * 5} spins stored` : null,
+  }),
 };
 
-const ALL_BUILDINGS: BuildingType[] = ['GENERATOR', 'ARMORY', 'VAULT', 'TURRET', 'HANGAR'];
+const ALL_BUILDINGS: BuildingType[] = ['GENERATOR', 'ARMORY', 'VAULT', 'TURRET', 'HANGAR', 'BARRACKS'];
 
 function formatTimer(ms: number): string {
   const s = Math.ceil(ms / 1000);
@@ -426,6 +435,7 @@ export default function HabitatScreen() {
         <LegendSection label="BUILDINGS" />
         <LegendRow left="GENERATOR" right="Passive +level×20 CR / 30s" color={Colors.credits} />
         <LegendRow left="ARMORY" right="Raises Fuel Cell cap" color={Colors.attack} />
+        <LegendRow left="BARRACKS" right="Raises max spin storage (+5/lvl)" color={Colors.success} />
         <LegendRow left="VAULT" right="Absorbs level×5% raid loss" color={Colors.shield} />
         <LegendRow left="TURRET" right="Auto-blocks N attacks/day" color={Colors.accent} />
         <LegendRow left="HANGAR" right="Unlocks drone contract slots" color={Colors.primary} />
