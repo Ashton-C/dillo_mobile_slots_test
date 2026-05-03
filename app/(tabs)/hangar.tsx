@@ -12,6 +12,7 @@ import { useHabitatStore } from '@/store/useHabitatStore';
 import { fetchRadarTargets, PlayerIndexEntry } from '@/services/FirestoreService';
 import { DEBUG_PLAYERS, loadActiveDebugUids } from '@/constants/debugPlayers';
 import { CombatMiniGame } from '@/components/CombatMiniGame';
+import { SectorMap } from '@/components/SectorMap';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const RECENT_TARGETS_KEY = 'recentRadarTargets';
@@ -227,6 +228,15 @@ export default function RadarScreen() {
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.list}>
+        {/* Sector map */}
+        <SectorMap
+          targets={targets}
+          recentTargets={recentTargets}
+          myOutpostLevel={outpostLevel}
+          selectedUid={selectedTarget?.uid ?? null}
+          isScanning={loading}
+        />
+
         {/* Q4: Recent targets */}
         {recentTargets.length > 0 && targets.length === 0 && !loading && (
           <>
@@ -245,6 +255,8 @@ export default function RadarScreen() {
             <View style={styles.divider} />
           </>
         )}
+
+        <Text style={styles.sectionHeader}>CONTACTS</Text>
 
         {targets.length === 0 && !loading && recentTargets.length === 0 && (
           <View style={styles.empty}>
