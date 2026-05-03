@@ -6,6 +6,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
 import { anomalyService, ANOMALIES, AnomalyId } from '@/services/AnomalyService';
+import { SectorTrailMap } from '@/components/SectorTrailMap';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 // Weighted pool: CALM × 1, all others × 2 → 11 total
@@ -60,7 +61,7 @@ function formatMs(ms: number): string {
 export default function RiftScreen() {
   const { credits, riftTier, setRiftTier } = useGameStore();
   const [legendVisible, setLegendVisible] = useState(false);
-  const { definition, msRemaining } = useAnomalyStore();
+  const { definition, msRemaining, activeAnomaly } = useAnomalyStore();
 
   function handleSelect(tier: TemporalRiftTier) {
     const rawCost = RIFT_COSTS[tier];
@@ -118,6 +119,12 @@ export default function RiftScreen() {
       )}
 
       <ScrollView contentContainerStyle={styles.list}>
+        <SectorTrailMap
+          startedAt={activeAnomaly?.startedAt ?? null}
+          currentAnomalyId={activeAnomaly?.id ?? null}
+          msRemaining={msRemaining}
+        />
+
         <Text style={styles.sectionHeader}>ALL RIFT TIERS</Text>
 
         {tiers.map((tier) => {
