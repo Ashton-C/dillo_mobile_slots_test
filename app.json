@@ -2,7 +2,7 @@
   "expo": {
     "name": "Reelwright",
     "slug": "reelwright",
-    "version": "1.0.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "reelwright",
@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.reelwright.app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSUserTrackingUsageDescription": "We use this to show you ads relevant to your interests, which keeps the game free."
       }
@@ -24,7 +25,8 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0D0D1A"
       },
-      "package": "com.reelwright.app"
+      "package": "com.reelwright.app",
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",
