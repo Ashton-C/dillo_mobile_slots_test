@@ -16,18 +16,24 @@ import { PlayerIndexEntry } from '@/services/FirestoreService';
 const MAP_SIZE = Math.min(Dimensions.get('window').width - 32, 320);
 const CENTER = MAP_SIZE / 2;
 const RING_RADII = [MAP_SIZE * 0.22, MAP_SIZE * 0.38, MAP_SIZE * 0.48];
+// Finer placement radii (continuous-feeling, but still stays inside the rings)
+const PLACE_RADII = [
+  MAP_SIZE * 0.19, MAP_SIZE * 0.26, MAP_SIZE * 0.33,
+  MAP_SIZE * 0.40, MAP_SIZE * 0.46,
+];
+// Golden angle ≈ 137.5° — incommensurate with π, so consecutive index offsets
+// never align with cardinal axes regardless of base angle.
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
-// Stable pseudo-random position from a uid string
 function uidToPosition(uid: string, index: number): { angle: number; radius: number } {
-  let hash = 0;
+  let hash = 2166136261 >>> 0;
   for (let i = 0; i < uid.length; i++) {
-    hash = (hash * 31 + uid.charCodeAt(i)) >>> 0;
+    hash = ((hash ^ uid.charCodeAt(i)) * 16777619) >>> 0;
   }
-  // Use index offset to spread multiple targets apart
-  const angleStep = (Math.PI * 2) / 8;
-  const angleOffset = ((hash >>> 8) % 8) * angleStep + index * (Math.PI / 4);
-  const radius = RING_RADII[hash % RING_RADII.length];
-  return { angle: angleOffset, radius };
+  const baseAngle = ((hash >>> 8) & 0xFFFF) / 0x10000 * Math.PI * 2;
+  const angle = (baseAngle + index * GOLDEN_ANGLE) % (Math.PI * 2);
+  const radius = PLACE_RADII[(hash >>> 4) % PLACE_RADII.length];
+  return { angle, radius };
 }
 
 function threatColor(outpostLevel: number, myOutpostLevel: number): string {

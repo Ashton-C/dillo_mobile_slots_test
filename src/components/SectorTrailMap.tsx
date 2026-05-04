@@ -124,53 +124,155 @@ function nodeXY(i: number): { x: number; y: number } {
   };
 }
 
-// ── Isometric grid lines ──────────────────────────────────────────────────────
-// Two families of parallel diagonal lines at +30° and –30°, creating the
-// classic iso-floor "holographic grid" look without any SVG.
+// ── Hex floor grid (iso-foreshortened for a 3D-tilted-floor look) ─────────────
+// Flat-top hex grid, Y axis compressed so hexes appear squashed (floor-perspective).
+// Per-hex perspective fade: rows higher up the canvas are dimmer (= "further away").
 
-const ISO_STEP = 22;
-const ISO_COLOR = Colors.info + '20';
+const HEX_R = 22;                 // hex circumradius
+const HEX_W = HEX_R * 2;          // flat-top width  (2R)
+const HEX_H = HEX_R * Math.sqrt(3); // flat-top height (sqrt3 · R)
+const ISO_Y = 0.62;               // vertical compression (smaller = more tilt)
 
-function IsoGrid({ width, height }: { width: number; height: number }) {
-  const tan30 = Math.tan(Math.PI / 6); // ≈ 0.5774
-  const dy = width * tan30;
+const HEX_VERTS: ReadonlyArray<readonly [number, number]> = [
+  [ HEX_R,        0 ],
+  [ HEX_R / 2,    HEX_H / 2 ],
+  [-HEX_R / 2,    HEX_H / 2 ],
+  [-HEX_R,        0 ],
+  [-HEX_R / 2,   -HEX_H / 2 ],
+  [ HEX_R / 2,   -HEX_H / 2 ],
+];
 
-  const lines: { x1: number; y1: number; x2: number; y2: number; k: string }[] = [];
+interface HexEdge { left: number; top: number; width: number; angle: number; opacity: number }
 
-  // +30° family: from (0, y1) → (width, y1 + dy)
-  for (let y1 = -dy; y1 <= height + ISO_STEP; y1 += ISO_STEP) {
-    lines.push({ x1: 0, y1, x2: width, y2: y1 + dy, k: `p${Math.round(y1)}` });
+function buildHexEdges(viewW: number, viewH: number): HexEdge[] {
+  const seen = new Set<string>();
+  const out: HexEdge[] = [];
+  const cols = Math.ceil(viewW / (1.5 * HEX_R)) + 2;
+  const rows = Math.ceil(viewH / (HEX_H * ISO_Y)) + 4;
+  for (let c = -1; c <= cols; c++) {
+    for (let r = -2; r <= rows; r++) {
+      const cx = c * 1.5 * HEX_R;
+      const cyU = r * HEX_H + (c & 1 ? HEX_H / 2 : 0);
+      const cy = cyU * ISO_Y;
+      for (let i = 0; i < 6; i++) {
+        const [vx1, vy1] = HEX_VERTS[i];
+        const [vx2, vy2] = HEX_VERTS[(i + 1) % 6];
+        const x1 = cx + vx1;
+        const y1 = cy + vy1 * ISO_Y;
+        const x2 = cx + vx2;
+        const y2 = cy + vy2 * ISO_Y;
+        // Dedup edges shared between neighbouring hexes
+        const k = x1 + y1 < x2 + y2
+          ? `${x1.toFixed(1)},${y1.toFixed(1)},${x2.toFixed(1)},${y2.toFixed(1)}`
+          : `${x2.toFixed(1)},${y2.toFixed(1)},${x1.toFixed(1)},${y1.toFixed(1)}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const midY = (y1 + y2) / 2;
+        if (midY < -HEX_H || midY > viewH + HEX_H) continue;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        const cxE = (x1 + x2) / 2;
+        // Perspective fade: top of canvas → dim, bottom → bright
+        const t = Math.max(0, Math.min(1, midY / viewH));
+        const opacity = 0.05 + t * 0.18;
+        out.push({
+          left: cxE - len / 2,
+          top:  midY - 0.25,
+          width: len,
+          angle,
+          opacity,
+        });
+      }
+    }
   }
-  // –30° family: from (0, y1) → (width, y1 - dy)
-  for (let y1 = -ISO_STEP; y1 <= height + dy + ISO_STEP; y1 += ISO_STEP) {
-    lines.push({ x1: 0, y1, x2: width, y2: y1 - dy, k: `n${Math.round(y1)}` });
-  }
+  return out;
+}
 
+const HEX_EDGES = buildHexEdges(MAP_W, MAP_H);
+
+function HexFloor() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {lines.map(({ x1, y1, x2, y2, k }) => {
-        const dx = x2 - x1;
-        const ddy = y2 - y1;
-        const len = Math.sqrt(dx * dx + ddy * ddy);
-        const angle = Math.atan2(ddy, dx) * (180 / Math.PI);
-        const cx = (x1 + x2) / 2;
-        const cy = (y1 + y2) / 2;
+      {HEX_EDGES.map((e, i) => (
+        <View
+          key={i}
+          style={{
+            position: 'absolute',
+            left: e.left,
+            top: e.top,
+            width: e.width,
+            height: 0.5,
+            backgroundColor: Colors.info,
+            opacity: e.opacity,
+            transform: [{ rotate: `${e.angle}deg` }],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+// Hex-shaped sector node (outline + filled), built from 6 edges.
+interface HexNodeProps {
+  cx: number;
+  cy: number;
+  size: number;       // hex circumradius
+  color: string;
+  fillAlpha: string;  // hex alpha suffix, e.g. '30'
+  borderWidth?: number;
+}
+
+function HexNode({ cx, cy, size, color, fillAlpha, borderWidth = 1 }: HexNodeProps) {
+  const h = size * Math.sqrt(3);
+  // Six outline edges
+  const verts: [number, number][] = [
+    [ size,      0 ],
+    [ size / 2,  h / 2 ],
+    [-size / 2,  h / 2 ],
+    [-size,      0 ],
+    [-size / 2, -h / 2 ],
+    [ size / 2, -h / 2 ],
+  ];
+  return (
+    <>
+      {/* Filled background — approximated as a slightly inset rect to keep it cheap */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: cx - size * 0.86,
+          top:  cy - h / 2 + 1,
+          width: size * 1.72,
+          height: h - 2,
+          backgroundColor: color + fillAlpha,
+        }}
+      />
+      {verts.map((v, i) => {
+        const v2 = verts[(i + 1) % 6];
+        const x1 = cx + v[0],  y1 = cy + v[1];
+        const x2 = cx + v2[0], y2 = cy + v2[1];
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
         return (
           <View
-            key={k}
+            key={i}
+            pointerEvents="none"
             style={{
               position: 'absolute',
-              left: cx - len / 2,
-              top: cy - 0.25,
+              left: (x1 + x2) / 2 - len / 2,
+              top:  (y1 + y2) / 2 - borderWidth / 2,
               width: len,
-              height: 0.5,
-              backgroundColor: ISO_COLOR,
+              height: borderWidth,
+              backgroundColor: color,
               transform: [{ rotate: `${angle}deg` }],
             }}
           />
         );
       })}
-    </View>
+    </>
   );
 }
 
@@ -183,7 +285,7 @@ function PathLine({
   color: string; opacity: number; thick?: boolean;
 }) {
   const dx = x2 - x1;
-  const dy = (y2 - y1) * 0.7;
+  const dy = (y2 - y1) * ISO_Y;
   const len = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
   const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
@@ -277,8 +379,8 @@ export function SectorTrailMap({ startedAt, currentAnomalyId, msRemaining }: Pro
         {/* Subtle holographic surface tint */}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.info + '06' }]} />
 
-        {/* ISO grid (two families of diagonal lines = 3D floor) */}
-        <IsoGrid width={MAP_W} height={MAP_H} />
+        {/* Hex floor — iso-foreshortened, perspective-faded */}
+        <HexFloor />
 
         {/* Path glow underlays (thick, low opacity behind each segment) */}
         {nodes.slice(0, -1).map((_, i) => {
@@ -386,57 +488,29 @@ export function SectorTrailMap({ startedAt, currentAnomalyId, msRemaining }: Pro
           return (
             <Fragment key={i}>
               {node.isNext ? (
-                <Animated.View
-                  style={[
-                    {
-                      position: 'absolute',
-                      left: x - 13,
-                      top: y - 13,
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      borderWidth: 1,
-                      borderStyle: 'dashed' as const,
-                      borderColor: Colors.textMuted,
-                      backgroundColor: Colors.surface,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    },
-                    blinkStyle,
-                  ]}
-                >
-                  <Text style={styles.nextQ}>?</Text>
+                <Animated.View style={[blinkStyle, StyleSheet.absoluteFill]} pointerEvents="none">
+                  <HexNode cx={x} cy={y} size={11} color={Colors.textMuted} fillAlpha="10" borderWidth={1} />
+                  <Text style={[styles.nextQ, { position: 'absolute', left: x - 4, top: y - 6 }]}>?</Text>
                 </Animated.View>
               ) : (
-                <View
-                  style={{
-                    position: 'absolute',
-                    left: x - half,
-                    top: y - half,
-                    width: size,
-                    height: size,
-                    borderRadius: node.isCurrent ? 10 : half,
-                    borderWidth: node.isCurrent ? 2 : 1,
-                    borderColor: color,
-                    backgroundColor: color + alpha,
-                    opacity: node.isPast ? 0.5 : 1,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
+                <View style={[StyleSheet.absoluteFill, { opacity: node.isPast ? 0.55 : 1 }]} pointerEvents="none">
+                  <HexNode
+                    cx={x}
+                    cy={y}
+                    size={size / 2 + (node.isCurrent ? 2 : 0)}
+                    color={color}
+                    fillAlpha={alpha}
+                    borderWidth={node.isCurrent ? 2 : 1}
+                  />
                   {node.isCurrent && (
-                    <>
-                      {/* Inner ring */}
-                      <View
-                        style={{
-                          width: size * 0.55,
-                          height: size * 0.55,
-                          borderRadius: 6,
-                          borderWidth: 1,
-                          borderColor: color + 'AA',
-                        }}
-                      />
-                    </>
+                    <HexNode
+                      cx={x}
+                      cy={y}
+                      size={(size / 2) * 0.55}
+                      color={color}
+                      fillAlpha="00"
+                      borderWidth={1}
+                    />
                   )}
                 </View>
               )}

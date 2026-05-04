@@ -8,6 +8,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { AdWatchModal } from '@/components/AdWatchModal';
+import { adsService, ADS_AVAILABLE } from '@/services/AdsService';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
 import { hapticBuildComplete, hapticActivateBuff } from '@/constants/haptics';
 import {
@@ -194,17 +195,27 @@ export default function StoreScreen() {
   }
 
   // ── Ad handlers ──
-  function handleAdTap(ad: AdReward) {
+  function grantAdReward(ad: AdReward) {
+    grantResources(ad.reward);
+    markAdClaimed(ad.id, ad.cooldownMs);
+    setAdReadyAt((prev) => ({ ...prev, [ad.id]: Date.now() + ad.cooldownMs }));
+    showToast(`Reward claimed: ${ad.rewardLabel}`);
+  }
+
+  async function handleAdTap(ad: AdReward) {
     if ((adReadyAt[ad.id] ?? 0) > now) return;
-    setAdActive(ad);
+    if (!ADS_AVAILABLE) {
+      // Expo Go / stub mode — keep the fake-ad modal flow
+      setAdActive(ad);
+      return;
+    }
+    const { rewarded } = await adsService.showRewardedAd();
+    if (rewarded) grantAdReward(ad);
   }
 
   function handleAdComplete() {
     if (!adActive) return;
-    grantResources(adActive.reward);
-    markAdClaimed(adActive.id, adActive.cooldownMs);
-    setAdReadyAt((prev) => ({ ...prev, [adActive.id]: Date.now() + adActive.cooldownMs }));
-    showToast(`Reward claimed: ${adActive.rewardLabel}`);
+    grantAdReward(adActive);
     setAdActive(null);
   }
 
