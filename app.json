@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.reelwright.app"
+      "bundleIdentifier": "com.reelwright.app",
+      "infoPlist": {
+    "NSUserTrackingUsageDescription": "We use this to show you ads relevant to your interests, which keeps the game free."
+  }
     },
     "android": {
       "adaptiveIcon": {
@@ -34,8 +37,8 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+          "androidAppId": "ca-app-pub-4236370939200106~2762572932",
+          "iosAppId": "ca-app-pub-4236370939200106~3479924083"
         }
       ]
     ],
@@ -44,8 +47,11 @@
     },
     "extra": {
       "admob": {
-        "rewardedAndroid": "",
-        "rewardedIos": ""
+        "rewardedAndroid": "ca-app-pub-4236370939200106/1678615611",
+        "rewardedIos": "ca-app-pub-4236370939200106/9749600768"
+      },
+      "eas": {
+        "projectId": "643f084a-afb7-4ef8-9336-f483460387de"
       }
     }
   }
