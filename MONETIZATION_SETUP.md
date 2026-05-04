@@ -1,4 +1,4 @@
-# Ad Integration Setup — Sovereign Slots
+# Ad Integration Setup — Reelwright
 
 The codebase is now wired up for Google AdMob rewarded video ads. The wiring
 is **safe to ship as-is** — without real account credentials it falls back
@@ -32,7 +32,7 @@ revenue."
 ### 1. Google AdMob (required for ads)
 
 1. Go to <https://admob.google.com/> and sign in with a Google account.
-2. **Create app** → Android → enter app name "Sovereign Slots" → mark as
+2. **Create app** → Android → enter app name "Reelwright" → mark as
    not yet published. Repeat for iOS.
 3. After each app is created, AdMob assigns it an **App ID** in the form
    `ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY`. Copy both (Android + iOS).

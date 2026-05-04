@@ -90,7 +90,7 @@ export function DroneMarketplace({ visible, onClose }: Props) {
           >
             <View style={styles.headerRow}>
               <View>
-                <Text style={styles.title}>DRONE CONTRACTS</Text>
+                <Text style={styles.title}>CREW CONTRACTS</Text>
                 <Text style={styles.slotStatus}>
                   {usedSlots} / {maxSlots} SLOTS ACTIVE
                   {usedSlots >= maxSlots && '  ·  FULL'}
@@ -169,7 +169,7 @@ export function DroneMarketplace({ visible, onClose }: Props) {
             })}
 
             <Text style={styles.footnote}>
-              Active drone slots = HANGAR level. Upgrade your HANGAR to deploy more drones simultaneously.
+              Active crew slots = HANGAR level. Upgrade your HANGAR to deploy more hands simultaneously.
             </Text>
           </ScrollView>
         </View>

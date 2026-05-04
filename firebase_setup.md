@@ -1,4 +1,4 @@
-# Firebase Setup Guide — Sovereign Slots
+# Firebase Setup Guide — Reelwright
 
 Follow these steps when you're ready to connect the live backend. Takes about 15 minutes start to finish.
 
@@ -7,7 +7,7 @@ Follow these steps when you're ready to connect the live backend. Takes about 15
 ## Step 1 — Create the Firebase Project
 
 1. Go to **[console.firebase.google.com](https://console.firebase.google.com)**
-2. Click **Add project** → name it `sovereign-slots`
+2. Click **Add project** → name it `reelwright`
 3. Disable Google Analytics (not needed yet — add later for Phase 3)
 4. Click **Create project**
 
@@ -17,7 +17,7 @@ Follow these steps when you're ready to connect the live backend. Takes about 15
 
 1. From the project overview, click the **`</>`** (Web) icon to add a web app
    *(Expo uses the web SDK even on mobile)*
-2. Name it `sovereign-slots-expo`
+2. Name it `reelwright-expo`
 3. Do **not** enable Firebase Hosting
 4. Copy the `firebaseConfig` object — you'll need it in Step 4
 
@@ -60,9 +60,9 @@ The three collections the app uses will be created automatically on first write:
 
 ```env
 EXPO_PUBLIC_FIREBASE_API_KEY=AIza...
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=sovereign-slots.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=sovereign-slots
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=sovereign-slots.appspot.com
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=reelwright.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=reelwright
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=reelwright.appspot.com
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
 EXPO_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abc123
 ```

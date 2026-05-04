@@ -158,7 +158,7 @@ export const TITLE_LABELS: Record<string, string> = {
   title_warlord:  'WARLORD',
   title_phantom:  'PHANTOM',
   title_oracle:   'ORACLE',
-  title_sovereign:'SOVEREIGN',
+  title_sovereign:'MARSHAL',
   title_void_adm: 'VOID ADMIRAL',
 };
 
@@ -224,7 +224,7 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { id: 'title_warlord',   category: 'TITLE', name: 'WARLORD',      description: 'Aggressive raider prefix',  creditCost: 400  },
   { id: 'title_phantom',   category: 'TITLE', name: 'PHANTOM',      description: 'Ghost operative prefix',   creditCost: 400  },
   { id: 'title_oracle',    category: 'TITLE', name: 'ORACLE',       description: 'Mystic strategist prefix', creditCost: 800  },
-  { id: 'title_sovereign', category: 'TITLE', name: 'SOVEREIGN',    description: 'Top-tier flex prefix',     creditCost: -1,  iapPrice: '$1.99' },
+  { id: 'title_sovereign', category: 'TITLE', name: 'MARSHAL',      description: 'Frontier prestige prefix', creditCost: -1,  iapPrice: '$1.99' },
   { id: 'title_void_adm',  category: 'TITLE', name: 'VOID ADMIRAL', description: 'Ultimate prestige',        creditCost: -1,  iapPrice: '$4.99' },
 
   // Spin Button Skins
@@ -250,7 +250,7 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   // Bundles (IAP only — grant multiple items on purchase)
   { id: 'bundle_pilot',   category: 'BUNDLE', name: 'PILOT STARTER',    description: 'RETRO ARCADE + CRIMSON CORE + 2,000 CR', creditCost: -1, iapPrice: '$2.99', featured: true },
   { id: 'bundle_cmdr',    category: 'BUNDLE', name: 'COMMANDER PACK',   description: 'DEEP REEF theme + TACTICAL HUD + ACE emblem', creditCost: -1, iapPrice: '$4.99' },
-  { id: 'bundle_founder', category: 'BUNDLE', name: "FOUNDER'S EDITION",description: 'CHROMATIC + NEBULA suit + VOID RIFT + SOVEREIGN', creditCost: -1, iapPrice: '$9.99', featured: true },
+  { id: 'bundle_founder', category: 'BUNDLE', name: "FOUNDER'S EDITION",description: 'CHROMATIC + NEBULA suit + VOID RIFT + MARSHAL',    creditCost: -1, iapPrice: '$9.99', featured: true },
 ];
 
 // ─── Bundle Grants ────────────────────────────────────────────────────────────

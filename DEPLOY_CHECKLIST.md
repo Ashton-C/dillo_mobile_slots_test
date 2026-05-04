@@ -1,6 +1,6 @@
 # Deploy Checklist — iOS & Android
 
-A from-zero checklist for shipping Sovereign Slots to the App Store and
+A from-zero checklist for shipping Reelwright to the App Store and
 Google Play. Plan a full week the first time; subsequent releases take a
 few hours.
 
@@ -70,8 +70,8 @@ EAS regenerate them on every build.
 ### 3a. App Store Connect setup (one-time)
 
 1. <https://appstoreconnect.apple.com> → **My Apps** → **+** → **New App**.
-2. Bundle ID: `com.sovereignslots.app` (must match `app.json` → `ios.bundleIdentifier`).
-3. SKU: any unique string (e.g. `sovereign-slots-001`).
+2. Bundle ID: `com.reelwright.app` (must match `app.json` → `ios.bundleIdentifier`).
+3. SKU: any unique string (e.g. `reelwright-001`).
 4. Fill **App Information**: subtitle, primary category (Games > Casino),
    age rating (17+ for simulated gambling).
 5. **Pricing**: Free.
@@ -112,7 +112,7 @@ or GitHub Pages) and a **Support URL**. Even a one-page site is enough.
 ### 4a. Google Play Console setup (one-time)
 
 1. <https://play.google.com/console> → **Create app**.
-2. App name: "Sovereign Slots". Package: `com.sovereignslots.app`.
+2. App name: "Reelwright". Package: `com.reelwright.app`.
 3. **App category**: Casino (Casual). Target age: 18+.
 4. **Content rating** → fill questionnaire (mark "simulated gambling").
 5. **Data safety** → declare Firebase + AdMob as above.

@@ -79,7 +79,7 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
             {dimmed && <Text style={styles.recentBadge}>RECENT</Text>}
           </View>
           <Text style={styles.targetMeta}>
-            OUTPOST LVL {target.outpostLevel}  ·  PILOT LVL {target.level}
+            HOMESTEAD LVL {target.outpostLevel}  ·  PILOT LVL {target.level}
           </Text>
           <Text style={styles.powerPreview}>
             <Text style={{ color: Colors.primary }}>EVEN 75  </Text>
@@ -200,8 +200,8 @@ export default function RadarScreen() {
       >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.title}>RADAR</Text>
-            <Text style={styles.subtitle}>Locate. Assess. Engage.</Text>
+            <Text style={styles.title}>THE WIRE</Text>
+            <Text style={styles.subtitle}>Find 'em. Size 'em up. Take their cut.</Text>
           </View>
           <Pressable onPress={scan} disabled={loading} style={styles.scanButton}>
             {loading
@@ -221,7 +221,7 @@ export default function RadarScreen() {
             <Text style={[styles.pillValue, { color: Colors.accent }]}>{extractions}</Text>
           </View>
           <View style={[styles.pill, { borderColor: Colors.border }]}>
-            <Text style={[styles.pillLabel, { color: Colors.textMuted }]}>OUTPOST</Text>
+            <Text style={[styles.pillLabel, { color: Colors.textMuted }]}>HOMESTEAD</Text>
             <Text style={[styles.pillValue, { color: Colors.textSecondary }]}>LVL {outpostLevel}</Text>
           </View>
         </View>
@@ -261,7 +261,7 @@ export default function RadarScreen() {
         {targets.length === 0 && !loading && recentTargets.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>NO SIGNALS DETECTED</Text>
-            <Text style={styles.emptyHint}>Tap SCAN to sweep nearby space</Text>
+            <Text style={styles.emptyHint}>Tap SCAN to sweep the wire</Text>
           </View>
         )}
 
@@ -300,7 +300,7 @@ export default function RadarScreen() {
 
         {targets.length > 0 && (
           <Pressable onPress={scan} disabled={loading} style={styles.rescanRow}>
-            <Text style={styles.rescanText}>↻  RESCAN SECTOR</Text>
+            <Text style={styles.rescanText}>↻  SWEEP THE WIRE</Text>
           </Pressable>
         )}
 
@@ -321,7 +321,7 @@ export default function RadarScreen() {
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
 
-      <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="RADAR LEGEND" accentColor={Colors.danger}>
+      <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="WIRE LEGEND" accentColor={Colors.danger}>
         <LegendSection label="COMBAT ACTIONS" />
         <LegendRow left="INTRUSION" right="Spend 1 Breach token" color={Colors.danger} />
         <LegendRow left="" right="Winner steals credits from loser" />
@@ -333,12 +333,12 @@ export default function RadarScreen() {
         <LegendRow left="JACKPOT" right="17% · Power 145 · Loot 350 CR" color={Colors.credits} />
         <LegendRow left="MISS" right="Power 8 · Lose your bet resource" />
         <LegendSection label="DEFENDER POWER" />
-        <LegendRow left="THEIR" right="Outpost × 10 + rand(0–49)" color={Colors.danger} />
+        <LegendRow left="THEIR" right="Homestead × 10 + rand(0–49)" color={Colors.danger} />
         <LegendRow left="OUTCOME" right="Attacker power must exceed defender" />
         <LegendSection label="THREAT RATING" />
-        <LegendRow left="WEAK   — your outpost leads by 2+" color={Colors.success} />
-        <LegendRow left="EVEN   — within 1 outpost level" color={Colors.warning} />
-        <LegendRow left="STRONG — their outpost leads" color={Colors.danger} />
+        <LegendRow left="WEAK   — your homestead leads by 2+" color={Colors.success} />
+        <LegendRow left="EVEN   — within 1 homestead level" color={Colors.warning} />
+        <LegendRow left="STRONG — their homestead leads" color={Colors.danger} />
         <LegendSection label="PASSIVE DEFENSES" />
         <LegendRow left="VAULT" right="Absorbs % of credits lost" />
         <LegendRow left="TURRET" right="Auto-blocks N attacks/day" />

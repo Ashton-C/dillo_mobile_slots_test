@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Sovereign Slots",
-    "slug": "sovereign-slots",
+    "name": "Reelwright",
+    "slug": "reelwright",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "sovereign-slots",
+    "scheme": "reelwright",
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/images/splash.png",
@@ -14,14 +14,14 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.sovereignslots.app"
+      "bundleIdentifier": "com.reelwright.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0D0D1A"
       },
-      "package": "com.sovereignslots.app"
+      "package": "com.reelwright.app"
     },
     "web": {
       "bundler": "metro",

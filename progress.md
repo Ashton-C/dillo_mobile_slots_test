@@ -1,4 +1,4 @@
-# Sovereign Slots — Progress & Roadmap
+# Reelwright — Progress & Roadmap
 
 **Current Phase:** Phase 5 (Polish & Launch) — in progress
 **Last Updated:** 2026-05-01
@@ -20,7 +20,7 @@ The minimum viable slot game — engine, auth, base construction, and Firestore 
 
 ## Phase 2: Strategic Systems ✅
 
-The mechanics that differentiate Sovereign Slots from Coin Master.
+The mechanics that differentiate Reelwright from Coin Master.
 
 - [x] **Space Anomalies** — global 4-hour weather events via `anomalies/current` Firestore doc; `AnomalyService` with local tick
 - [x] **Temporal Rifts** — 4 tiers (0–3), each shifting reel weights toward credits or combat tokens; costs Credits per spin
@@ -31,7 +31,7 @@ The mechanics that differentiate Sovereign Slots from Coin Master.
 - [x] **ModifierPanel** — active effects display: combined credit multiplier, rift tier, active drones, anomaly countdown; tap to toggle dots ↔ numbers mode (persisted to AsyncStorage)
 - [x] **Outpost Level System** — master gate (1–10) blocking buildings from exceeding outpost level; upgrade flow with real-time timer, Firestore persistence
 - [x] **Drone Marketplace** — bottom-sheet modal from Habitat screen (CONTRACTS button, visible when HANGAR ≥ 1); atomic resource deduction
-- [x] **Brand polish** — LinearGradient header on Spin screen, jackpot flash animation, SpinButton pulse glow, low-spin color warning, `ArmadilloAvatar` component
+- [x] **Brand polish** — LinearGradient header on Spin screen, jackpot flash animation, SpinButton pulse glow, low-spin color warning, `PilotAvatar` component
 
 ---
 
@@ -94,7 +94,7 @@ Hard currency, IAP, and rewarded ads. Build the social loop fully before adding 
 - [x] Unit tests — `SlotsEngine` payout math, weight normalization, Rift modifiers, multiline evaluation
 - [ ] Integration tests — Zustand store actions, Firestore write/read round-trips
 - [x] Onboarding tutorial — first-run overlay: spin → build → deploy drone (3-step modal, AsyncStorage gated)
-- [x] Armadillo customization — color + accessory picker on Pilot screen; `setAvatarColor` persists to Firestore
+- [x] Pilot customization — color + accessory picker on Pilot screen; `setAvatarColor` persists to Firestore
 - [x] Particle effects — jackpot confetti (`ConfettiEmitter`), screen shake on incoming attacks
 - [ ] Push notifications — "your build is complete", "you were raided" (FCM)
 - [ ] App Store / Play Store submission
@@ -136,5 +136,5 @@ Hard currency, IAP, and rewarded ads. Build the social loop fully before adding 
 | Mock users | ✅ Written | Run `node scripts/seed-mock-users.js` to populate RADAR targets |
 | Unit tests | ✅ New | SlotsEngine: evaluate, spinRows, rift modifiers, signal boost, weight normalization |
 | Onboarding | ✅ New | 3-step first-run modal, AsyncStorage gated |
-| Armadillo customization | ✅ New | Color + accessory picker on Pilot tab |
+| Pilot customization | ✅ New | Color + accessory picker on Pilot tab |
 | Particle effects | ✅ New | ConfettiEmitter (jackpot), screen shake (incoming attack) |

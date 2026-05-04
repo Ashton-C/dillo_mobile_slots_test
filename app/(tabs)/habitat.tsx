@@ -51,13 +51,13 @@ export default function HabitatScreen() {
         style={styles.outpostBanner}
       >
         <View style={styles.outpostLeft}>
-          <Text style={styles.outpostTitle}>OUTPOST</Text>
+          <Text style={styles.outpostTitle}>HOMESTEAD</Text>
           <View style={styles.outpostLevelRow}>
             <Text style={styles.outpostLevelNum}>{outpostLevel}</Text>
             <Text style={styles.outpostLevelMax}> / 10</Text>
           </View>
           <Text style={styles.outpostHint}>
-            {outpostMaxed ? 'Fully upgraded' : `Buildings capped at level ${outpostLevel}`}
+            {outpostMaxed ? 'Fully upgraded' : `Buildings capped at homestead level ${outpostLevel}`}
           </Text>
           {/* 2a: Payline unlock hint */}
           <Text style={[styles.paylinesHint, { color: numPaylines >= 5 ? Colors.textMuted : Colors.accent + '99' }]}>
@@ -131,13 +131,13 @@ export default function HabitatScreen() {
         <LegendRow left="BARRACKS" right="Raises max spin storage (+5/lvl)" color={Colors.success} />
         <LegendRow left="VAULT" right="Absorbs level×5% raid loss" color={Colors.shield} />
         <LegendRow left="TURRET" right="Auto-blocks N attacks/day" color={Colors.accent} />
-        <LegendRow left="HANGAR" right="Unlocks drone contract slots" color={Colors.primary} />
+        <LegendRow left="HANGAR" right="Unlocks crew contract slots" color={Colors.primary} />
         <LegendSection label="MAP" />
         <LegendRow left="Tap any node" right="View + upgrade building" />
         <LegendRow left="Pulsing ring" right="Active construction" />
-        <LegendRow left="▲ on node" right="Gated by Outpost level" />
+        <LegendRow left="▲ on node" right="Gated by Homestead level" />
         <LegendSection label="RULES" />
-        <LegendRow left="Outpost Level gates all buildings" />
+        <LegendRow left="Homestead Level gates all buildings" />
         <LegendRow left="One active build job at a time" />
         <LegendNote text="Build timers count down while the app is closed. Higher tiers take significantly longer." />
       </LegendCard>

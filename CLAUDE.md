@@ -1,4 +1,4 @@
-# CLAUDE.md — Sovereign Slots
+# CLAUDE.md — Reelwright
 
 Instructions and context for AI assistants working on this codebase. Read this before touching any file.
 
@@ -6,10 +6,10 @@ Instructions and context for AI assistants working on this codebase. Read this b
 
 ## Project Identity
 
-**Sovereign Slots** is a cozy sci-fi social-casino mobile game — think "Coin Master evolved." The core thesis is replacing passive, victim-based RNG with **active, strategy-based manipulation**. Players tune the slot engine, build a sci-fi outpost, deploy drone mercenaries, and run PvP raids on other players.
+**Reelwright** is a cozy cosmic-frontier social-casino mobile game — think "Coin Master evolved." The core thesis is replacing passive, victim-based RNG with **active, strategy-based manipulation**. Players tune the slot engine, build a frontier homestead, deploy hired hands, and run PvP raids on other players.
 
-**Protagonist:** A customizable Armadillo in a high-tech environmental suit.
-**Aesthetic:** "Cozy Punk" — low-fi space station meets vibrant sunset. Dark mode, orange-to-purple neon gradients, thin geometric sans-serif type. Every screen should feel lean and intentional.
+**Protagonist:** A customizable frontier pilot in a high-tech environmental suit.
+**Aesthetic:** "Cozy Frontier" — low-fi space station meets desert sunset. Dark mode, orange-to-purple neon gradients, thin geometric sans-serif type. Every screen should feel lean and intentional.
 
 ---
 

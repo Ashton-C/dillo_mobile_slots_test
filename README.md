@@ -1,14 +1,14 @@
-# Sovereign Slots
+# Reelwright
 
-A cozy sci-fi social-casino mobile game for iOS and Android. Built with Expo + React Native.
+A cozy cosmic-frontier social-casino mobile game for iOS and Android. Built with Expo + React Native.
 
-The core thesis: evolve the "Coin Master" formula by replacing passive, victim-based RNG with **active, strategy-based manipulation**. Players don't just spin and pray — they tune the slot engine, build a sci-fi outpost, deploy drone mercenaries, and run tactical PvP raids on other players.
+The core thesis: evolve the "Coin Master" formula by replacing passive, victim-based RNG with **active, strategy-based manipulation**. Players don't just spin and pray — they tune the slot engine, build a frontier homestead, deploy hired hands, and run tactical PvP raids on other players.
 
 ---
 
 ## Aesthetic
 
-**"Cozy Punk"** — low-fi space station meets vibrant sunset. Dark backgrounds, orange-to-purple neon gradients, geometric sans-serif type. The player character is a customizable **Armadillo in a high-tech environmental suit**.
+**"Cozy Frontier"** — low-fi space station meets desert sunset. Dark backgrounds, orange-to-purple neon gradients, geometric sans-serif type. The player character is a customizable **frontier pilot in a high-tech environmental suit**.
 
 ---
 
@@ -56,7 +56,7 @@ app/
 
 src/
   components/
-    ArmadilloAvatar.tsx     # Procedural armadillo face from RN primitives
+    PilotAvatar.tsx         # Procedural pilot avatar from RN primitives
     CombatMiniGame.tsx      # Insta-stop PvP mini-game (3 cycling reels, tap to lock)
     DroneMarketplace.tsx    # Drone hire modal (CONTRACTS button on Habitat screen)
     EventBanner.tsx         # Slide-down PvP notification banner
