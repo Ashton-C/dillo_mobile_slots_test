@@ -114,6 +114,9 @@ export default function SpinScreen() {
   const [muted, setMuted]                     = useState(() => soundService.getMuted());
   const [tooltipVisible, setTooltipVisible]   = useState(false);
   const [tooltipText, setTooltipText]         = useState('');
+  const [contentH, setContentH]               = useState(0);
+  const [containerH, setContainerH]           = useState(0);
+  const contentOverflows = contentH > containerH + 1;
 
   const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
   const showTooltip = (text: string) => {
@@ -344,6 +347,10 @@ export default function SpinScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        bounces={contentOverflows}
+        scrollEnabled={contentOverflows}
+        onContentSizeChange={(_, h) => setContentH(h)}
+        onLayout={(e) => setContainerH(e.nativeEvent.layout.height)}
       >
         {/* Digital payout indicator — fixed 64px, always rendered */}
         <View style={styles.payoutArea}>
