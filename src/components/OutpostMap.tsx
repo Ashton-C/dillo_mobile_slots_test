@@ -7,7 +7,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { BuildingType } from '@/models/Habitat';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
@@ -76,64 +76,6 @@ function PulseRing({ color, size }: PulseRingProps) {
   );
 }
 
-interface NodeProps {
-  nodeKey: BuildingType | 'OUTPOST';
-  x: number;
-  y: number;
-  onTap: () => void;
-}
-
-function MapNode({ nodeKey, x, y, onTap }: NodeProps) {
-  const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete } = useHabitatStore();
-
-  const isOutpost   = nodeKey === 'OUTPOST';
-  const size        = isOutpost ? OUTPOST_SIZE : NODE_SIZE;
-  const halfSize    = size / 2;
-
-  const level       = isOutpost ? outpostLevel : (buildingLevels[nodeKey as BuildingType] ?? 0);
-  const color       = isOutpost ? Colors.accent : BUILDING_META[nodeKey as BuildingType].color;
-  const icon        = isOutpost ? '◎' : BUILDING_META[nodeKey as BuildingType].icon;
-  const label       = isOutpost ? 'OUTPOST' : BUILDING_META[nodeKey as BuildingType].label;
-
-  const isBuilding  = isOutpost
-    ? activeBuildJob?.isOutpost === true
-    : activeBuildJob?.type === nodeKey && !activeBuildJob.isOutpost;
-  const isUnbuilt   = !isOutpost && level === 0;
-  const isGated     = !isOutpost && !isUnbuilt && (level + 1) > outpostLevel;
-
-  return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.nodeContainer, { left: x - halfSize, top: y - halfSize, width: size, height: size }]}
-    >
-      <Pressable
-        style={[
-          styles.nodeBadge,
-          { width: size, height: size, borderColor: color + (isUnbuilt ? '44' : 'CC'), backgroundColor: color + (isUnbuilt ? '0A' : '1E') },
-        ]}
-        onPress={onTap}
-      >
-        {isBuilding && <PulseRing color={color} size={size} />}
-        {isGated && (
-          <View style={styles.lockIndicator}>
-            <Text style={styles.lockText}>🔒</Text>
-          </View>
-        )}
-        <Text style={[styles.nodeIcon, isUnbuilt && styles.nodeIconDim]}>{icon}</Text>
-        <Text style={[styles.nodeLevel, { color: isUnbuilt ? Colors.textMuted : color }]}>
-          {isUnbuilt ? 'NEW' : `${level}`}
-        </Text>
-      </Pressable>
-
-      <Text style={[styles.nodeLabel, { color: isUnbuilt ? Colors.textMuted : color + 'CC' }]}>{label}</Text>
-
-      {isBuilding && (
-        <Text style={[styles.buildTimer, { color }]}>{formatTimer(msUntilComplete)}</Text>
-      )}
-    </View>
-  );
-}
-
 interface ConnectionLineProps {
   x1: number; y1: number;
   x2: number; y2: number;
@@ -163,98 +105,6 @@ function ConnectionLine({ x1, y1, x2, y2 }: ConnectionLineProps) {
   );
 }
 
-export function OutpostMap() {
-  const [dims, setDims] = useState({ w: 0, h: 0 });
-
-  const nodeCoords = (key: BuildingType | 'OUTPOST') => {
-    const [fx, fy] = NODE_POSITIONS[key];
-    return { x: fx * dims.w, y: fy * dims.h };
-  };
-
-  const isoLines = dims.w > 0 ? (() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    const dy = dims.w * TAN_30;
-    for (let y0 = -dy; y0 < dims.h + ISO_STEP; y0 += ISO_STEP) {
-      lines.push({ x1: 0, y1: y0, x2: dims.w, y2: y0 + dy });
-      lines.push({ x1: 0, y1: y0, x2: dims.w, y2: y0 - dy });
-    }
-    return lines;
-  })() : [];
-
-  return (
-    <View
-      style={styles.container}
-      onLayout={(e) => {
-        const { width, height } = e.nativeEvent.layout;
-        setDims({ w: width, h: height });
-      }}
-    >
-      {/* Iso grid background */}
-      {isoLines.map((ln, i) => {
-        const dx = ln.x2 - ln.x1;
-        const dy = ln.y2 - ln.y1;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const angle  = Math.atan2(dy, dx) * (180 / Math.PI);
-        const cx = (ln.x1 + ln.x2) / 2;
-        const cy = (ln.y1 + ln.y2) / 2;
-        return (
-          <View
-            key={i}
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: cx - length / 2,
-              top: cy - 0.25,
-              width: length,
-              height: 0.5,
-              backgroundColor: Colors.info + '18',
-              transform: [{ rotate: `${angle}deg` }],
-            }}
-          />
-        );
-      })}
-
-      {/* Connection lines from OUTPOST to each building */}
-      {dims.w > 0 && ALL_BUILDINGS.map((type) => {
-        const outpost = nodeCoords('OUTPOST');
-        const node    = nodeCoords(type);
-        return (
-          <ConnectionLine
-            key={type}
-            x1={outpost.x} y1={outpost.y}
-            x2={node.x}    y2={node.y}
-          />
-        );
-      })}
-
-      {/* Edge gradient fades */}
-      <LinearGradient colors={[Colors.background, Colors.background + '00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-        style={[styles.fade, { left: 0, top: 0, bottom: 0, width: 48 }]} pointerEvents="none" />
-      <LinearGradient colors={[Colors.background + '00', Colors.background]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-        style={[styles.fade, { right: 0, top: 0, bottom: 0, width: 48 }]} pointerEvents="none" />
-      <LinearGradient colors={[Colors.background, Colors.background + '00']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
-        style={[styles.fade, { top: 0, left: 0, right: 0, height: 40 }]} pointerEvents="none" />
-      <LinearGradient colors={[Colors.background + '00', Colors.background]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
-        style={[styles.fade, { bottom: 0, left: 0, right: 0, height: 40 }]} pointerEvents="none" />
-
-      {/* Nodes */}
-      {dims.w > 0 && (
-        <>
-          {ALL_BUILDINGS.map((type) => {
-            const { x, y } = nodeCoords(type);
-            return <MapNode key={type} nodeKey={type} x={x} y={y} onTap={() => {}} />;
-          })}
-          {(() => {
-            const { x, y } = nodeCoords('OUTPOST');
-            return <MapNode nodeKey="OUTPOST" x={x} y={y} onTap={() => {}} />;
-          })()}
-        </>
-      )}
-    </View>
-  );
-}
-
-// OutpostMap with tap callbacks wired to modals
 interface OutpostMapProps {
   onTapBuilding: (type: BuildingType) => void;
   onTapOutpost:  () => void;
@@ -262,22 +112,32 @@ interface OutpostMapProps {
 
 export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMapProps) {
   const [dims, setDims] = useState({ w: 0, h: 0 });
-  const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete } = useHabitatStore();
+  const buildingLevels  = useHabitatStore((s) => s.buildingLevels);
+  const outpostLevel    = useHabitatStore((s) => s.outpostLevel);
+  const activeBuildJob  = useHabitatStore((s) => s.activeBuildJob);
+  const msUntilComplete = useHabitatStore((s) => s.msUntilComplete);
 
   const nodeCoords = (key: BuildingType | 'OUTPOST') => {
     const [fx, fy] = NODE_POSITIONS[key];
     return { x: fx * dims.w, y: fy * dims.h };
   };
 
-  const isoLines = dims.w > 0 ? (() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  const isoLines = useMemo(() => {
+    if (dims.w === 0) return [] as { left: number; top: number; width: number; angle: number }[];
     const dy = dims.w * TAN_30;
+    const length = Math.sqrt(dims.w * dims.w + dy * dy);
+    const angleA = Math.atan2(dy, dims.w) * (180 / Math.PI);
+    const angleB = -angleA;
+    const lines: { left: number; top: number; width: number; angle: number }[] = [];
     for (let y0 = -dy; y0 < dims.h + ISO_STEP; y0 += ISO_STEP) {
-      lines.push({ x1: 0, y1: y0, x2: dims.w, y2: y0 + dy });
-      lines.push({ x1: 0, y1: y0, x2: dims.w, y2: y0 - dy });
+      const cxA = dims.w / 2;
+      const cyA = y0 + dy / 2;
+      lines.push({ left: cxA - length / 2, top: cyA - 0.25, width: length, angle: angleA });
+      const cyB = y0 - dy / 2;
+      lines.push({ left: cxA - length / 2, top: cyB - 0.25, width: length, angle: angleB });
     }
     return lines;
-  })() : [];
+  }, [dims.w, dims.h]);
 
   return (
     <View
@@ -287,29 +147,21 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
         setDims({ w: width, h: height });
       }}
     >
-      {isoLines.map((ln, i) => {
-        const dx = ln.x2 - ln.x1;
-        const dy = ln.y2 - ln.y1;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const angle  = Math.atan2(dy, dx) * (180 / Math.PI);
-        const cx = (ln.x1 + ln.x2) / 2;
-        const cy = (ln.y1 + ln.y2) / 2;
-        return (
-          <View
-            key={i}
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: cx - length / 2,
-              top: cy - 0.25,
-              width: length,
-              height: 0.5,
-              backgroundColor: Colors.info + '18',
-              transform: [{ rotate: `${angle}deg` }],
-            }}
-          />
-        );
-      })}
+      {isoLines.map((ln, i) => (
+        <View
+          key={i}
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: ln.left,
+            top: ln.top,
+            width: ln.width,
+            height: 0.5,
+            backgroundColor: Colors.info + '18',
+            transform: [{ rotate: `${ln.angle}deg` }],
+          }}
+        />
+      ))}
 
       {dims.w > 0 && ALL_BUILDINGS.map((type) => {
         const outpost = nodeCoords('OUTPOST');

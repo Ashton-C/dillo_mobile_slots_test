@@ -381,57 +381,69 @@ export default function SpinScreen() {
           <View style={styles.cockpitRow}>
             <View style={styles.actionStack}>
               {/* Rift */}
-              <Pressable
-                style={[styles.actionBtn, riftTier > 0 && styles.actionBtnAccent]}
-                onPress={() => setRiftModalVisible(true)}
-                onLongPress={() => showTooltip('Temporal Rift: shifts symbol weights toward credits. Higher tiers cost more but yield bigger wins.')}
-                delayLongPress={450}
-              >
-                <Text style={[styles.actionBtnGlyph, riftTier > 0 && { color: Colors.accent }]}>◌</Text>
-                {riftTier > 0 && <Text style={[styles.actionBtnBadge, { color: Colors.accent }]}>T{riftTier}</Text>}
-              </Pressable>
+              <View style={styles.actionItem}>
+                <Pressable
+                  style={[styles.actionBtn, riftTier > 0 && styles.actionBtnAccent]}
+                  onPress={() => setRiftModalVisible(true)}
+                  onLongPress={() => showTooltip('Temporal Rift: shifts symbol weights toward credits. Higher tiers cost more but yield bigger wins.')}
+                  delayLongPress={450}
+                >
+                  <Text style={[styles.actionBtnGlyph, riftTier > 0 && { color: Colors.accent }]}>◌</Text>
+                  {riftTier > 0 && <Text style={[styles.actionBtnBadge, { color: Colors.accent }]}>T{riftTier}</Text>}
+                </Pressable>
+                <Text style={[styles.actionLabel, riftTier > 0 && { color: Colors.accent }]}>RIFT</Text>
+              </View>
 
               {/* Overclock */}
-              <Pressable
-                style={[
-                  styles.actionBtn,
-                  overclockActive && styles.actionBtnAttack,
-                  attacks <= 0 && !overclockActive && styles.actionBtnDim,
-                ]}
-                onPress={() => { activateOverclock(); hapticActivateBuff(); }}
-                disabled={overclockActive}
-                onLongPress={() => showTooltip(`Overclock: +${overclockBonusPreview} CR next spin. Costs 1 Fuel Cell.`)}
-                delayLongPress={450}
-              >
-                <Text style={[styles.actionBtnGlyph, overclockActive && { color: Colors.attack }]}>⚡</Text>
-                {attacks > 0 && !overclockActive && <Text style={[styles.actionBtnBadge, { color: Colors.attack }]}>{attacks}</Text>}
-              </Pressable>
+              <View style={styles.actionItem}>
+                <Pressable
+                  style={[
+                    styles.actionBtn,
+                    overclockActive && styles.actionBtnAttack,
+                    attacks <= 0 && !overclockActive && styles.actionBtnDim,
+                  ]}
+                  onPress={() => { activateOverclock(); hapticActivateBuff(); }}
+                  disabled={overclockActive}
+                  onLongPress={() => showTooltip(`Overclock: +${overclockBonusPreview} CR next spin. Costs 1 Fuel Cell.`)}
+                  delayLongPress={450}
+                >
+                  <Text style={[styles.actionBtnGlyph, overclockActive && { color: Colors.attack }]}>⚡</Text>
+                  {attacks > 0 && !overclockActive && <Text style={[styles.actionBtnBadge, { color: Colors.attack }]}>{attacks}</Text>}
+                </Pressable>
+                <Text style={[styles.actionLabel, overclockActive && { color: Colors.attack }]}>OC</Text>
+              </View>
 
               {/* Signal Boost */}
-              <Pressable
-                style={[
-                  styles.actionBtn,
-                  signalBoostActive && styles.actionBtnRaid,
-                  raids <= 0 && !signalBoostActive && styles.actionBtnDim,
-                ]}
-                onPress={() => { activateSignalBoost(); hapticActivateBuff(); }}
-                disabled={signalBoostActive}
-                onLongPress={() => showTooltip('Signal Boost: ×1.5 credit symbol weights next spin. Costs 1 Signal.')}
-                delayLongPress={450}
-              >
-                <Text style={[styles.actionBtnGlyph, signalBoostActive && { color: Colors.raid }]}>▲▲</Text>
-                {raids > 0 && !signalBoostActive && <Text style={[styles.actionBtnBadge, { color: Colors.raid }]}>{raids}</Text>}
-              </Pressable>
+              <View style={styles.actionItem}>
+                <Pressable
+                  style={[
+                    styles.actionBtn,
+                    signalBoostActive && styles.actionBtnRaid,
+                    raids <= 0 && !signalBoostActive && styles.actionBtnDim,
+                  ]}
+                  onPress={() => { activateSignalBoost(); hapticActivateBuff(); }}
+                  disabled={signalBoostActive}
+                  onLongPress={() => showTooltip('Signal Boost: ×1.5 credit symbol weights next spin. Costs 1 Signal.')}
+                  delayLongPress={450}
+                >
+                  <Text style={[styles.actionBtnGlyph, signalBoostActive && { color: Colors.raid }]}>▲▲</Text>
+                  {raids > 0 && !signalBoostActive && <Text style={[styles.actionBtnBadge, { color: Colors.raid }]}>{raids}</Text>}
+                </Pressable>
+                <Text style={[styles.actionLabel, signalBoostActive && { color: Colors.raid }]}>BOOST</Text>
+              </View>
 
               {/* Ledger */}
-              <Pressable
-                style={styles.actionBtn}
-                onPress={() => setHistoryVisible(true)}
-                onLongPress={() => showTooltip('Ledger: view spin history, modifier receipts, and combat log.')}
-                delayLongPress={450}
-              >
-                <Text style={styles.actionBtnGlyph}>↑</Text>
-              </Pressable>
+              <View style={styles.actionItem}>
+                <Pressable
+                  style={styles.actionBtn}
+                  onPress={() => setHistoryVisible(true)}
+                  onLongPress={() => showTooltip('Ledger: view spin history, modifier receipts, and combat log.')}
+                  delayLongPress={450}
+                >
+                  <Text style={styles.actionBtnGlyph}>↑</Text>
+                </Pressable>
+                <Text style={styles.actionLabel}>LOG</Text>
+              </View>
             </View>
 
             <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
@@ -634,6 +646,16 @@ const styles = StyleSheet.create({
   actionStack: {
     flexDirection: 'row',
     gap: Spacing.xs,
+  },
+  actionItem: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  actionLabel: {
+    fontSize: 8,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1.2,
+    color: Colors.textMuted,
   },
   actionBtn: {
     width: 46,

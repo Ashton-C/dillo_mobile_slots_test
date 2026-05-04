@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import Animated, {
   runOnJS,
@@ -248,16 +248,21 @@ export function LedgerDrawer({ visible, onClose }: Props) {
     return merged.sort((a, b) => b.ts - a.ts).slice(0, 40);
   }, [spinHistory, combatEvents]);
 
+  const [mounted, setMounted] = useState(visible);
   const translateY = useSharedValue(DRAWER_HEIGHT);
   const backdropOp = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
+      setMounted(true);
       translateY.value = withSpring(0, { damping: 22, stiffness: 260 });
       backdropOp.value = withTiming(1, { duration: 200 });
     } else {
       translateY.value = withTiming(DRAWER_HEIGHT, { duration: 260 }, (done) => {
-        if (done) runOnJS(onClose)();
+        if (done) {
+          runOnJS(setMounted)(false);
+          runOnJS(onClose)();
+        }
       });
       backdropOp.value = withTiming(0, { duration: 200 });
     }
@@ -266,7 +271,7 @@ export function LedgerDrawer({ visible, onClose }: Props) {
   const drawerStyle   = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOp.value }));
 
-  if (!visible && translateY.value >= DRAWER_HEIGHT) return null;
+  if (!mounted) return null;
 
   return (
     <>

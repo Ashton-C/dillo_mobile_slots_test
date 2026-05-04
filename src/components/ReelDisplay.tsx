@@ -189,19 +189,19 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: glowColor + '28' }, glowStyle]}
       />
-      {/* Scrolling symbol strip */}
+      {/* Scrolling symbol strip — only the landing cell needs Animated.Text */}
       <Animated.View style={[{ position: 'absolute', left: 0, right: 0, top: 0, height: TOTAL_H }, stripStyle]}>
         {stripRef.current.map((sym, i) => (
           <View key={i} style={{ height: STRIP_CELL_H, alignItems: 'center', justifyContent: 'center' }}>
-            <Animated.Text
-              style={[
-                styles.symbol,
-                { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 },
-                i === STRIP_LEN ? cellScaleStyle : undefined,
-              ]}
-            >
-              {glyphs[sym]}
-            </Animated.Text>
+            {i === STRIP_LEN ? (
+              <Animated.Text style={[styles.symbol, { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 }, cellScaleStyle]}>
+                {glyphs[sym]}
+              </Animated.Text>
+            ) : (
+              <Text style={[styles.symbol, { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 }]}>
+                {glyphs[sym]}
+              </Text>
+            )}
           </View>
         ))}
       </Animated.View>
