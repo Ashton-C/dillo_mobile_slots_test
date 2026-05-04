@@ -7,6 +7,7 @@ import Animated, {
   withDelay,
   withSequence,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { Colors, Typography } from '@/constants/theme';
 
@@ -15,8 +16,8 @@ const ANGLES = Array.from({ length: NUM }, (_, i) => (i * (360 / NUM) * Math.PI)
 
 interface ParticleProps {
   angle: number;
-  progress: Animated.SharedValue<number>;
-  opacity: Animated.SharedValue<number>;
+  progress: SharedValue<number>;
+  opacity: SharedValue<number>;
   color: string;
   size: number;
   maxDist: number;
@@ -55,7 +56,7 @@ export function JackpotBurst({ visible, creditsWon = 0 }: Props) {
 
   const ease = Easing.out(Easing.quad);
 
-  function fireRing(p: Animated.SharedValue<number>, op: Animated.SharedValue<number>, delay: number) {
+  function fireRing(p: SharedValue<number>, op: SharedValue<number>, delay: number) {
     p.value = 0;
     op.value = 0;
     p.value = withDelay(delay, withTiming(1, { duration: 700, easing: ease }));

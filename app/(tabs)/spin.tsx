@@ -118,7 +118,7 @@ export default function SpinScreen() {
   const [containerH, setContainerH]           = useState(0);
   const contentOverflows = contentH > containerH + 1;
 
-  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const showTooltip = (text: string) => {
     clearTimeout(tooltipTimer.current);
     setTooltipText(text);
@@ -134,9 +134,9 @@ export default function SpinScreen() {
   const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
   const activeCreditMultiplier = droneEffects.creditMultiplier * anomalyMultiplier;
   const overclockBonusForOdds = generatorLevel * 40 + 100;
-  const burstTimerRef   = useRef<ReturnType<typeof setTimeout>>();
-  const confettiTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const spinHapticRef   = useRef<ReturnType<typeof setInterval>>();
+  const burstTimerRef   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const spinHapticRef   = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const lastEventId     = useRef<string | undefined>(undefined);
 
   const { shakeStyle, shake } = useShakeAnimation();

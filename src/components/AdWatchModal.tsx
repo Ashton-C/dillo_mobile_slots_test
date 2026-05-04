@@ -16,7 +16,7 @@ interface Props {
 export function AdWatchModal({ visible, rewardLabel, onClose, onComplete }: Props) {
   const [msLeft, setMsLeft] = useState(AD_DURATION_MS);
   const [phase, setPhase] = useState<'WATCHING' | 'COMPLETE'>('WATCHING');
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => {
     if (!visible) return;

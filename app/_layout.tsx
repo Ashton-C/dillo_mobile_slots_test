@@ -5,7 +5,6 @@ LogBox.ignoreLogs(['It looks like you might be using shared value']);
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { QueryClient, QueryClientProvider } from 'react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -19,10 +18,6 @@ import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarousel';
 import { soundService } from '@/services/SoundService';
 import { adsService } from '@/services/AdsService';
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
-});
 
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
@@ -69,22 +64,20 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <StatusBar style="light" backgroundColor={Colors.background} />
-        <View style={{ flex: 1 }}>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: Colors.background },
-              animation: 'fade',
-            }}
-          />
-          <UsernameSetupModal />
-          <EventBanner />
-          <BuildCompleteBanner />
-          {showOnboarding && <OnboardingCarousel onDismiss={() => setShowOnboarding(false)} />}
-        </View>
-      </QueryClientProvider>
+      <StatusBar style="light" backgroundColor={Colors.background} />
+      <View style={{ flex: 1 }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: Colors.background },
+            animation: 'fade',
+          }}
+        />
+        <UsernameSetupModal />
+        <EventBanner />
+        <BuildCompleteBanner />
+        {showOnboarding && <OnboardingCarousel onDismiss={() => setShowOnboarding(false)} />}
+      </View>
     </GestureHandlerRootView>
   );
 }

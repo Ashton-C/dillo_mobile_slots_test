@@ -31,7 +31,7 @@ export function BuildCompleteBanner() {
 
   const translateY = useSharedValue(-100);
   const opacity    = useSharedValue(0);
-  const timerRef   = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (!completedBuilding) return;

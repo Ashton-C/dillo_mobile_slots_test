@@ -16,7 +16,6 @@ export type SoundKey =
   | 'levelUp'
   | 'buttonTap';
 
-// Replace null with require('../../assets/sounds/<file>.mp3') once audio files are added.
 const ASSET_MAP: Record<SoundKey, number | null> = {
   spinStart:     null,
   reelStop0:     null,
@@ -36,32 +35,31 @@ const ASSET_MAP: Record<SoundKey, number | null> = {
 
 const MUTE_STORAGE_KEY = 'settings:muted';
 
+type ExpoAudio = typeof import('expo-audio');
+type AudioPlayer = ReturnType<ExpoAudio['createAudioPlayer']>;
+
 class SoundService {
-  // Using unknown here because expo-av is loaded lazily; typed internally via cast
-  private sounds: Map<SoundKey, unknown> = new Map();
+  private players: Map<SoundKey, AudioPlayer> = new Map();
   private muted = false;
-  private avLoaded = false;
+  private audioLoaded = false;
 
   async preload(): Promise<void> {
     this.muted = (await AsyncStorage.getItem(MUTE_STORAGE_KEY)) === 'true';
 
-    let Audio: typeof import('expo-av').Audio;
+    let audio: ExpoAudio;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const av = require('expo-av') as typeof import('expo-av');
-      Audio = av.Audio;
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      this.avLoaded = true;
+      audio = require('expo-audio') as ExpoAudio;
+      await audio.setAudioModeAsync({ playsInSilentMode: true });
+      this.audioLoaded = true;
     } catch {
-      // expo-av native module not available — stay silent
       return;
     }
 
     for (const [key, asset] of Object.entries(ASSET_MAP) as [SoundKey, number | null][]) {
       if (asset === null) continue;
       try {
-        const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
-        this.sounds.set(key, sound);
+        const player = audio.createAudioPlayer(asset);
+        this.players.set(key, player);
       } catch {
         // Missing or invalid asset — skip silently
       }
@@ -69,12 +67,13 @@ class SoundService {
   }
 
   async play(key: SoundKey, volume = 1.0): Promise<void> {
-    if (this.muted || !this.avLoaded) return;
-    const sound = this.sounds.get(key) as { setVolumeAsync: (v: number) => Promise<void>; replayAsync: () => Promise<void> } | undefined;
-    if (!sound) return;
+    if (this.muted || !this.audioLoaded) return;
+    const player = this.players.get(key);
+    if (!player) return;
     try {
-      await sound.setVolumeAsync(volume);
-      await sound.replayAsync();
+      player.volume = volume;
+      player.seekTo(0);
+      player.play();
     } catch {
       // Playback failure — skip silently
     }

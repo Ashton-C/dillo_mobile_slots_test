@@ -17,14 +17,16 @@ Instructions and context for AI assistants working on this codebase. Read this b
 
 | Layer | Technology |
 |---|---|
-| Framework | React Native + Expo 51, Expo Router (file-based routing) |
+| Framework | React Native 0.83 + Expo SDK 55, Expo Router (file-based routing) |
 | Language | TypeScript (strict) |
-| State | Zustand (client) + React Query (server sync) |
+| State | Zustand |
 | Validation | Zod |
 | Backend | Firebase Auth (anonymous) + Firestore |
-| Animations | React Native Reanimated ~3.10 |
+| Animations | React Native Reanimated 4 (worklets-based) |
+| Audio | expo-audio |
 | Haptics | expo-haptics |
 | Gradients | expo-linear-gradient |
+| Architecture | New Architecture (Fabric + TurboModules) — default in RN 0.83 |
 
 **Path alias:** `@/*` → `./src/*` (configured in `tsconfig.json` + `babel.config.js`).
 
