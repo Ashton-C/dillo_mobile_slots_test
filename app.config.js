@@ -8,8 +8,9 @@
 //   fake-watch modal in that case.
 //
 // Production (EAS build with .env.local filled in):
-//   Fill in all ADMOB_* vars, EAS_PROJECT_ID, and EXPO_PUBLIC_FIREBASE_*
-//   before running `eas build`.
+//   Fill in all ADMOB_* vars and EXPO_PUBLIC_FIREBASE_* before running
+//   `eas build`. EAS_PROJECT_ID is hardcoded below (it's a public
+//   project identifier, not a secret — EAS CLI expects it committed).
 
 const base = require('./app.json');
 
@@ -43,9 +44,9 @@ module.exports = {
         rewardedAndroid: process.env.ADMOB_REWARDED_ANDROID ?? '',
         rewardedIos:     process.env.ADMOB_REWARDED_IOS     ?? '',
       },
-      // EAS
+      // EAS project ID — public identifier, safe to commit
       eas: {
-        projectId: process.env.EAS_PROJECT_ID ?? '',
+        projectId: '643f084a-afb7-4ef8-9336-f483460387de',
       },
     },
   },
