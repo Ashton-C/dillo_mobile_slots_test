@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { GameEvent } from '@/services/FirestoreService';
-import { ArmadilloAvatar, AvatarAccessory } from '@/components/ArmadilloAvatar';
+import { PilotAvatar, AvatarAccessory } from '@/components/PilotAvatar';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -34,7 +34,9 @@ function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
   const { displayName, avatarColor, avatarAccessory, setDisplayName, setAvatarColor, setAvatarAccessory } = useAuthStore();
-  const { credits, attacks, raids, shields, intrusions, extractions, level, xp } = useGameStore();
+  const { credits, attacks, raids, shields, intrusions, extractions, level, xp,
+          totalSpins, totalCreditsEarned, totalJackpots,
+          totalBreachesAttempted, totalExtractionsAttempted, totalRaidsSuffered } = useGameStore();
   const events = useEventStore((s) => s.events);
 
   const [editVisible, setEditVisible] = useState(false);
@@ -68,10 +70,10 @@ export default function PilotScreen() {
         >
           <View style={[styles.avatarRingOuter, { borderColor: Colors.accent }]}>
             <View style={[styles.avatarRingInner, { borderColor: Colors.primary }]}>
-              <ArmadilloAvatar color={avatarColor} size={80} accessory={avatarAccessory as AvatarAccessory} />
+              <PilotAvatar color={avatarColor} size={80} accessory={avatarAccessory as AvatarAccessory} />
             </View>
           </View>
-          <Text style={styles.pilotTitle}>ARMADILLO PILOT</Text>
+          <Text style={styles.pilotTitle}>PILOT</Text>
           <Text style={styles.pilotName}>{displayName ?? '—'}</Text>
           <View style={styles.avatarActions}>
             <Pressable onPress={() => { setEditName(displayName ?? ''); setEditVisible(true); }} style={styles.editButton}>
@@ -106,6 +108,19 @@ export default function PilotScreen() {
             <StatCard label="SHIELDS"    value={String(shields)}          color={Colors.shield} />
             <StatCard label="BREACH"     value={String(intrusions)}       color={Colors.danger} />
             <StatCard label="EXTRACTION" value={String(extractions)}      color={Colors.accent} />
+          </View>
+        </View>
+
+        {/* Lifetime stats */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>LIFETIME</Text>
+          <View style={styles.statsGrid}>
+            <StatCard label="TOTAL SPINS"  value={totalSpins.toLocaleString()}               color={Colors.primary} />
+            <StatCard label="JACKPOTS"      value={totalJackpots.toLocaleString()}             color={Colors.credits} />
+            <StatCard label="CR EARNED"     value={totalCreditsEarned.toLocaleString()}        color={Colors.credits} />
+            <StatCard label="BREACHES"      value={totalBreachesAttempted.toLocaleString()}    color={Colors.danger} />
+            <StatCard label="EXTRACTIONS"   value={totalExtractionsAttempted.toLocaleString()} color={Colors.accent} />
+            <StatCard label="RAIDS TAKEN"   value={totalRaidsSuffered.toLocaleString()}        color={Colors.shield} />
           </View>
         </View>
 
@@ -170,7 +185,7 @@ export default function PilotScreen() {
 
             {/* Live preview */}
             <View style={styles.previewRow}>
-              <ArmadilloAvatar color={avatarColor} size={72} accessory={avatarAccessory as AvatarAccessory} />
+              <PilotAvatar color={avatarColor} size={72} accessory={avatarAccessory as AvatarAccessory} />
             </View>
 
             {/* Color picker */}

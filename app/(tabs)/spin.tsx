@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, ScrollView, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,18 +31,20 @@ import { LedgerDrawer } from '@/components/LedgerDrawer';
 import { ConfettiEmitter } from '@/components/ConfettiEmitter';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
+import { TooltipPopover } from '@/components/TooltipPopover';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { soundService } from '@/services/SoundService';
 import { OddsModal } from '@/components/OddsModal';
 import { useDroneStore } from '@/store/useDroneStore';
 import { anomalyService } from '@/services/AnomalyService';
+import { getMaxSpins } from '@/models/Habitat';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { SpinResult, TemporalRiftTier } from '@/services/SlotsEngine';
 
 const EMPTY_REELS: ['EMPTY', 'EMPTY', 'EMPTY'] = ['EMPTY', 'EMPTY', 'EMPTY'];
-const MAX_SPINS = 50;
 const LOW_SPIN_THRESHOLD = 5;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+const SCANLINE_OFFSETS = Array.from({ length: 16 }, (_, i) => i * 4);
 
 const OUTCOME_COLOR: Record<string, string> = {
   CREDITS:    Colors.credits,
@@ -68,6 +70,16 @@ function formatRefillTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function formatPayout(result: SpinResult): string {
+  const parts: string[] = [];
+  if (result.creditsWon > 0)     parts.push(`+${result.creditsWon.toLocaleString()} CR`);
+  if (result.attacksWon > 0)     parts.push(`+${result.attacksWon} FUEL`);
+  if (result.raidsWon > 0)       parts.push(`+${result.raidsWon} SIGNAL`);
+  if (result.shieldsWon > 0)     parts.push(`+${result.shieldsWon} SHIELD`);
+  if (result.intrusionsWon > 0)  parts.push(`+${result.intrusionsWon} BREACH`);
+  if (result.extractionsWon > 0) parts.push(`+${result.extractionsWon} BEAM`);
+  return parts.join('  ·  ') || '—';
+}
 
 export default function SpinScreen() {
   const {
@@ -80,8 +92,10 @@ export default function SpinScreen() {
 
   const { displayName } = useAuthStore();
   const latestEvent = useEventStore((s) => s.events[0]);
-  const generatorLevel = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
+  const generatorLevel  = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
+  const barracksLevel   = useHabitatStore((s) => s.buildingLevels.BARRACKS  ?? 0);
   const overclockBonusPreview = generatorLevel * 40 + 100;
+  const spinCap = getMaxSpins(barracksLevel);
 
   const activeBgId = useCosmeticsStore((s) => s.active['BACKGROUND'] ?? 'bg_default');
   const bgTokens   = BACKGROUND_TOKENS[activeBgId] ?? BACKGROUND_TOKENS.bg_default;
@@ -91,25 +105,39 @@ export default function SpinScreen() {
 
   useEffect(() => { loadCosmetics(); }, []);
 
-  const [burstVisible, setBurstVisible] = useState(false);
-  const [confettiActive, setConfettiActive] = useState(false);
-  const [legendVisible, setLegendVisible] = useState(false);
-  const [historyVisible, setHistoryVisible] = useState(false);
-  const [oddsVisible, setOddsVisible] = useState(false);
-  const [muted, setMuted] = useState(() => soundService.getMuted());
+  const [burstVisible, setBurstVisible]       = useState(false);
+  const [confettiActive, setConfettiActive]   = useState(false);
+  const [legendVisible, setLegendVisible]     = useState(false);
+  const [historyVisible, setHistoryVisible]   = useState(false);
+  const [oddsVisible, setOddsVisible]         = useState(false);
+  const [riftModalVisible, setRiftModalVisible] = useState(false);
+  const [muted, setMuted]                     = useState(() => soundService.getMuted());
+  const [tooltipVisible, setTooltipVisible]   = useState(false);
+  const [tooltipText, setTooltipText]         = useState('');
+
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const showTooltip = (text: string) => {
+    clearTimeout(tooltipTimer.current);
+    setTooltipText(text);
+    setTooltipVisible(true);
+    tooltipTimer.current = setTimeout(() => setTooltipVisible(false), 3200);
+  };
+  const hideTooltip = () => {
+    clearTimeout(tooltipTimer.current);
+    setTooltipVisible(false);
+  };
 
   const droneEffects = useDroneStore((s) => s.getEffects());
   const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
   const activeCreditMultiplier = droneEffects.creditMultiplier * anomalyMultiplier;
   const overclockBonusForOdds = generatorLevel * 40 + 100;
-  const burstTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const burstTimerRef   = useRef<ReturnType<typeof setTimeout>>();
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const spinHapticRef = useRef<ReturnType<typeof setInterval>>();
-  const lastEventId = useRef<string | undefined>(undefined);
+  const spinHapticRef   = useRef<ReturnType<typeof setInterval>>();
+  const lastEventId     = useRef<string | undefined>(undefined);
 
   const { shakeStyle, shake } = useShakeAnimation();
 
-  // Rapid haptic ticks while the reels are spinning
   useEffect(() => {
     if (isSpinning) {
       let ticks = 0;
@@ -125,32 +153,29 @@ export default function SpinScreen() {
   }, [isSpinning]);
 
   const flashOpacity = useSharedValue(0);
-  const prevJackpot = useRef(false);
-  const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
+  const prevJackpot  = useRef(false);
+  const flashStyle   = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
 
-  // W3: triple badge
   const tripleBadgeY     = useSharedValue(-40);
   const tripleBadgeScale = useSharedValue(0.4);
   const tripleBadgeOp    = useSharedValue(0);
   const tripleBadgeStyle = useAnimatedStyle(() => ({
-    opacity: tripleBadgeOp.value,
+    opacity:   tripleBadgeOp.value,
     transform: [{ translateY: tripleBadgeY.value }, { scale: tripleBadgeScale.value }],
   }));
 
-  // W4: scanner beam
-  const beamY   = useSharedValue(-4);
-  const beamOp  = useSharedValue(0);
+  const beamY    = useSharedValue(-4);
+  const beamOp   = useSharedValue(0);
   const beamStyle = useAnimatedStyle(() => ({
-    opacity: beamOp.value,
+    opacity:   beamOp.value,
     transform: [{ translateY: beamY.value }],
   }));
 
-  // W4: level-up badge
   const lvlBadgeY     = useSharedValue(-140);
   const lvlBadgeScale = useSharedValue(0);
   const lvlBadgeOp    = useSharedValue(0);
   const lvlBadgeStyle = useAnimatedStyle(() => ({
-    opacity: lvlBadgeOp.value,
+    opacity:   lvlBadgeOp.value,
     transform: [{ translateY: lvlBadgeY.value }, { scale: lvlBadgeScale.value }],
   }));
 
@@ -183,10 +208,9 @@ export default function SpinScreen() {
         soundService.playCoinWin(lastResult.creditsWon);
       }
       bannerScale.value = withSequence(
-        withTiming(1.18, { duration: 70 }),
+        withTiming(1.06, { duration: 70 }),
         withSpring(1, { damping: 5, stiffness: 200 }),
       );
-      // W3: triple badge pop
       if (isTriple(lastResult)) {
         tripleBadgeY.value     = -40;
         tripleBadgeScale.value = 0.4;
@@ -204,8 +228,8 @@ export default function SpinScreen() {
     transform: [{ scale: bannerScale.value }],
   }));
 
-  const levelFlash = useSharedValue(0);
-  const prevLevel = useRef(level);
+  const levelFlash    = useSharedValue(0);
+  const prevLevel     = useRef(level);
   const levelFlashStyle = useAnimatedStyle(() => ({ opacity: levelFlash.value }));
 
   useEffect(() => {
@@ -218,7 +242,6 @@ export default function SpinScreen() {
         withTiming(1, { duration: 80 }),
         withTiming(0, { duration: 500 }),
       );
-      // W4: scanner beam sweep
       beamY.value  = -4;
       beamOp.value = 0;
       beamOp.value = withSequence(
@@ -226,7 +249,6 @@ export default function SpinScreen() {
         withDelay(650, withTiming(0, { duration: 200 })),
       );
       beamY.value = withTiming(SCREEN_HEIGHT + 4, { duration: 820, easing: Easing.inOut(Easing.quad) });
-      // W4: level badge spring-drop
       lvlBadgeY.value     = -140;
       lvlBadgeScale.value = 0;
       lvlBadgeOp.value    = 0;
@@ -240,7 +262,6 @@ export default function SpinScreen() {
     prevLevel.current = level;
   }, [level]);
 
-  // Shake screen on incoming attacks/raids
   useEffect(() => {
     if (!latestEvent) return;
     if (latestEvent.id === lastEventId.current) return;
@@ -254,39 +275,32 @@ export default function SpinScreen() {
 
   const reels = lastResult?.reels ?? reelWindow?.[1] ?? EMPTY_REELS;
   const canSpin = spinsRemaining > 0 && !isSpinning;
-  const showQuickActions = attacks > 0 || raids > 0 || overclockActive || signalBoostActive;
   const showCombatResources = intrusions > 0 || extractions > 0;
   const spinsLow = spinsRemaining <= LOW_SPIN_THRESHOLD;
+
+  const payoutColor = lastResult && lastResult.outcomeType !== 'NOTHING'
+    ? (OUTCOME_COLOR[lastResult.outcomeType] ?? Colors.primary)
+    : Colors.textMuted;
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
 
-      {/* Jackpot screen flash — outside shake so it fills the full screen */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, styles.jackpotFlash, flashStyle]}
       />
-
-      {/* Level-up overlay */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, styles.levelUpFlash, levelFlashStyle]}
       />
 
-      {/* Jackpot particle burst */}
       <JackpotBurst visible={burstVisible} creditsWon={lastResult?.creditsWon ?? 0} />
       <BuildCompleteBanner />
-
-      {/* Jackpot confetti rain */}
       <ConfettiEmitter active={confettiActive} />
-
-      {/* First-run onboarding */}
       <OnboardingModal onDone={() => {}} />
 
-      {/* W4: scanner beam — sweeps top-to-bottom on level-up */}
       <Animated.View pointerEvents="none" style={[styles.scannerBeam, beamStyle]} />
 
-      {/* W4: level-up badge */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, styles.levelBadgeOverlay]}
@@ -297,10 +311,16 @@ export default function SpinScreen() {
         </Animated.View>
       </Animated.View>
 
-      {/* Everything below shakes on jackpot */}
+      {/* Tooltip popover — absolute over entire screen */}
+      <TooltipPopover
+        label={tooltipText}
+        visible={tooltipVisible}
+        onDismiss={hideTooltip}
+        bottom={tabBarHeight + insets.bottom + 100}
+      />
+
       <Animated.View style={[{ flex: 1 }, shakeStyle]}>
 
-      {/* Gradient header — color driven by active background cosmetic */}
       <LinearGradient
         colors={bgTokens.gradientColors as [string, string, string]}
         start={{ x: 0, y: 0 }}
@@ -325,21 +345,26 @@ export default function SpinScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Outcome banner + triple badge */}
-        <View style={styles.outcomeArea}>
+        {/* Digital payout indicator — fixed 64px, always rendered */}
+        <View style={styles.payoutArea}>
           <Animated.View pointerEvents="none" style={[styles.tripleBadgeWrap, tripleBadgeStyle]}>
             <Text style={[styles.tripleBadgeText, { color: OUTCOME_COLOR[lastResult?.outcomeType ?? ''] ?? Colors.primary }]}>
               TRIPLE!
             </Text>
           </Animated.View>
-          <Animated.View style={[styles.outcomeBanner, bannerStyle]}>
-            {lastResult && lastResult.outcomeType !== 'NOTHING' ? (
-              <Text style={styles.outcomeText}>{outcomeMessage(lastResult)}</Text>
-            ) : (
-              <Text style={styles.outcomeTextMuted}>
-                {spinsRemaining > 0 ? 'Awaiting spin…' : 'No spins left'}
-              </Text>
-            )}
+          <Animated.View style={[styles.payoutPanel, bannerStyle]}>
+            {/* Scanline overlay */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              {SCANLINE_OFFSETS.map((top, i) => (
+                <View key={i} style={[styles.scanline, { top }]} />
+              ))}
+            </View>
+            <Text style={styles.payoutLabel}>PAYOUT</Text>
+            <Text style={[styles.payoutValue, { color: payoutColor }]} numberOfLines={1}>
+              {lastResult && lastResult.outcomeType !== 'NOTHING'
+                ? formatPayout(lastResult)
+                : '—'}
+            </Text>
           </Animated.View>
         </View>
 
@@ -352,24 +377,75 @@ export default function SpinScreen() {
         />
 
         <View style={styles.spinZone}>
-          {/* SpinButton centred with Ledger to its left and matching spacer to right */}
-          <View style={styles.spinButtonRow}>
-            <Pressable style={styles.ledgerBtn} onPress={() => setHistoryVisible(true)}>
-              <Text style={styles.ledgerBtnLabel}>LEDGER</Text>
-              <Text style={styles.ledgerBtnArrow}>↑</Text>
-            </Pressable>
+          {/* Cockpit action row */}
+          <View style={styles.cockpitRow}>
+            <View style={styles.actionStack}>
+              {/* Rift */}
+              <Pressable
+                style={[styles.actionBtn, riftTier > 0 && styles.actionBtnAccent]}
+                onPress={() => setRiftModalVisible(true)}
+                onLongPress={() => showTooltip('Temporal Rift: shifts symbol weights toward credits. Higher tiers cost more but yield bigger wins.')}
+                delayLongPress={450}
+              >
+                <Text style={[styles.actionBtnGlyph, riftTier > 0 && { color: Colors.accent }]}>◌</Text>
+                {riftTier > 0 && <Text style={[styles.actionBtnBadge, { color: Colors.accent }]}>T{riftTier}</Text>}
+              </Pressable>
+
+              {/* Overclock */}
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  overclockActive && styles.actionBtnAttack,
+                  attacks <= 0 && !overclockActive && styles.actionBtnDim,
+                ]}
+                onPress={() => { activateOverclock(); hapticActivateBuff(); }}
+                disabled={overclockActive}
+                onLongPress={() => showTooltip(`Overclock: +${overclockBonusPreview} CR next spin. Costs 1 Fuel Cell.`)}
+                delayLongPress={450}
+              >
+                <Text style={[styles.actionBtnGlyph, overclockActive && { color: Colors.attack }]}>⚡</Text>
+                {attacks > 0 && !overclockActive && <Text style={[styles.actionBtnBadge, { color: Colors.attack }]}>{attacks}</Text>}
+              </Pressable>
+
+              {/* Signal Boost */}
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  signalBoostActive && styles.actionBtnRaid,
+                  raids <= 0 && !signalBoostActive && styles.actionBtnDim,
+                ]}
+                onPress={() => { activateSignalBoost(); hapticActivateBuff(); }}
+                disabled={signalBoostActive}
+                onLongPress={() => showTooltip('Signal Boost: ×1.5 credit symbol weights next spin. Costs 1 Signal.')}
+                delayLongPress={450}
+              >
+                <Text style={[styles.actionBtnGlyph, signalBoostActive && { color: Colors.raid }]}>▲▲</Text>
+                {raids > 0 && !signalBoostActive && <Text style={[styles.actionBtnBadge, { color: Colors.raid }]}>{raids}</Text>}
+              </Pressable>
+
+              {/* Ledger */}
+              <Pressable
+                style={styles.actionBtn}
+                onPress={() => setHistoryVisible(true)}
+                onLongPress={() => showTooltip('Ledger: view spin history, modifier receipts, and combat log.')}
+                delayLongPress={450}
+              >
+                <Text style={styles.actionBtnGlyph}>↑</Text>
+              </Pressable>
+            </View>
+
             <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
-            <View style={styles.ledgerBtnSpacer} />
           </View>
+
           <Text style={[styles.spinsLabel, spinsLow && styles.spinsLabelLow]}>
-            {spinsRemaining} / {MAX_SPINS} spins
+            {spinsRemaining} / {spinCap} spins
           </Text>
-          {spinsRemaining < MAX_SPINS && msUntilNextSpin > 0 && (
+          {spinsRemaining < spinCap && msUntilNextSpin > 0 && (
             <View style={styles.refillRow}>
               <Text style={[styles.refillNext, spinsLow && styles.refillNextLow]}>
                 NEXT SPIN  {formatRefillTimer(msUntilNextSpin)}
               </Text>
-              {spinsRemaining < MAX_SPINS - 1 && (
+              {spinsRemaining < spinCap - 1 && (
                 <Text style={styles.refillFull}>
                   FULL  {formatRefillTimer(msUntilFull)}
                 </Text>
@@ -377,37 +453,6 @@ export default function SpinScreen() {
             </View>
           )}
         </View>
-
-        {showQuickActions && (
-          <View style={styles.quickActions}>
-            {(attacks > 0 || overclockActive) && (
-              <Pressable
-                onPress={() => { activateOverclock(); hapticActivateBuff(); }}
-                disabled={overclockActive}
-                style={[styles.quickButton, overclockActive && styles.quickButtonActive]}
-              >
-                <Text style={[styles.quickButtonLabel, overclockActive && styles.quickButtonLabelActive]}>
-                  {overclockActive ? '⚡ OVERCLOCK  ACTIVE' : `⚡ OVERCLOCK  ${attacks} FUEL`}
-                </Text>
-                <Text style={styles.quickButtonSub}>
-                  {overclockActive ? `+${overclockBonusPreview} CR next spin` : `+${overclockBonusPreview} CR · 1 FUEL`}
-                </Text>
-              </Pressable>
-            )}
-            {(raids > 0 || signalBoostActive) && (
-              <Pressable
-                onPress={() => { activateSignalBoost(); hapticActivateBuff(); }}
-                disabled={signalBoostActive}
-                style={[styles.quickButton, signalBoostActive && styles.quickButtonActive]}
-              >
-                <Text style={[styles.quickButtonLabel, signalBoostActive && styles.quickButtonLabelActive]}>
-                  {signalBoostActive ? '◈ BOOST  ACTIVE' : `◈ BOOST  ${raids} SIGNAL`}
-                </Text>
-                <Text style={styles.quickButtonSub}>Credit weights ×1.5</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
 
         {showCombatResources && (
           <View style={styles.combatRow}>
@@ -424,16 +469,29 @@ export default function SpinScreen() {
             <Text style={styles.combatHint}>→ RADAR</Text>
           </View>
         )}
-
-        <RiftSelector
-          currentTier={riftTier}
-          availableCredits={credits}
-          onSelect={(tier: TemporalRiftTier) => setRiftTier(tier)}
-        />
       </ScrollView>
-      </Animated.View>{/* end shake wrapper */}
+      </Animated.View>
 
       <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />
+
+      {/* Rift selector modal */}
+      <Modal
+        visible={riftModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRiftModalVisible(false)}
+      >
+        <Pressable style={styles.riftModalBackdrop} onPress={() => setRiftModalVisible(false)}>
+          <Pressable style={styles.riftModalContent} onPress={() => {}}>
+            <View style={styles.riftModalHandle} />
+            <RiftSelector
+              currentTier={riftTier}
+              availableCredits={credits}
+              onSelect={(tier: TemporalRiftTier) => { setRiftTier(tier); setRiftModalVisible(false); }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Pressable
         style={[styles.legendBtn, { right: Spacing.md + 72, top: insets.top + 6 }]}
@@ -443,8 +501,9 @@ export default function SpinScreen() {
         <Text style={styles.legendBtnText}>%</Text>
       </Pressable>
 
+      {/* Mute button — larger than % and ? */}
       <Pressable
-        style={[styles.legendBtn, { right: Spacing.md + 36, top: insets.top + 6 }, muted && styles.legendBtnMuted]}
+        style={[styles.legendBtn, styles.legendBtnLarge, { right: Spacing.md + 42, top: insets.top + 2 }, muted && styles.legendBtnMuted]}
         onPress={() => {
           const next = !muted;
           setMuted(next);
@@ -452,7 +511,7 @@ export default function SpinScreen() {
         }}
         hitSlop={12}
       >
-        <Text style={[styles.legendBtnText, !muted && { color: Colors.accent }]}>{muted ? '✕' : '♪'}</Text>
+        <Text style={[styles.legendBtnTextLarge, !muted && { color: Colors.accent }]}>{muted ? '✕' : '♪'}</Text>
       </Pressable>
 
       <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
@@ -484,23 +543,11 @@ export default function SpinScreen() {
         <LegendSection label="SPIN ABILITIES" />
         <LegendRow left="⚡ OVERCLOCK" right={`+${overclockBonusPreview} CR · 1 FUEL`} color={Colors.attack} />
         <LegendRow left="" right={`= GEN LVL ${generatorLevel} × 50 + 200`} />
-        <LegendRow left="◈ BOOST" right="1 SIGNAL · ×1.5 CR weights" color={Colors.raid} />
+        <LegendRow left="▲▲ BOOST" right="1 SIGNAL · ×1.5 CR weights" color={Colors.raid} />
         <LegendNote text="Multipliers stack: base × DRONE × ANOMALY + OVERCLOCK − RIFT cost. See LEDGER for the receipt." />
       </LegendCard>
     </SafeAreaView>
   );
-}
-
-function outcomeMessage(result: NonNullable<ReturnType<typeof useGameStore.getState>['lastResult']>): string {
-  switch (result.outcomeType) {
-    case 'CREDITS':    return `+${result.creditsWon.toLocaleString()} CREDITS`;
-    case 'ATTACK':     return `+${result.attacksWon} FUEL CELL${result.attacksWon !== 1 ? 'S' : ''}`;
-    case 'RAID':       return `+${result.raidsWon} SIGNAL BOOSTER${result.raidsWon !== 1 ? 'S' : ''}`;
-    case 'SHIELD':     return `+${result.shieldsWon} SHIELD${result.shieldsWon !== 1 ? 'S' : ''}`;
-    case 'INTRUSION':  return `+${result.intrusionsWon} BREACH KEY${result.intrusionsWon !== 1 ? 'S' : ''}`;
-    case 'EXTRACTION': return `+${result.extractionsWon} EXTRACTION BEAM${result.extractionsWon !== 1 ? 'S' : ''}`;
-    default: return '';
-  }
 }
 
 const styles = StyleSheet.create({
@@ -515,15 +562,6 @@ const styles = StyleSheet.create({
     zIndex: 98,
   },
 
-  pilotBadge: {
-    fontSize: Typography.sizes.xs,
-    color: Colors.textSecondary,
-    letterSpacing: 2,
-    textAlign: 'right',
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.xs,
-    paddingBottom: 2,
-  },
   resourceBarTransparent: {
     backgroundColor: 'transparent',
     borderBottomColor: Colors.border + '55',
@@ -532,8 +570,11 @@ const styles = StyleSheet.create({
   contentScroll: { flex: 1 },
   content: { paddingTop: Spacing.sm, gap: Spacing.md },
 
-  outcomeArea: {
+  // Digital payout indicator
+  payoutArea: {
     alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    width: '100%',
   },
   tripleBadgeWrap: {
     position: 'absolute',
@@ -546,31 +587,57 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     letterSpacing: 4,
   },
-  outcomeBanner: {
-    alignItems: 'center',
-    minHeight: 48,
-    paddingHorizontal: Spacing.md,
-  },
-  outcomeText: {
-    fontSize: Typography.sizes.xxl,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primary,
-    letterSpacing: 3,
-  },
-  outcomeTextMuted: {
-    fontSize: Typography.sizes.md,
-    color: Colors.textMuted,
-    letterSpacing: 2,
-  },
-  spinZone: { alignItems: 'center', gap: Spacing.sm },
-  spinButtonRow: {
+  payoutPanel: {
+    width: '100%',
+    height: 64,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.info + '55',
+    borderRadius: BorderRadius.sm,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+    overflow: 'hidden',
+  },
+  scanline: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: Colors.info,
+    opacity: 0.04,
+  },
+  payoutLabel: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    fontWeight: Typography.weights.bold,
+  },
+  payoutValue: {
+    flex: 1,
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
+    textAlign: 'right',
+  },
+
+  spinZone: { alignItems: 'center', gap: Spacing.sm },
+
+  // Cockpit row
+  cockpitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing.md,
   },
-  ledgerBtn: {
-    width: 52,
-    height: 52,
+  actionStack: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  actionBtn: {
+    width: 46,
+    height: 46,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -579,20 +646,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
   },
-  ledgerBtnLabel: {
-    fontSize: 8,
-    color: Colors.textMuted,
-    letterSpacing: 2,
-    fontWeight: Typography.weights.bold,
+  actionBtnAccent: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accent + '1A',
   },
-  ledgerBtnArrow: {
+  actionBtnAttack: {
+    borderColor: Colors.attack,
+    backgroundColor: Colors.attack + '1A',
+  },
+  actionBtnRaid: {
+    borderColor: Colors.raid,
+    backgroundColor: Colors.raid + '1A',
+  },
+  actionBtnDim: {
+    opacity: 0.35,
+  },
+  actionBtnGlyph: {
     fontSize: Typography.sizes.sm,
     color: Colors.textMuted,
   },
-  ledgerBtnSpacer: {
-    width: 52,
-    height: 52,
+  actionBtnBadge: {
+    fontSize: 9,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
   },
+
   spinsLabel: {
     fontSize: Typography.sizes.xs,
     color: Colors.textMuted,
@@ -622,41 +700,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  quickActions: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.sm,
-  },
-  quickButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.surfaceElevated,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    alignItems: 'center',
-    gap: 2,
-  },
-  quickButtonActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '22',
-  },
-  quickButtonLabel: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textSecondary,
-    letterSpacing: 1,
-  },
-  quickButtonLabelActive: {
-    color: Colors.primary,
-  },
-  quickButtonSub: {
-    fontSize: 10,
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
-  },
-
   combatRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -682,6 +725,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginLeft: Spacing.xs,
   },
+
   scannerBeam: {
     position: 'absolute',
     left: 0,
@@ -717,6 +761,7 @@ const styles = StyleSheet.create({
     color: Colors.accent,
     lineHeight: 56,
   },
+
   legendBtn: {
     position: 'absolute',
     top: 6,
@@ -731,6 +776,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 50,
   },
+  legendBtnLarge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+  },
   legendBtnMuted: {
     opacity: 0.45,
   },
@@ -738,5 +789,33 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.xs,
     fontWeight: Typography.weights.bold,
     color: Colors.textMuted,
+  },
+  legendBtnTextLarge: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textMuted,
+  },
+
+  riftModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  riftModalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.lg,
+    paddingBottom: Spacing.xxl,
+  },
+  riftModalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
   },
 });

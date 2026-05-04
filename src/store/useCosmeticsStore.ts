@@ -40,6 +40,16 @@ export const useCosmeticsStore = create<CosmeticsState>((set, get) => ({
     }
     const savedActive = activeRaw ? (JSON.parse(activeRaw) as Partial<Record<CosmeticCategory, string>>) : {};
     const active = { ...COSMETIC_ACTIVE_DEFAULTS, ...savedActive } as Record<CosmeticCategory, string>;
+
+    // One-time migration: sym_dillo → sym_squad
+    if (owned.has('sym_dillo')) {
+      owned.delete('sym_dillo');
+      owned.add('sym_squad');
+    }
+    if (active.SYMBOL_PACK === 'sym_dillo') {
+      active.SYMBOL_PACK = 'sym_squad';
+    }
+
     set({ owned, active, loaded: true });
   },
 

@@ -10,7 +10,8 @@ import Animated, {
 import { useGameStore, SpinHistoryEntry } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { GameEvent } from '@/services/FirestoreService';
-import { SlotSymbol } from '@/services/SlotsEngine';
+import { SlotSymbol, WinLineId, LINE_PATTERNS } from '@/services/SlotsEngine';
+import { PAYLINE_COLORS } from '@/components/ReelDisplay';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const DRAWER_HEIGHT = 540;
@@ -64,6 +65,18 @@ function outcomeBrief(e: SpinHistoryEntry): string {
   }
 }
 
+function formatBreakdown(entry: SpinHistoryEntry): string {
+  const muls: string[] = [`${entry.baseCreditsWon}`];
+  if (entry.signalBoostUsed)         muls.push('× 1.5 (BOOST)');
+  if (entry.droneMultiplier !== 1)   muls.push(`× ${entry.droneMultiplier.toFixed(2)} (DRONE)`);
+  if (entry.anomalyMultiplier !== 1) muls.push(`× ${entry.anomalyMultiplier.toFixed(1)} (ANOM)`);
+  let expr = muls.join(' ');
+  if (entry.overclockBonus > 0) expr += ` + ${entry.overclockBonus} (OC)`;
+  if (entry.riftCost > 0)       expr += ` − ${entry.riftCost} (RIFT)`;
+  expr += ` = ${entry.finalCreditsWon.toLocaleString()} CR`;
+  return expr;
+}
+
 function combatBrief(ev: GameEvent): { label: string; sub: string; color: string; icon: string } {
   switch (ev.type) {
     case 'ATTACK_INCOMING':
@@ -87,17 +100,78 @@ function combatBrief(ev: GameEvent): { label: string; sub: string; color: string
   }
 }
 
+function ReelGrid({ entry }: { entry: SpinHistoryEntry }) {
+  const { reelWindow, winLineIds } = entry;
+  if (!reelWindow) return null;
+
+  const winSet = new Set<WinLineId>(winLineIds);
+
+  // Determine highlight color for each [row][col] cell
+  const highlights: (string | null)[][] = [[null, null, null], [null, null, null], [null, null, null]];
+  for (const lineId of winLineIds) {
+    const pattern = LINE_PATTERNS[lineId];
+    const color = PAYLINE_COLORS[lineId];
+    for (let col = 0; col < 3; col++) {
+      highlights[pattern[col]][col] = color;
+    }
+  }
+
+  return (
+    <View style={gridStyles.grid}>
+      {([0, 1, 2] as const).map((row) => (
+        <View key={row} style={gridStyles.gridRow}>
+          {([0, 1, 2] as const).map((col) => {
+            const sym = reelWindow[row][col];
+            const hlColor = highlights[row][col];
+            return (
+              <View
+                key={col}
+                style={[
+                  gridStyles.cell,
+                  hlColor ? { backgroundColor: hlColor + '33', borderColor: hlColor, borderWidth: 1 } : undefined,
+                ]}
+              >
+                <Text style={gridStyles.cellGlyph}>{REEL_GLYPH[sym]}</Text>
+              </View>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const gridStyles = StyleSheet.create({
+  grid: { flexDirection: 'column', gap: 2 },
+  gridRow: { flexDirection: 'row', gap: 2 },
+  cell: {
+    width: 24,
+    height: 24,
+    borderRadius: 3,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cellGlyph: {
+    fontSize: 9,
+    color: Colors.textSecondary,
+  },
+});
+
 function SpinReceipt({ entry }: { entry: SpinHistoryEntry }) {
-  const [a, b, c] = entry.reels;
   const oColor = OUTCOME_COLOR[entry.outcomeType];
   const match = matchLabel(entry.reels);
+  const showGrid = !!entry.reelWindow;
+  const needsBreakdown = entry.outcomeType === 'CREDITS' && (
+    entry.signalBoostUsed || entry.droneMultiplier !== 1 || entry.anomalyMultiplier !== 1 || entry.overclockBonus > 0 || entry.riftCost > 0
+  );
 
   const chips: { label: string; color: string }[] = [];
-  if (entry.riftTier > 0)        chips.push({ label: `RIFT T${entry.riftTier}  −${entry.riftCost} CR`, color: Colors.accent });
-  if (entry.overclockUsed)       chips.push({ label: `⚡ OVERCLOCK +${entry.overclockBonus}`,           color: Colors.attack });
-  if (entry.signalBoostUsed)     chips.push({ label: '◈ BOOST  ×1.5 weights',                          color: Colors.raid   });
-  if (entry.droneMultiplier > 1) chips.push({ label: `×${entry.droneMultiplier.toFixed(2)} DRONE`,      color: Colors.primary });
-  if (entry.anomalyMultiplier > 1) chips.push({ label: `×${entry.anomalyMultiplier.toFixed(1)} ANOMALY`, color: Colors.warning });
+  if (entry.riftTier > 0)          chips.push({ label: `RIFT T${entry.riftTier}  −${entry.riftCost} CR`, color: Colors.accent });
+  if (entry.overclockUsed)         chips.push({ label: `⚡ OVERCLOCK +${entry.overclockBonus}`,           color: Colors.attack });
+  if (entry.signalBoostUsed)       chips.push({ label: '▲▲ BOOST  ×1.5 weights',                         color: Colors.raid   });
+  if (entry.droneMultiplier > 1)   chips.push({ label: `×${entry.droneMultiplier.toFixed(2)} DRONE`,      color: Colors.primary });
+  if (entry.anomalyMultiplier > 1) chips.push({ label: `×${entry.anomalyMultiplier.toFixed(1)} ANOMALY`,  color: Colors.warning });
 
   const net = entry.finalCreditsWon - entry.riftCost;
   const showNet = entry.riftCost > 0 || entry.finalCreditsWon > 0;
@@ -105,7 +179,13 @@ function SpinReceipt({ entry }: { entry: SpinHistoryEntry }) {
   return (
     <View style={styles.row}>
       <View style={styles.rowHead}>
-        <Text style={styles.rowReels}>{REEL_GLYPH[a]}  {REEL_GLYPH[b]}  {REEL_GLYPH[c]}</Text>
+        {showGrid ? (
+          <ReelGrid entry={entry} />
+        ) : (
+          <Text style={styles.rowReels}>
+            {REEL_GLYPH[entry.reels[0]]}  {REEL_GLYPH[entry.reels[1]]}  {REEL_GLYPH[entry.reels[2]]}
+          </Text>
+        )}
         <Text style={[styles.rowOutcome, { color: oColor }]}>{match}  {outcomeBrief(entry)}</Text>
         <Text style={styles.rowAge}>{formatAge(entry.timestamp)}</Text>
       </View>
@@ -118,7 +198,12 @@ function SpinReceipt({ entry }: { entry: SpinHistoryEntry }) {
           ))}
         </View>
       )}
-      {showNet && (
+      {needsBreakdown && (
+        <Text style={[styles.breakdown, { color: net >= 0 ? Colors.success : Colors.danger }]}>
+          {formatBreakdown(entry)}
+        </Text>
+      )}
+      {showNet && !needsBreakdown && (
         <Text style={[styles.netLine, { color: net >= 0 ? Colors.success : Colors.danger }]}>
           NET  {net >= 0 ? '+' : ''}{net.toLocaleString()} CR
         </Text>
@@ -150,10 +235,10 @@ type LedgerRow =
 interface Props { visible: boolean; onClose: () => void }
 
 export function LedgerDrawer({ visible, onClose }: Props) {
-  const spinHistory      = useGameStore((s) => s.spinHistory);
-  const sessionSpins     = useGameStore((s) => s.sessionSpins);
-  const sessionCredits   = useGameStore((s) => s.sessionCreditsEarned);
-  const combatEvents     = useEventStore((s) => s.events);
+  const spinHistory    = useGameStore((s) => s.spinHistory);
+  const sessionSpins   = useGameStore((s) => s.sessionSpins);
+  const sessionCredits = useGameStore((s) => s.sessionCreditsEarned);
+  const combatEvents   = useEventStore((s) => s.events);
 
   const rows = useMemo<LedgerRow[]>(() => {
     const merged: LedgerRow[] = [
@@ -306,6 +391,12 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 10, fontWeight: Typography.weights.bold, letterSpacing: 1 },
 
+  breakdown: {
+    fontSize: 10,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 0.5,
+    fontFamily: Typography.fontFamily,
+  },
   netLine: {
     fontSize: Typography.sizes.xs,
     fontWeight: Typography.weights.bold,

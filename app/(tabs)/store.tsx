@@ -8,6 +8,7 @@ import { useGameStore } from '@/store/useGameStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { AdWatchModal } from '@/components/AdWatchModal';
+import { CosmeticPreview } from '@/components/CosmeticPreview';
 import { hapticBuildComplete, hapticActivateBuff } from '@/constants/haptics';
 import {
   PACKS,
@@ -26,6 +27,10 @@ import {
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function pickRandom<T>(n: number, arr: T[]): T[] {
+  return [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+}
 
 function formatRewards(r: PackReward): string {
   const parts: string[] = [];
@@ -117,9 +122,7 @@ function CosmeticCard({
     >
       {item.featured && <Text style={[styles.cosCardBadge, { color: accent }]}>★</Text>}
       <View style={styles.cosSwatchRow}>
-        <View style={[styles.cosSwatch, { backgroundColor: accent + '33', borderColor: accent + '88' }]}>
-          <Text style={[styles.cosSwatchText, { color: accent }]}>{item.name.slice(0, 2).toUpperCase()}</Text>
-        </View>
+        <CosmeticPreview category={item.category} itemId={item.id} accentColor={accent} />
       </View>
       <Text style={styles.cosName} numberOfLines={1}>{item.name}</Text>
       <Text style={styles.cosDesc} numberOfLines={2}>{item.description}</Text>
@@ -156,6 +159,7 @@ export default function StoreScreen() {
   const { grantResources, subtractCredits, credits } = useGameStore();
   const { buy: buyCosmetic, equip: equipCosmetic, isOwned, getActive, load: loadCosmetics } = useCosmeticsStore();
 
+  const [adSlots, setAdSlots]     = useState<AdReward[]>(() => pickRandom(2, AD_REWARDS));
   const [adReadyAt, setAdReadyAt] = useState<Record<string, number>>({});
   const [now, setNow]             = useState(Date.now());
   const [adActive, setAdActive]   = useState<AdReward | null>(null);
@@ -290,10 +294,15 @@ export default function StoreScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
 
-        {/* Rewarded ads */}
-        <Text style={styles.sectionHeader}>FREE — WATCH AN AD</Text>
+        {/* 1. Rewarded ads — 2 random with refresh */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionHeader}>FREE — WATCH AN AD</Text>
+          <Pressable onPress={() => setAdSlots(pickRandom(2, AD_REWARDS))} hitSlop={8}>
+            <Text style={styles.refreshBtn}>↻</Text>
+          </Pressable>
+        </View>
         <View style={styles.adsGrid}>
-          {AD_REWARDS.map((ad) => {
+          {adSlots.map((ad) => {
             const readyAt = adReadyAt[ad.id] ?? 0;
             const ready = readyAt <= now;
             return (
@@ -312,21 +321,8 @@ export default function StoreScreen() {
           })}
         </View>
 
-        {/* IAP Resource packs */}
-        <Text style={styles.sectionHeader}>CREDIT PACKS</Text>
-        {credPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
-
-        <Text style={styles.sectionHeader}>INSTANT SPIN REFILL</Text>
-        {spinPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
-
-        <Text style={styles.sectionHeader}>RESOURCES</Text>
-        {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
-
-        <Text style={styles.sectionHeader}>BUNDLES</Text>
-        {bundlePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
-
-        {/* ── COSMETICS ── */}
-        {catalogByCategory.map(({ category, label, items }) => (
+        {/* 2. Cosmetic bundles */}
+        {catalogByCategory.filter((g) => g.category === 'BUNDLE').map(({ category, label, items }) => (
           <View key={category}>
             <Text style={styles.cosSection}>{label}</Text>
             <FlatList
@@ -346,6 +342,40 @@ export default function StoreScreen() {
             />
           </View>
         ))}
+
+        {/* 3. Cosmetic categories */}
+        {catalogByCategory.filter((g) => g.category !== 'BUNDLE').map(({ category, label, items }) => (
+          <View key={category}>
+            <Text style={styles.cosSection}>{label}</Text>
+            <FlatList
+              data={items}
+              horizontal
+              keyExtractor={(item) => item.id}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cosRow}
+              renderItem={({ item }) => (
+                <CosmeticCard
+                  item={item}
+                  owned={isOwned(item.id)}
+                  active={getActive(item.category) === item.id}
+                  onPress={setCosmeticDetail}
+                />
+              )}
+            />
+          </View>
+        ))}
+
+        {/* 4. Credit packs */}
+        <Text style={styles.sectionHeader}>CREDIT PACKS</Text>
+        {credPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+
+        {/* 5. Instant spin refill */}
+        <Text style={styles.sectionHeader}>INSTANT SPIN REFILL</Text>
+        {spinPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+
+        {/* 6. Resource packs */}
+        <Text style={styles.sectionHeader}>RESOURCES</Text>
+        {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
 
         <Text style={styles.footnote}>
           CR purchases are earned in-game. Items marked with a price are simulated IAP during
@@ -542,6 +572,8 @@ const styles = StyleSheet.create({
   scroll: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: 100 },
 
   sectionHeader: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 3, marginTop: Spacing.sm, marginBottom: 4 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.sm, marginBottom: 4 },
+  refreshBtn: { fontSize: Typography.sizes.md, color: Colors.textMuted },
 
   adsGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   adCard:       { flexBasis: '48%', flexGrow: 1, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.success + '66', padding: Spacing.md, gap: 4 },
@@ -564,13 +596,14 @@ const styles = StyleSheet.create({
   cosSection: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 3, marginTop: Spacing.md, marginBottom: Spacing.sm },
   cosRow:     { paddingRight: Spacing.md, gap: Spacing.sm },
   cosCard:    {
-    width: 130,
+    width: 100,
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.sm,
     gap: 4,
+    alignItems: 'center',
   },
   cosCardFeatured: { backgroundColor: Colors.surfaceElevated },
   cosCardBadge:    { fontSize: 9, letterSpacing: 1, textAlign: 'right' },

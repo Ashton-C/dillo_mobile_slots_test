@@ -85,9 +85,9 @@ export type TemporalRiftTier = 0 | 1 | 2 | 3;
 // Higher rift tiers push toward credits and reduce combat tokens
 const RIFT_MODIFIERS: Record<TemporalRiftTier, Partial<Record<SlotSymbol, number>>> = {
   0: {},
-  1: { CREDIT_SMALL: 5, CREDIT_MEDIUM: 3, EMPTY: -4, ATTACK: -2, RAID: -2 },
-  2: { CREDIT_MEDIUM: 8, CREDIT_LARGE: 5, EMPTY: -5, CREDIT_SMALL: -3, ATTACK: -3, RAID: -2, INTRUSION: -2, EXTRACTION: -1 },
-  3: { CREDIT_LARGE: 12, CREDIT_MEDIUM: 6, RAID: 3, ATTACK: 2, EMPTY: -8, CREDIT_SMALL: -10, SHIELD: -5, INTRUSION: -3, EXTRACTION: -2 },
+  1: { CREDIT_SMALL: 8, CREDIT_MEDIUM: 3, EMPTY: -4, ATTACK: -2, RAID: -2 },
+  2: { CREDIT_MEDIUM: 12, CREDIT_LARGE: 5, EMPTY: -5, CREDIT_SMALL: -3, ATTACK: -3, RAID: -2, INTRUSION: -2, EXTRACTION: -1 },
+  3: { CREDIT_LARGE: 20, CREDIT_MEDIUM: 6, RAID: 3, ATTACK: 2, EMPTY: -8, CREDIT_SMALL: -10, SHIELD: -5, INTRUSION: -3, EXTRACTION: -2 },
 };
 
 export const RIFT_COSTS: Record<TemporalRiftTier, number> = {

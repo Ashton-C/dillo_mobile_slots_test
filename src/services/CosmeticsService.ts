@@ -50,7 +50,7 @@ export const SYMBOL_PACK_GLYPHS: Record<string, SymbolGlyphs> = {
     CREDIT_SMALL: '⊡',  CREDIT_MEDIUM: '⊟',   CREDIT_LARGE: '⊞',
     ATTACK: '⚡', RAID: '⌬', SHIELD: '⊕', INTRUSION: '⌀', EXTRACTION: '⌁', EMPTY: '·',
   },
-  sym_dillo: {
+  sym_squad: {
     CREDIT_SMALL: '⬡',  CREDIT_MEDIUM: '⬢',   CREDIT_LARGE: '⬣',
     ATTACK: '⟡', RAID: '⊛', SHIELD: '⊗', INTRUSION: '⊘', EXTRACTION: '⊙', EMPTY: '·',
   },
@@ -199,7 +199,7 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { id: 'sym_astro',    category: 'SYMBOL_PACK', name: 'ASTRO',        description: 'Planets, suns, moon glyphs',          creditCost: 800,  previewColor: Colors.info },
   { id: 'sym_runic',    category: 'SYMBOL_PACK', name: 'RUNIC',        description: 'Norse rune stones — ᚦ ᚱ ᛟ',           creditCost: 800,  previewColor: Colors.textSecondary },
   { id: 'sym_circuit',  category: 'SYMBOL_PACK', name: 'NEON CIRCUIT', description: 'PCB traces, chips, and nodes',        creditCost: 1200, previewColor: Colors.success },
-  { id: 'sym_dillo',    category: 'SYMBOL_PACK', name: 'DILLO SQUAD',  description: 'Armadillo-themed icon set',           creditCost: -1,   iapPrice: '$1.99', previewColor: Colors.primary, featured: true },
+  { id: 'sym_squad',    category: 'SYMBOL_PACK', name: 'TACTICAL SQUAD', description: 'Tactical squad icon set',            creditCost: -1,   iapPrice: '$1.99', previewColor: Colors.primary, featured: true },
 
   // Suit Colors
   { id: 'suit_crimson', category: 'SUIT_COLOR', name: 'CRIMSON CORE', description: 'Deep red pilot suit',          creditCost: 500,  previewColor: '#CC2244' },

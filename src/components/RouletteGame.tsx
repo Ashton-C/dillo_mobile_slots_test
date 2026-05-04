@@ -18,10 +18,10 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 type BetType = 'EVEN' | 'SECTOR' | 'JACKPOT';
 type Phase = 'BET' | 'SPINNING' | 'DONE';
 
-const BET_CONFIGS: Record<BetType, { label: string; odds: string; segments: number; winPower: number; color: string }> = {
-  EVEN:    { label: 'EVEN',    odds: '50%', segments: 6, winPower: 75,  color: Colors.primary },
-  SECTOR:  { label: 'SECTOR',  odds: '33%', segments: 4, winPower: 110, color: Colors.accent },
-  JACKPOT: { label: 'JACKPOT', odds: '17%', segments: 2, winPower: 145, color: Colors.credits },
+const BET_CONFIGS: Record<BetType, { label: string; odds: string; segments: number; winPower: number; color: string; creditReward: number }> = {
+  EVEN:    { label: 'EVEN',    odds: '50%', segments: 6, winPower: 75,  color: Colors.primary,  creditReward: 150 },
+  SECTOR:  { label: 'SECTOR',  odds: '33%', segments: 4, winPower: 110, color: Colors.accent,   creditReward: 225 },
+  JACKPOT: { label: 'JACKPOT', odds: '17%', segments: 2, winPower: 145, color: Colors.credits,  creditReward: 350 },
 };
 
 // 12 segments: EVEN×6, SECTOR×4, JACKPOT×2
@@ -191,7 +191,7 @@ function BetButtons({
           >
             <Text style={[betStyles.label, { color: cfg.color }]}>{cfg.label}</Text>
             <Text style={betStyles.oddsText}>{cfg.odds}</Text>
-            <Text style={betStyles.power}>{cfg.winPower} PWR</Text>
+            <Text style={[betStyles.credit, { color: cfg.color }]}>+{cfg.creditReward} CR ◈</Text>
           </Pressable>
         );
       })}
@@ -224,10 +224,10 @@ const betStyles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
   },
-  power: {
+  credit: {
     fontSize: 9,
-    color: Colors.textMuted,
-    letterSpacing: 1,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 0.5,
   },
 });
 
@@ -264,21 +264,22 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
     const cfg = BET_CONFIGS[activeBet];
     const didWin = Math.random() < cfg.segments / SEG_COUNT;
 
-    // Pick a random segment from the winning or losing pool
     const pool = SEGMENT_ZONES
       .map((zone, i) => ({ zone, i }))
       .filter((s) => (didWin ? s.zone === activeBet : s.zone !== activeBet));
     const chosen = pool[Math.floor(Math.random() * pool.length)];
-    const targetRad = segAngle(chosen.i);
+    const jitter = (Math.random() - 0.5) * (Math.PI / 12);
+    const targetRad = segAngle(chosen.i) + jitter;
 
-    // Monotonically increasing angle: 3 full laps + remaining arc to target
     const current = ballAngle.value;
     const twoPi = Math.PI * 2;
     const remaining = ((targetRad - current) % twoPi + twoPi) % twoPi;
-    const endRad = current + 3 * twoPi + remaining;
+    const laps = 2 + Math.floor(Math.random() * 3);
+    const duration = 2900 + Math.floor(Math.random() * 600);
+    const endRad = current + laps * twoPi + remaining;
 
     ballAngle.value = withTiming(endRad, {
-      duration: 3200,
+      duration,
       easing: Easing.out(Easing.poly(3)),
     }, (finished) => {
       if (finished) runOnJS(onSpinComplete)(didWin, chosen.i, activeBet);
@@ -340,6 +341,10 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
             </Text>
           )}
 
+          <Text style={styles.rewardBanner}>
+            EVEN 50% → 150 CR  ·  SECTOR 33% → 225 CR  ·  JACKPOT 17% → 350 CR
+          </Text>
+
           <View style={styles.wheelWrap}>
             <WheelView ballAngle={ballAngle} activeBet={activeBet} landedIdx={landedIdx} />
           </View>
@@ -355,10 +360,19 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
           {phase === 'DONE' && (
             <View style={styles.powerRow}>
               <View style={styles.powerChip}>
-                <Text style={styles.powerChipLabel}>YOUR POWER</Text>
-                <Text style={[styles.powerChipVal, { color: won ? Colors.success : Colors.danger }]}>
-                  {activeBetCfg ? (won ? activeBetCfg.winPower : 8) : 8}
-                </Text>
+                {won ? (
+                  <>
+                    <Text style={styles.powerChipLabel}>WON</Text>
+                    <Text style={[styles.powerChipVal, { color: Colors.success, fontSize: Typography.sizes.md }]}>
+                      +{activeBetCfg?.creditReward ?? 0} CR ◈
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.powerChipLabel}>YOUR POWER</Text>
+                    <Text style={[styles.powerChipVal, { color: Colors.danger }]}>8</Text>
+                  </>
+                )}
               </View>
               <Text style={styles.dot}>·</Text>
               <View style={styles.powerChip}>
@@ -434,6 +448,14 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textAlign: 'center',
     paddingVertical: Spacing.sm,
+  },
+  rewardBanner: {
+    fontSize: 9,
+    color: Colors.textMuted,
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 4,
   },
   wheelWrap: {
     alignItems: 'center',

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import {
   SpinResult, SlotSymbol, SpinOutcomeType, slotsEngine, TemporalRiftTier, RIFT_COSTS,
-  MultiSpinResult, ReelWindow, WinLine,
+  MultiSpinResult, ReelWindow, WinLine, WinLineId,
 } from '@/services/SlotsEngine';
 import { useDroneStore } from '@/store/useDroneStore';
 import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
@@ -29,6 +29,8 @@ export interface SpinHistoryEntry {
   droneMultiplier: number;
   anomalyMultiplier: number;
   timestamp: number;
+  reelWindow?: ReelWindow;
+  winLineIds: WinLineId[];
 }
 
 const MAX_SPINS = 50;
@@ -46,6 +48,12 @@ interface Resources {
   spinRefillStart: number; // unix ms when current refill cycle started; 0 = at max
   xp: number;
   level: number;
+  totalSpins: number;
+  totalCreditsEarned: number;
+  totalJackpots: number;
+  totalBreachesAttempted: number;
+  totalExtractionsAttempted: number;
+  totalRaidsSuffered: number;
 }
 
 interface SpinState {
@@ -94,6 +102,12 @@ const INITIAL_RESOURCES: Resources = {
   spinRefillStart: 0,
   xp: 0,
   level: 1,
+  totalSpins: 0,
+  totalCreditsEarned: 0,
+  totalJackpots: 0,
+  totalBreachesAttempted: 0,
+  totalExtractionsAttempted: 0,
+  totalRaidsSuffered: 0,
 };
 
 const XP_PER_SPIN = 5;
@@ -135,6 +149,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       overclockActive, signalBoostActive,
       xp, level, attacks, raids, shields, intrusions, extractions,
       spinHistory, sessionSpins, sessionCreditsEarned,
+      totalSpins, totalCreditsEarned, totalJackpots,
     } = get();
 
     if (spinsRemaining <= 0 || get().isSpinning) return null;
@@ -210,6 +225,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       droneMultiplier: droneEffects.creditMultiplier,
       anomalyMultiplier,
       timestamp: Date.now(),
+      reelWindow: multi.reelWindow,
+      winLineIds: multi.winLines.map((wl) => wl.id),
     };
     const newHistory = [historyEntry, ...spinHistory].slice(0, 25);
 
@@ -234,6 +251,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         spinHistory: newHistory,
         sessionSpins: sessionSpins + 1,
         sessionCreditsEarned: sessionCreditsEarned + boostedCreditsWon,
+        totalSpins: totalSpins + 1,
+        totalCreditsEarned: totalCreditsEarned + boostedCreditsWon,
+        totalJackpots: totalJackpots + (result.isJackpot ? 1 : 0),
       });
       persistResources(nextState);
     }, SPIN_ANIM_MS);
@@ -373,7 +393,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   subtractResources(costs) {
-    const { credits, attacks, raids, shields, intrusions, extractions } = get();
+    const { credits, attacks, raids, shields, intrusions, extractions,
+            totalBreachesAttempted, totalExtractionsAttempted } = get();
     if ((costs.credits    ?? 0) > credits)    return false;
     if ((costs.attacks    ?? 0) > attacks)    return false;
     if ((costs.raids      ?? 0) > raids)      return false;
@@ -387,6 +408,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       ...(costs.shields    ? { shields:    shields    - costs.shields    } : {}),
       ...(costs.intrusions ? { intrusions: intrusions - costs.intrusions } : {}),
       ...(costs.extractions ? { extractions: extractions - costs.extractions } : {}),
+      ...(costs.intrusions  ? { totalBreachesAttempted: totalBreachesAttempted + (costs.intrusions ?? 0) } : {}),
+      ...(costs.extractions ? { totalExtractionsAttempted: totalExtractionsAttempted + (costs.extractions ?? 0) } : {}),
     };
     set((s) => ({ ...s, ...next }));
     persistResources(next);

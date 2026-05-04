@@ -182,7 +182,8 @@ function PathLine({
   x1: number; y1: number; x2: number; y2: number;
   color: string; opacity: number; thick?: boolean;
 }) {
-  const dx = x2 - x1, dy = y2 - y1;
+  const dx = x2 - x1;
+  const dy = (y2 - y1) * 0.7;
   const len = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
   const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
@@ -223,6 +224,7 @@ export function SectorTrailMap({ startedAt, currentAnomalyId, msRemaining }: Pro
   const floatY = useSharedValue(0);
   const glowS  = useSharedValue(1);
   const glowO  = useSharedValue(0.5);
+  const poleO  = useSharedValue(0.7);
 
   useEffect(() => {
     blink.value = withRepeat(withSequence(
@@ -244,6 +246,11 @@ export function SectorTrailMap({ startedAt, currentAnomalyId, msRemaining }: Pro
       withTiming(0,   { duration: 1300 }),
       withTiming(0.5, { duration: 1300 }),
     ), -1);
+
+    poleO.value = withRepeat(withSequence(
+      withTiming(0.5,  { duration: 900 }),
+      withTiming(0.85, { duration: 900 }),
+    ), -1);
   }, []);
 
   const blinkStyle = useAnimatedStyle(() => ({ opacity: blink.value }));
@@ -252,6 +259,7 @@ export function SectorTrailMap({ startedAt, currentAnomalyId, msRemaining }: Pro
     transform: [{ scale: glowS.value }],
     opacity: glowO.value,
   }));
+  const poleStyle  = useAnimatedStyle(() => ({ opacity: poleO.value }));
 
   return (
     <View style={styles.container}>
@@ -322,6 +330,22 @@ export function SectorTrailMap({ startedAt, currentAnomalyId, msRemaining }: Pro
               borderColor: curColor,
             },
             glowStyle,
+          ]}
+        />
+
+        {/* Vertical pole below ship icon */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: 'absolute',
+              left: cur.x - 0.75,
+              top: cur.y - 42,
+              width: 1.5,
+              height: 36,
+              backgroundColor: curColor,
+            },
+            poleStyle,
           ]}
         />
 
@@ -490,8 +514,6 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.info + '35',
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.sm,
     gap: Spacing.xs,

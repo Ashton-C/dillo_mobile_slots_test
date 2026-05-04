@@ -67,15 +67,14 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
   const STRIP_CELL_H = Math.round(cellHeight * STRIP_CELL_RATIO);
   const TOTAL_H = (STRIP_LEN + 1) * STRIP_CELL_H;
 
-  // translateY = position of the top of the strip relative to the container.
-  // Centered on cell i: translateY = (cellHeight - STRIP_CELL_H) / 2 - i * STRIP_CELL_H
   const centerOn = (i: number) => (cellHeight - STRIP_CELL_H) / 2 - i * STRIP_CELL_H;
 
   const stripRef = useRef<SlotSymbol[]>(Array.from({ length: STRIP_LEN + 1 }, () => symbol));
   const [, forceUpdate] = useState(0);
 
   const translateY = useSharedValue(centerOn(0));
-  const glowOp = useSharedValue(0);
+  const glowOp     = useSharedValue(0);
+  const cellScale  = useSharedValue(1);
 
   const intervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -145,7 +144,6 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
 
     } else if (isWinning) {
       clearAll();
-      // Ensure target is visible after spin resolves
       translateY.value = withTiming(centerOn(STRIP_LEN), { duration: 120 });
       glowOp.value = withSequence(
         withTiming(1, { duration: 180 }),
@@ -153,10 +151,17 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
         withTiming(0.85, { duration: 280 }),
         withTiming(0, { duration: 650 }),
       );
+      // Pop only the landing (winning) symbol
+      cellScale.value = 1;
+      cellScale.value = withSequence(
+        withSpring(1.2, { damping: 6, stiffness: 260 }),
+        withTiming(1, { duration: 320 }),
+      );
     } else {
       clearAll();
       translateY.value = withTiming(centerOn(STRIP_LEN), { duration: 150 });
       glowOp.value = withTiming(0, { duration: 200 });
+      cellScale.value = withTiming(1, { duration: 150 });
     }
 
     return clearAll;
@@ -171,10 +176,9 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
     }
   }, [symbol, isSpinning]);
 
-  const stripStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-  const glowStyle = useAnimatedStyle(() => ({ opacity: glowOp.value }));
+  const stripStyle     = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+  const glowStyle      = useAnimatedStyle(() => ({ opacity: glowOp.value }));
+  const cellScaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: cellScale.value }] }));
 
   const glowColor = highlightColor ?? SYMBOL_COLORS[symbol];
   const fontSize = symbolSize ?? (cellHeight >= 90 ? Typography.sizes.hero : Math.round(Typography.sizes.xl * STRIP_CELL_RATIO));
@@ -189,9 +193,15 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
       <Animated.View style={[{ position: 'absolute', left: 0, right: 0, top: 0, height: TOTAL_H }, stripStyle]}>
         {stripRef.current.map((sym, i) => (
           <View key={i} style={{ height: STRIP_CELL_H, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={[styles.symbol, { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 }]}>
+            <Animated.Text
+              style={[
+                styles.symbol,
+                { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 },
+                i === STRIP_LEN ? cellScaleStyle : undefined,
+              ]}
+            >
               {glyphs[sym]}
-            </Text>
+            </Animated.Text>
           </View>
         ))}
       </Animated.View>
@@ -213,8 +223,7 @@ const WIN_COLORS: Record<string, string> = {
   PAIR:    Colors.success,
 };
 
-// Color assigned to each payline (consistent across guides and highlights)
-const PAYLINE_COLORS: Record<WinLineId, string> = {
+export const PAYLINE_COLORS: Record<WinLineId, string> = {
   MID:       Colors.credits,
   TOP:       Colors.attack,
   BOT:       Colors.raid,
@@ -244,9 +253,7 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
   const ROW_H = CELL_H + 1; // +1 for divider
   const cellW = TRACK_W / 3;
 
-  // Center y of a given row
   const rowY = (r: number) => r * ROW_H + CELL_H / 2;
-  // Center x of a given column
   const colX = (c: number) => c * cellW + cellW / 2;
 
   return (
@@ -255,11 +262,15 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
         const pattern = LINE_PATTERNS[lineId];
         const isEnabled = activeIds.includes(lineId);
         const isWinning = !isSpinning && winLineIds.has(lineId);
-        const color = PAYLINE_COLORS[lineId];
 
         if (!isEnabled) return null;
 
-        const opacity = isWinning ? 0.92 : 0.30;
+        // During spin: all lines gray at low opacity; after spin: winning lines vivid, others very faint
+        const lineColor = isWinning
+          ? PAYLINE_COLORS[lineId]
+          : isSpinning
+            ? Colors.textMuted + '60'
+            : Colors.textMuted + '30';
         const thickness = isWinning ? 3 : 2;
         const isStraight = pattern[0] === pattern[1] && pattern[1] === pattern[2];
 
@@ -274,14 +285,12 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
                 right: 0,
                 top: y - Math.floor(thickness / 2),
                 height: thickness,
-                backgroundColor: color,
-                opacity,
+                backgroundColor: lineColor,
               }}
             />
           );
         }
 
-        // Diagonal: draw a rotated bar from col0 center to col2 center
         const x0 = colX(0);
         const y0 = rowY(pattern[0]);
         const x2 = colX(2);
@@ -302,8 +311,7 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
               top: cy - Math.floor(thickness / 2),
               width: length,
               height: thickness,
-              backgroundColor: color,
-              opacity,
+              backgroundColor: lineColor,
               transform: [{ rotate: `${angle}deg` }],
             }}
           />
