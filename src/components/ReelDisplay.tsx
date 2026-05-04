@@ -432,7 +432,7 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
                       isWinning={cellHighlights[rowIdx][col] !== null}
                       highlightColor={cellHighlights[rowIdx][col]}
                       colIndex={col}
-                      decelStartMs={col * 200 + 500}
+                      decelStartMs={col * 400 + 400}
                       cellHeight={CELL_H}
                       symbolSize={Typography.sizes.xl}
                       glyphs={glyphs}
@@ -466,11 +466,11 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.track, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
-        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} colIndex={0} decelStartMs={500} glyphs={glyphs} cellBg={theme.cellBg} />
+        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} colIndex={0} decelStartMs={400} glyphs={glyphs} cellBg={theme.cellBg} />
         <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} colIndex={1} decelStartMs={700} glyphs={glyphs} cellBg={theme.cellBg} />
+        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} colIndex={1} decelStartMs={800} glyphs={glyphs} cellBg={theme.cellBg} />
         <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} colIndex={2} decelStartMs={900} glyphs={glyphs} cellBg={theme.cellBg} />
+        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} colIndex={2} decelStartMs={1200} glyphs={glyphs} cellBg={theme.cellBg} />
       </Animated.View>
       {winLabel !== '' && !isSpinning && (
         <View style={[styles.winBadge, { backgroundColor: winColor }]}>

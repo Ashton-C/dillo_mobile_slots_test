@@ -395,7 +395,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: Typography.weights.bold,
     letterSpacing: 0.5,
-    fontFamily: Typography.fontFamily,
   },
   netLine: {
     fontSize: Typography.sizes.xs,

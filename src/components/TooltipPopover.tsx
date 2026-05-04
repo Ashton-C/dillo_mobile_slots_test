@@ -58,6 +58,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     lineHeight: 16,
     textAlign: 'center',
-    fontFamily: Typography.fontFamily,
   },
 });

@@ -117,24 +117,21 @@ export function BuildingDetailModal({ type, onClose }: Props) {
   const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete, completedBuilding, startBuild } = useHabitatStore();
   const [contractsVisible, setContractsVisible] = useState(false);
 
-  if (!type) return null;
+  // All Reanimated hooks must be called unconditionally before any early return
+  const iconOpacity  = useSharedValue(1);
+  const ringScale    = useSharedValue(0.6);
+  const ringOpacity  = useSharedValue(0);
+  const floatY       = useSharedValue(0);
+  const floatOpacity = useSharedValue(0);
+  const floatScale   = useSharedValue(0.5);
 
-  const level = buildingLevels[type] ?? 0;
-  const color = BUILDING_COLOR[type];
-  const meta  = BUILDING_META[type];
-  const detail = BUILDING_DETAIL[type](level);
-  const upgradeCost  = BUILDING_UPGRADE_COST[type](level === 0 ? 1 : level);
-  const isBuilding   = activeBuildJob?.type === type && !activeBuildJob.isOutpost;
-  const builderBusy  = activeBuildJob !== null;
-  const maxed        = level >= 10;
-  const blocked      = builderBusy && !isBuilding;
-  const gatedByOutpost = !maxed && (level + 1) > outpostLevel;
-  const totalBuildMs = BUILD_DURATION_MS[level + 1] ?? 0;
-  const progressPct  = totalBuildMs > 0 ? Math.max(2, (1 - msUntilComplete / totalBuildMs) * 100) : 0;
-  const levelDots    = Array.from({ length: 10 }, (_, i) => i < level ? '●' : '○').join('');
+  const level       = type ? (buildingLevels[type] ?? 0) : 0;
+  const color       = type ? BUILDING_COLOR[type] : Colors.textMuted;
+  const isBuilding  = type ? (activeBuildJob?.type === type && !activeBuildJob.isOutpost) : false;
+  const isCompleted = type ? completedBuilding === type : false;
 
-  const iconOpacity = useSharedValue(1);
   useEffect(() => {
+    if (!type) return;
     if (isBuilding) {
       iconOpacity.value = withRepeat(
         withSequence(withTiming(0.4, { duration: 600 }), withTiming(1, { duration: 600 })),
@@ -143,16 +140,8 @@ export function BuildingDetailModal({ type, onClose }: Props) {
     } else {
       iconOpacity.value = withTiming(1, { duration: 200 });
     }
-  }, [isBuilding]);
-  const iconAnimStyle = useAnimatedStyle(() => ({ opacity: iconOpacity.value }));
+  }, [isBuilding, type]);
 
-  const ringScale   = useSharedValue(0.6);
-  const ringOpacity = useSharedValue(0);
-  const floatY      = useSharedValue(0);
-  const floatOpacity = useSharedValue(0);
-  const floatScale  = useSharedValue(0.5);
-
-  const isCompleted = completedBuilding === type;
   useEffect(() => {
     if (!isCompleted) return;
     ringScale.value   = 0.6;
@@ -173,8 +162,23 @@ export function BuildingDetailModal({ type, onClose }: Props) {
     );
   }, [isCompleted]);
 
-  const ringStyle  = useAnimatedStyle(() => ({ transform: [{ scale: ringScale.value }], opacity: ringOpacity.value }));
-  const floatStyle = useAnimatedStyle(() => ({ transform: [{ translateY: floatY.value }, { scale: floatScale.value }], opacity: floatOpacity.value }));
+  const iconAnimStyle = useAnimatedStyle(() => ({ opacity: iconOpacity.value }));
+  const ringStyle     = useAnimatedStyle(() => ({ transform: [{ scale: ringScale.value }], opacity: ringOpacity.value }));
+  const floatStyle    = useAnimatedStyle(() => ({ transform: [{ translateY: floatY.value }, { scale: floatScale.value }], opacity: floatOpacity.value }));
+
+  // Safe to early-return here — all hooks have been called above
+  if (!type) return null;
+
+  const meta         = BUILDING_META[type];
+  const detail       = BUILDING_DETAIL[type](level);
+  const upgradeCost  = BUILDING_UPGRADE_COST[type](level === 0 ? 1 : level);
+  const builderBusy  = activeBuildJob !== null;
+  const maxed        = level >= 10;
+  const blocked      = builderBusy && !isBuilding;
+  const gatedByOutpost = !maxed && (level + 1) > outpostLevel;
+  const totalBuildMs = BUILD_DURATION_MS[level + 1] ?? 0;
+  const progressPct  = totalBuildMs > 0 ? Math.max(2, (1 - msUntilComplete / totalBuildMs) * 100) : 0;
+  const levelDots    = Array.from({ length: 10 }, (_, i) => i < level ? '●' : '○').join('');
 
   let buttonLabel: string;
   let buttonDisabled: boolean;

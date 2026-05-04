@@ -35,7 +35,7 @@ export interface SpinHistoryEntry {
 
 const MAX_SPINS = 50;
 const SPIN_REFILL_MS = 5 * 60_000; // 1 spin every 5 minutes
-export const SPIN_ANIM_MS = 1500;  // reel animation duration — must match ReelDisplay
+export const SPIN_ANIM_MS = 2200;  // reel animation duration — must match ReelDisplay
 
 interface Resources {
   credits: number;
