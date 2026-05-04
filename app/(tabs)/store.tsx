@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Pressable, Modal, FlatList,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useGameStore } from '@/store/useGameStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
@@ -157,6 +157,7 @@ function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => vo
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function StoreScreen() {
+  const insets = useSafeAreaInsets();
   const { grantResources, subtractCredits, credits } = useGameStore();
   const { buy: buyCosmetic, equip: equipCosmetic, isOwned, getActive, load: loadCosmetics } = useCosmeticsStore();
 
@@ -548,7 +549,7 @@ export default function StoreScreen() {
         </View>
       )}
 
-      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
 

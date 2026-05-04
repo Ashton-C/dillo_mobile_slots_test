@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
@@ -120,6 +120,7 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
 }
 
 export default function RadarScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const { intrusions, extractions, subtractResources } = useGameStore();
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
@@ -316,7 +317,7 @@ export default function RadarScreen() {
         onResult={handleMiniGameResult}
       />
 
-      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
 

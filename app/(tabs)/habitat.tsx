@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticBuildStart } from '@/constants/haptics';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
@@ -23,6 +23,7 @@ function formatTimer(ms: number): string {
 }
 
 export default function HabitatScreen() {
+  const insets = useSafeAreaInsets();
   const { credits } = useGameStore();
   const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete } = useHabitatStore();
 
@@ -119,7 +120,7 @@ export default function HabitatScreen() {
         onClose={() => setOutpostModalVisible(false)}
       />
 
-      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
 

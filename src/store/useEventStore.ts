@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeToEvents, markEventRead, GameEvent } from '@/services/FirestoreService';
 import { auth } from '@/lib/firebase';
+import { useGameStore } from '@/store/useGameStore';
 
 interface EventState {
   events: GameEvent[];
@@ -21,6 +22,9 @@ export const useEventStore = create<EventState>((set, get) => ({
       set((s) => {
         const alreadyExists = s.events.some((e) => e.id === event.id);
         if (alreadyExists) return s;
+        if (event.type === 'RAID_RESOLVED') {
+          useGameStore.getState().recordRaidSuffered();
+        }
         return {
           events: [event, ...s.events].slice(0, 50),
           activeEvent: s.activeEvent ?? event,

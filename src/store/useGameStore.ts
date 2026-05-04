@@ -89,6 +89,7 @@ interface GameState extends Resources, SpinState {
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
   debugSetResources: (delta: Partial<Resources>) => void;
+  recordRaidSuffered: () => void;
 }
 
 const INITIAL_RESOURCES: Resources = {
@@ -455,6 +456,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
       persistResources(next);
       return { ...s, ...next };
+    });
+  },
+
+  recordRaidSuffered() {
+    set((s) => {
+      const next = { totalRaidsSuffered: s.totalRaidsSuffered + 1 };
+      persistResources(next);
+      return next;
     });
   },
 }));

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -33,6 +33,7 @@ const AVATAR_ACCESSORIES: { label: string; value: AvatarAccessory }[] = [
 function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
+  const insets = useSafeAreaInsets();
   const { displayName, avatarColor, avatarAccessory, setDisplayName, setAvatarColor, setAvatarAccessory } = useAuthStore();
   const { credits, attacks, raids, shields, intrusions, extractions, level, xp,
           totalSpins, totalCreditsEarned, totalJackpots,
@@ -173,7 +174,7 @@ export default function PilotScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
 

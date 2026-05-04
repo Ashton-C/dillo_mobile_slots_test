@@ -149,6 +149,65 @@ describe('SlotsEngine weight normalization', () => {
 
     expect(riftEmpty).toBeLessThan(baseEmpty);
   });
+
+  // --- Rebalanced rift weight magnitude (T1+8 SMALL, T2+12 MED, T3+20 LARGE) ---
+  // Thresholds derived from analytical lift over baseline weights
+  // (CREDIT_SMALL 28, CREDIT_MEDIUM 19, CREDIT_LARGE 14) with margin for MC noise.
+
+  test('rift tier 1 lifts CREDIT_SMALL frequency by ≥15% over tier 0', () => {
+    const baseline = new SlotsEngine();
+    const rift1 = new SlotsEngine();
+    rift1.setRiftTier(1);
+    const base = sampleDistribution(baseline)['CREDIT_SMALL'] ?? 0;
+    const lift = sampleDistribution(rift1)['CREDIT_SMALL'] ?? 0;
+    expect(lift).toBeGreaterThan(base * 1.15);
+  });
+
+  test('rift tier 2 lifts CREDIT_MEDIUM frequency by ≥40% over tier 0', () => {
+    const baseline = new SlotsEngine();
+    const rift2 = new SlotsEngine();
+    rift2.setRiftTier(2);
+    const base = sampleDistribution(baseline)['CREDIT_MEDIUM'] ?? 0;
+    const lift = sampleDistribution(rift2)['CREDIT_MEDIUM'] ?? 0;
+    expect(lift).toBeGreaterThan(base * 1.4);
+  });
+
+  test('rift tier 3 lifts CREDIT_LARGE frequency by ≥80% over tier 0', () => {
+    const baseline = new SlotsEngine();
+    const rift3 = new SlotsEngine();
+    rift3.setRiftTier(3);
+    const base = sampleDistribution(baseline)['CREDIT_LARGE'] ?? 0;
+    const lift = sampleDistribution(rift3)['CREDIT_LARGE'] ?? 0;
+    expect(lift).toBeGreaterThan(base * 1.8);
+  });
+
+  // --- Combined modifier interactions ---
+
+  test('signal boost stacks with rift tier 1 → more credits than rift alone', () => {
+    const rift1 = new SlotsEngine();
+    rift1.setRiftTier(1);
+    const both = new SlotsEngine();
+    both.setRiftTier(1);
+    both.setSignalBoost(true);
+    const creditSyms: SlotSymbol[] = ['CREDIT_SMALL', 'CREDIT_MEDIUM', 'CREDIT_LARGE'];
+    function creditCount(engine: SlotsEngine) {
+      let n = 0;
+      for (let i = 0; i < SAMPLES; i++) {
+        if (creditSyms.includes(engine.spin().reels[0])) n++;
+      }
+      return n;
+    }
+    expect(creditCount(both)).toBeGreaterThan(creditCount(rift1));
+  });
+
+  test('weights never go below 1 even with stacked penalties', () => {
+    // Tier 3 has CREDIT_SMALL: -10. Engine should clamp, not crash.
+    const engine = new SlotsEngine();
+    engine.setRiftTier(3);
+    expect(() => {
+      for (let i = 0; i < 100; i++) engine.spin();
+    }).not.toThrow();
+  });
 });
 
 // --- spinRows() multiline ---

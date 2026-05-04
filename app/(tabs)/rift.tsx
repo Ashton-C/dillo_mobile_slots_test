@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
@@ -59,6 +59,7 @@ function formatMs(ms: number): string {
 }
 
 export default function RiftScreen() {
+  const insets = useSafeAreaInsets();
   const { credits, riftTier, setRiftTier } = useGameStore();
   const [legendVisible, setLegendVisible] = useState(false);
   const { definition, msRemaining, activeAnomaly } = useAnomalyStore();
@@ -248,7 +249,7 @@ export default function RiftScreen() {
         })}
       </ScrollView>
 
-      <Pressable style={styles.legendBtn} onPress={() => setLegendVisible(true)} hitSlop={12}>
+      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
         <Text style={styles.legendBtnText}>?</Text>
       </Pressable>
 

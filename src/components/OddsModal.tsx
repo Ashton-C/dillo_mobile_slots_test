@@ -159,9 +159,9 @@ export function OddsModal({ visible, onClose, riftTier, signalBoost, creditMulti
               value={`+${overclockBonus} CR flat bonus on next spin (GENERATOR level)`}
               color={Colors.credits}
             />
-            <ModRow label="RIFT T1" value="+5 CR·SM  +3 CR·MED  −4 EMPTY  −2 ATK  −2 RAID" color={Colors.textSecondary} />
-            <ModRow label="RIFT T2" value="+8 CR·MED  +5 CR·LG  −5 EMPTY  −3 CR·SM" color={Colors.textSecondary} />
-            <ModRow label="RIFT T3" value="+12 CR·LG  +6 CR·MED  +3 RAID  +2 ATK  −10 CR·SM  −8 EMPTY" color={Colors.textSecondary} />
+            <ModRow label="RIFT T1" value="+8 CR·SM  +3 CR·MED  −4 EMPTY  −2 ATK  −2 RAID" color={Colors.textSecondary} />
+            <ModRow label="RIFT T2" value="+12 CR·MED  +5 CR·LG  −5 EMPTY  −3 CR·SM" color={Colors.textSecondary} />
+            <ModRow label="RIFT T3" value="+20 CR·LG  +6 CR·MED  +3 RAID  +2 ATK  −10 CR·SM  −8 EMPTY" color={Colors.textSecondary} />
 
             <View style={{ height: Spacing.xl }} />
           </ScrollView>
