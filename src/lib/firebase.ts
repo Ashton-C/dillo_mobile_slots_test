@@ -1,7 +1,8 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { initializeAuth, getAuth, Auth } from 'firebase/auth';
-// @ts-ignore — Metro resolves the RN build which exports this; TS resolves the wrong types
-import { getReactNativePersistence } from '@firebase/auth';
+// @ts-ignore — `getReactNativePersistence` is exported by the RN build of `firebase/auth`,
+// but the public TS types only describe the web build. Metro picks the RN entry at bundle time.
+import { getReactNativePersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import Constants from 'expo-constants';
