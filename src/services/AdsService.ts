@@ -5,25 +5,27 @@ import { Platform } from 'react-native';
 // react-native-google-mobile-ads ships a native module. Expo Go can't load it,
 // so we lazy-require and surface ADS_AVAILABLE for the rest of the app to read.
 
-type RewardedShape = {
+type AdShape = {
   load: () => void;
   show: () => Promise<void>;
   addAdEventListener: (type: string, cb: (...args: any[]) => void) => () => void;
 };
 
 let mobileAds: (() => Promise<unknown>) | null = null;
-let RewardedAdCtor: { createForAdRequest: (unitId: string, opts?: object) => RewardedShape } | null = null;
+let RewardedAdCtor: { createForAdRequest: (unitId: string, opts?: object) => AdShape } | null = null;
+let InterstitialAdCtor: { createForAdRequest: (unitId: string, opts?: object) => AdShape } | null = null;
 let RewardedEventType: { LOADED: string; EARNED_REWARD: string } | null = null;
-let AdEventType: { ERROR: string } | null = null;
-let TestIds: { REWARDED: string } | null = null;
+let AdEventType: { LOADED: string; ERROR: string; CLOSED: string } | null = null;
+let TestIds: { REWARDED: string; INTERSTITIAL: string } | null = null;
 
 try {
   const googleAds = require('react-native-google-mobile-ads');
-  mobileAds         = googleAds.default;
-  RewardedAdCtor    = googleAds.RewardedAd;
-  RewardedEventType = googleAds.RewardedAdEventType;
-  AdEventType       = googleAds.AdEventType;
-  TestIds           = googleAds.TestIds;
+  mobileAds          = googleAds.default;
+  RewardedAdCtor     = googleAds.RewardedAd;
+  InterstitialAdCtor = googleAds.InterstitialAd;
+  RewardedEventType  = googleAds.RewardedAdEventType;
+  AdEventType        = googleAds.AdEventType;
+  TestIds            = googleAds.TestIds;
 } catch {
   // Native module unavailable — running in Expo Go or a managed workflow
   // without the dev build. The app will fall back to a stubbed reward flow.
@@ -35,7 +37,12 @@ export const ADS_AVAILABLE = mobileAds !== null && RewardedAdCtor !== null;
 // Real IDs come from app.json -> extra.admob in EAS builds. In dev or Expo Go
 // we use the Google-provided test IDs, which always serve and never charge.
 
-interface AdMobExtra { rewardedAndroid?: string; rewardedIos?: string }
+interface AdMobExtra {
+  rewardedAndroid?: string;
+  rewardedIos?: string;
+  interstitialAndroid?: string;
+  interstitialIos?: string;
+}
 
 function getRewardedUnitId(): string {
   const extra = (Constants.expoConfig?.extra ?? {}) as { admob?: AdMobExtra };
@@ -44,6 +51,15 @@ function getRewardedUnitId(): string {
     : extra.admob?.rewardedAndroid;
   if (real && !__DEV__) return real;
   return TestIds?.REWARDED ?? '';
+}
+
+function getInterstitialUnitId(): string {
+  const extra = (Constants.expoConfig?.extra ?? {}) as { admob?: AdMobExtra };
+  const real = Platform.OS === 'ios'
+    ? extra.admob?.interstitialIos
+    : extra.admob?.interstitialAndroid;
+  if (real && !__DEV__) return real;
+  return TestIds?.INTERSTITIAL ?? '';
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -108,7 +124,32 @@ async function showRewardedAd(): Promise<ShowResult> {
   });
 }
 
+async function showInterstitialAd(): Promise<{ shown: boolean }> {
+  if (!ADS_AVAILABLE || !InterstitialAdCtor || !AdEventType) return { shown: false };
+  await init();
+
+  return new Promise<{ shown: boolean }>((resolve) => {
+    const ad = InterstitialAdCtor!.createForAdRequest(getInterstitialUnitId(), {
+      requestNonPersonalizedAdsOnly: true,
+    });
+    let settled = false;
+    const finish = (shown: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve({ shown });
+    };
+    ad.addAdEventListener(AdEventType!.LOADED, () => {
+      void ad.show().catch(() => finish(false));
+    });
+    ad.addAdEventListener(AdEventType!.CLOSED, () => finish(true));
+    ad.addAdEventListener(AdEventType!.ERROR,  () => finish(false));
+    setTimeout(() => finish(false), 30_000);
+    ad.load();
+  });
+}
+
 export const adsService = {
   init,
   showRewardedAd,
+  showInterstitialAd,
 };

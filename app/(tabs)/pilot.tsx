@@ -9,6 +9,7 @@ import { useEventStore } from '@/store/useEventStore';
 import { GameEvent } from '@/services/FirestoreService';
 import { PilotAvatar, AvatarAccessory } from '@/components/PilotAvatar';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
+import { IconButton } from '@/components/IconButton';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const AVATAR_COLORS = [
@@ -174,9 +175,11 @@ export default function PilotScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
-        <Text style={styles.legendBtnText}>?</Text>
-      </Pressable>
+      <IconButton
+        glyph="?"
+        onPress={() => setLegendVisible(true)}
+        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
+      />
 
       {/* Customize modal */}
       <Modal visible={customizeVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setCustomizeVisible(false)}>
@@ -550,23 +553,5 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 1,
   },
-  legendBtn: {
-    position: 'absolute',
-    top: 14,
-    right: Spacing.md,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 50,
-  },
-  legendBtnText: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textMuted,
-  },
+  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

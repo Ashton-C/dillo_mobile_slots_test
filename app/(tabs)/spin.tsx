@@ -32,6 +32,7 @@ import { ConfettiEmitter } from '@/components/ConfettiEmitter';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { TooltipPopover } from '@/components/TooltipPopover';
+import { IconButton } from '@/components/IconButton';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { soundService } from '@/services/SoundService';
 import { OddsModal } from '@/components/OddsModal';
@@ -410,8 +411,8 @@ export default function SpinScreen() {
                     attacks <= 0 && !overclockActive && styles.actionBtnDim,
                   ]}
                   onPress={() => { activateOverclock(); hapticActivateBuff(); }}
-                  disabled={overclockActive}
-                  onLongPress={() => showTooltip(`Overclock: +${overclockBonusPreview} CR next spin. Costs 1 Fuel Cell.`)}
+                  disabled={attacks <= 0 && !overclockActive}
+                  onLongPress={() => showTooltip(`Overclock: +${overclockBonusPreview} CR next spin. Costs 1 Fuel Cell. Tap again to cancel.`)}
                   delayLongPress={450}
                 >
                   <Text style={[styles.actionBtnGlyph, overclockActive && { color: Colors.attack }]}>⚡</Text>
@@ -429,8 +430,8 @@ export default function SpinScreen() {
                     raids <= 0 && !signalBoostActive && styles.actionBtnDim,
                   ]}
                   onPress={() => { activateSignalBoost(); hapticActivateBuff(); }}
-                  disabled={signalBoostActive}
-                  onLongPress={() => showTooltip('Signal Boost: ×1.5 credit symbol weights next spin. Costs 1 Signal.')}
+                  disabled={raids <= 0 && !signalBoostActive}
+                  onLongPress={() => showTooltip('Signal Boost: ×1.5 credit symbol weights next spin. Costs 1 Signal. Tap again to cancel.')}
                   delayLongPress={450}
                 >
                   <Text style={[styles.actionBtnGlyph, signalBoostActive && { color: Colors.raid }]}>▲▲</Text>
@@ -512,30 +513,19 @@ export default function SpinScreen() {
         </Pressable>
       </Modal>
 
-      <Pressable
-        style={[styles.legendBtn, { right: Spacing.md + 72, top: insets.top + 6 }]}
-        onPress={() => setOddsVisible(true)}
-        hitSlop={12}
-      >
-        <Text style={styles.legendBtnText}>%</Text>
-      </Pressable>
-
-      {/* Mute button — larger than % and ? */}
-      <Pressable
-        style={[styles.legendBtn, styles.legendBtnLarge, { right: Spacing.md + 42, top: insets.top + 2 }, muted && styles.legendBtnMuted]}
-        onPress={() => {
-          const next = !muted;
-          setMuted(next);
-          void soundService.setMuted(next);
-        }}
-        hitSlop={12}
-      >
-        <Text style={[styles.legendBtnTextLarge, !muted && { color: Colors.accent }]}>{muted ? '✕' : '♪'}</Text>
-      </Pressable>
-
-      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
-        <Text style={styles.legendBtnText}>?</Text>
-      </Pressable>
+      <View style={[styles.iconButtonRow, { top: insets.top + 6 }]} pointerEvents="box-none">
+        <IconButton glyph="%" onPress={() => setOddsVisible(true)} />
+        <IconButton
+          glyph={muted ? '✕' : '♪'}
+          active={!muted}
+          onPress={() => {
+            const next = !muted;
+            setMuted(next);
+            void soundService.setMuted(next);
+          }}
+        />
+        <IconButton glyph="?" onPress={() => setLegendVisible(true)} />
+      </View>
 
       <OddsModal
         visible={oddsVisible}
@@ -791,38 +781,12 @@ const styles = StyleSheet.create({
     lineHeight: 56,
   },
 
-  legendBtn: {
+  iconButtonRow: {
     position: 'absolute',
-    top: 6,
     right: Spacing.md,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.xs,
     zIndex: 50,
-  },
-  legendBtnLarge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1.5,
-  },
-  legendBtnMuted: {
-    opacity: 0.45,
-  },
-  legendBtnText: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textMuted,
-  },
-  legendBtnTextLarge: {
-    fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textMuted,
   },
 
   riftModalBackdrop: {

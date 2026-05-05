@@ -38,8 +38,10 @@ module.exports = ({ config }) => ({
     firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '',
     firebaseAppId:             process.env.EXPO_PUBLIC_FIREBASE_APP_ID             ?? '',
     admob: {
-      rewardedAndroid: process.env.ADMOB_REWARDED_ANDROID ?? '',
-      rewardedIos:     process.env.ADMOB_REWARDED_IOS     ?? '',
+      rewardedAndroid:     process.env.ADMOB_REWARDED_ANDROID     ?? '',
+      rewardedIos:         process.env.ADMOB_REWARDED_IOS         ?? '',
+      interstitialAndroid: process.env.ADMOB_INTERSTITIAL_ANDROID ?? '',
+      interstitialIos:     process.env.ADMOB_INTERSTITIAL_IOS     ?? '',
     },
     eas: {
       projectId: '643f084a-afb7-4ef8-9336-f483460387de',

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
+import { IconButton } from '@/components/IconButton';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
@@ -249,9 +250,11 @@ export default function RiftScreen() {
         })}
       </ScrollView>
 
-      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
-        <Text style={styles.legendBtnText}>?</Text>
-      </Pressable>
+      <IconButton
+        glyph="?"
+        onPress={() => setLegendVisible(true)}
+        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
+      />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="RIFT LEGEND" accentColor={Colors.accent}>
         <LegendSection label="TIER COSTS & EFFECTS" />
@@ -485,23 +488,5 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontWeight: Typography.weights.bold,
   },
-  legendBtn: {
-    position: 'absolute',
-    top: 14,
-    right: Spacing.md,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 50,
-  },
-  legendBtnText: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textMuted,
-  },
+  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });
