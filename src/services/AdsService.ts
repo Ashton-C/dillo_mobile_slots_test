@@ -13,15 +13,17 @@ type RewardedShape = {
 
 let mobileAds: (() => Promise<unknown>) | null = null;
 let RewardedAdCtor: { createForAdRequest: (unitId: string, opts?: object) => RewardedShape } | null = null;
-let EventType: { LOADED: string; EARNED_REWARD: string; ERROR: string } | null = null;
+let RewardedEventType: { LOADED: string; EARNED_REWARD: string } | null = null;
+let AdEventType: { ERROR: string } | null = null;
 let TestIds: { REWARDED: string } | null = null;
 
 try {
   const googleAds = require('react-native-google-mobile-ads');
-  mobileAds       = googleAds.default;
-  RewardedAdCtor  = googleAds.RewardedAd;
-  EventType       = googleAds.RewardedAdEventType;
-  TestIds         = googleAds.TestIds;
+  mobileAds         = googleAds.default;
+  RewardedAdCtor    = googleAds.RewardedAd;
+  RewardedEventType = googleAds.RewardedAdEventType;
+  AdEventType       = googleAds.AdEventType;
+  TestIds           = googleAds.TestIds;
 } catch {
   // Native module unavailable — running in Expo Go or a managed workflow
   // without the dev build. The app will fall back to a stubbed reward flow.
@@ -65,7 +67,7 @@ interface ShowResult {
 }
 
 async function showRewardedAd(): Promise<ShowResult> {
-  if (!ADS_AVAILABLE || !RewardedAdCtor || !EventType) {
+  if (!ADS_AVAILABLE || !RewardedAdCtor || !RewardedEventType || !AdEventType) {
     // Stub: simulate a watched ad immediately so dev flow still works.
     return { rewarded: true, available: false };
   }
@@ -83,13 +85,13 @@ async function showRewardedAd(): Promise<ShowResult> {
       resolve(result);
     };
 
-    const offLoaded = ad.addAdEventListener(EventType!.LOADED, () => {
+    const offLoaded = ad.addAdEventListener(RewardedEventType!.LOADED, () => {
       void ad.show().catch(() => settle({ rewarded: false, available: true }));
     });
-    const offReward = ad.addAdEventListener(EventType!.EARNED_REWARD, () => {
+    const offReward = ad.addAdEventListener(RewardedEventType!.EARNED_REWARD, () => {
       settle({ rewarded: true, available: true });
     });
-    const offError  = ad.addAdEventListener(EventType!.ERROR, () => {
+    const offError  = ad.addAdEventListener(AdEventType!.ERROR, () => {
       settle({ rewarded: false, available: true });
     });
 
