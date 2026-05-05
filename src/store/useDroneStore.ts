@@ -12,18 +12,18 @@ interface Resources {
 interface DroneState {
   activeDrones: ActiveDrone[];
 
-  // Actions
   deployDrone: (type: DroneType, resources: Resources) => {
     success: boolean;
     reason?: string;
     costPaid: Partial<Resources>;
   };
   tickSpins: () => void;
-  triggerAttackDefense: () => boolean; // returns true if a SENTINEL consumed
-  triggerRaidDefense: () => boolean;   // returns true if a SCRAMBLER consumed
-  triggerRaidBoost: () => boolean;     // returns true if a RAIDER consumed
+  triggerAttackDefense: () => boolean;
+  triggerRaidDefense: () => boolean;
+  triggerRaidBoost: () => boolean;
   getEffects: () => DroneEffects;
   clearAll: () => void;
+  debugDeployDrone: (type: DroneType) => void;
 }
 
 export const useDroneStore = create<DroneState>((set, get) => ({
@@ -84,5 +84,16 @@ export const useDroneStore = create<DroneState>((set, get) => ({
 
   clearAll() {
     set({ activeDrones: [] });
+  },
+
+  debugDeployDrone(type) {
+    const contract = DRONE_CONTRACTS[type];
+    const drone: ActiveDrone = {
+      id: Math.random().toString(36).slice(2),
+      type,
+      deployedAt: Date.now(),
+      spinsRemaining: contract.trigger === 'ON_SPIN' ? contract.duration : null,
+    };
+    set((state) => ({ activeDrones: [...state.activeDrones, drone] }));
   },
 }));

@@ -31,10 +31,10 @@ export const Colors = {
 export const Typography = {
   fontFamily: 'SpaceMono',
   sizes: {
-    xs: 10,
-    sm: 12,
-    md: 14,
-    lg: 18,
+    xs: 12,
+    sm: 14,
+    md: 16,
+    lg: 20,
     xl: 24,
     xxl: 32,
     hero: 48,

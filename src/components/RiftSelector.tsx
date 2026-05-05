@@ -9,11 +9,21 @@ const RIFT_LABELS: Record<TemporalRiftTier, string> = {
   3: 'RIFT III',
 };
 
-const RIFT_DESCRIPTIONS: Record<TemporalRiftTier, string> = {
-  0: 'Standard odds',
-  1: 'Shift toward credits',
-  2: 'Amplify credit rewards',
-  3: 'Maximize jackpot odds',
+// Concrete weight-delta summaries shown directly to the player.
+// The actual deltas live in SlotsEngine; this is a faithful summary
+// the player can verify in the legend card.
+const RIFT_BOOSTS: Record<TemporalRiftTier, string> = {
+  0: '—',
+  1: '+5 ●  +3 ●●',
+  2: '+8 ●●  +5 ★',
+  3: '+12 ★  +6 ●●',
+};
+
+const RIFT_PENALTIES: Record<TemporalRiftTier, string> = {
+  0: '—',
+  1: '−4 EMPTY',
+  2: '−5 EMPTY',
+  3: '−10 ●  −8 EMPTY',
 };
 
 interface Props {
@@ -48,14 +58,15 @@ export function RiftSelector({ currentTier, availableCredits, onSelect }: Props)
               <Text style={[styles.tierLabel, isActive && styles.tierLabelActive]}>
                 {RIFT_LABELS[tier]}
               </Text>
-              {cost > 0 && (
-                <Text style={[styles.tierCost, !canAfford && styles.tierCostLocked]}>
-                  {cost} CR
-                </Text>
-              )}
-              <Text style={styles.tierDesc} numberOfLines={1}>
-                {RIFT_DESCRIPTIONS[tier]}
+              <Text style={[styles.tierCost, !canAfford && styles.tierCostLocked]}>
+                {cost > 0 ? `${cost} CR` : 'free'}
               </Text>
+              {tier > 0 && (
+                <Text style={styles.tierBoost} numberOfLines={1}>{RIFT_BOOSTS[tier]}</Text>
+              )}
+              {tier === 0 && (
+                <Text style={styles.tierDesc}>Base odds</Text>
+              )}
             </Pressable>
           );
         })}
@@ -84,8 +95,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: Spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 2,
   },
   tierButtonActive: {
     borderColor: Colors.accent,
@@ -104,17 +118,28 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
   tierCost: {
-    fontSize: Typography.sizes.xs,
+    fontSize: 10,
     color: Colors.credits,
-    marginTop: 2,
+    letterSpacing: 1,
   },
   tierCostLocked: {
     color: Colors.textMuted,
   },
+  tierBoost: {
+    fontSize: 9,
+    color: Colors.success,
+    letterSpacing: 1,
+    marginTop: 2,
+  },
+  tierPenalty: {
+    fontSize: 9,
+    color: Colors.danger,
+    letterSpacing: 1,
+  },
   tierDesc: {
     fontSize: 9,
     color: Colors.textMuted,
-    marginTop: 4,
+    marginTop: 2,
     textAlign: 'center',
   },
 });

@@ -146,3 +146,7 @@ expo-env.d.ts
 
 # Expo local dev state (machine-specific)
 .expo/
+
+# Expo CNG — generated native projects; EAS Build runs prebuild fresh each time
+/android
+/ios
