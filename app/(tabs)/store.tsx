@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useGameStore } from '@/store/useGameStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
+import { IconButton } from '@/components/IconButton';
 import { AdWatchModal } from '@/components/AdWatchModal';
 import { adsService, ADS_AVAILABLE } from '@/services/AdsService';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
@@ -421,7 +422,7 @@ export default function StoreScreen() {
                 {pendingPack.rewards.spinRefill && (
                   <View style={styles.packDetailLine}>
                     <Text style={[styles.packDetailIcon, { color: Colors.primary }]}>↺</Text>
-                    <Text style={styles.packDetailText}>Spins refilled to 50/50</Text>
+                    <Text style={styles.packDetailText}>Spin meter refilled to maximum</Text>
                   </View>
                 )}
                 {pendingPack.rewards.fuel && (
@@ -549,9 +550,11 @@ export default function StoreScreen() {
         </View>
       )}
 
-      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
-        <Text style={styles.legendBtnText}>?</Text>
-      </Pressable>
+      <IconButton
+        glyph="?"
+        onPress={() => setLegendVisible(true)}
+        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
+      />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="STORE LEGEND" accentColor={Colors.credits}>
         <LegendSection label="REWARDED ADS" />
@@ -588,7 +591,7 @@ const styles = StyleSheet.create({
   refreshBtn: { fontSize: Typography.sizes.md, color: Colors.textMuted },
 
   adsGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  adCard:       { flexBasis: '48%', flexGrow: 1, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.success + '66', padding: Spacing.md, gap: 4 },
+  adCard:       { flexBasis: '48%', flexGrow: 1, minHeight: 84, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.success + '66', padding: Spacing.md, gap: 4, justifyContent: 'space-between' },
   adCardLocked: { borderColor: Colors.border, opacity: 0.6 },
   adReward:     { fontSize: Typography.sizes.sm, fontWeight: Typography.weights.bold, color: Colors.textPrimary, letterSpacing: 1 },
   adStatus:     { fontSize: 10, fontWeight: Typography.weights.bold, letterSpacing: 2 },
@@ -608,7 +611,8 @@ const styles = StyleSheet.create({
   cosSection: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 3, marginTop: Spacing.md, marginBottom: Spacing.sm },
   cosRow:     { paddingRight: Spacing.md, gap: Spacing.sm },
   cosCard:    {
-    width: 100,
+    width: 110,
+    height: 180,
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
@@ -624,7 +628,7 @@ const styles = StyleSheet.create({
   cosSwatchText:   { fontSize: 10, fontWeight: Typography.weights.bold, letterSpacing: 1 },
   cosName:         { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.textPrimary, letterSpacing: 1 },
   cosDesc:         { fontSize: 10, color: Colors.textMuted, letterSpacing: 0.5, lineHeight: 14 },
-  cosActionChip:   { marginTop: 2, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.sm, paddingVertical: 4, alignItems: 'center' },
+  cosActionChip:   { marginTop: 'auto', alignSelf: 'stretch', borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.sm, paddingVertical: 4, alignItems: 'center' },
   cosEquipChip:    { borderColor: Colors.success + '88' },
   cosIapChip:      { borderColor: Colors.credits + '88' },
   cosActionText:   { fontSize: 9, fontWeight: Typography.weights.bold, color: Colors.textSecondary, letterSpacing: 2 },
@@ -670,6 +674,5 @@ const styles = StyleSheet.create({
   toast:     { position: 'absolute', bottom: 80, left: Spacing.md, right: Spacing.md, backgroundColor: Colors.surfaceElevated, borderColor: Colors.success, borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, alignItems: 'center' },
   toastText: { fontSize: Typography.sizes.xs, color: Colors.success, letterSpacing: 2, fontWeight: Typography.weights.bold },
 
-  legendBtn:     { position: 'absolute', top: 14, right: Spacing.md, width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center', zIndex: 50 },
-  legendBtnText: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.textMuted },
+  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

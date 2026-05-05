@@ -15,11 +15,12 @@ revenue."
 
 | File | What it does |
 |---|---|
-| `src/services/AdsService.ts` | Wraps `react-native-google-mobile-ads` with graceful Expo Go fallback. Exposes `init()` and `showRewardedAd()`. |
+| `src/services/AdsService.ts` | Wraps `react-native-google-mobile-ads` with graceful Expo Go fallback. Exposes `init()`, `showRewardedAd()`, `showInterstitialAd()`. Uses `AdEventType.ERROR` (the v16 SDK split error events off `RewardedAdEventType`). |
 | `app/_layout.tsx` | Calls `adsService.init()` at app boot. |
-| `app/(tabs)/store.tsx` | Watch-an-Ad cards now call `adsService.showRewardedAd()`; reward grants on `rewarded: true`. |
-| `app.json` | `react-native-google-mobile-ads` config plugin registered with Google's **test app IDs** as placeholders. `extra.admob.rewardedAndroid` / `extra.admob.rewardedIos` are empty strings — fill these in for production. |
-| `package.json` | `react-native-google-mobile-ads ^14.2.0` listed as a dependency. Run `npm install`. |
+| `app/(tabs)/store.tsx` | Watch-an-Ad cards call `adsService.showRewardedAd()`; reward grants on `rewarded: true`. Falls back to fake-ad modal when `ADS_AVAILABLE` is false. |
+| `app/(tabs)/_layout.tsx` | Dev tab is hidden (`tabBarButton: () => null`). The `/dev` route still exists if you need it for debugging. |
+| `app.config.js` | AdMob plugin registered with test App IDs as fallbacks. `extra.admob` reads ad-unit IDs from `ADMOB_REWARDED_*` and `ADMOB_INTERSTITIAL_*` env vars. |
+| `package.json` | `react-native-google-mobile-ads 16.3.3` pinned (SDK 55-compatible). |
 
 > **Important:** AdMob requires a **development build** (or production build).
 > Native modules don't run in Expo Go. Run `npx expo prebuild` then build via
@@ -135,14 +136,88 @@ Then install and call `expo-tracking-transparency` once on first launch.
 
 ## Optional next-step monetization
 
-These are *not* wired. Add them after ads are stable.
+### Interstitial ads (scaffold ready)
 
-- **In-app purchases** for credit packs and bundles → `expo-iap` or
-  RevenueCat. The store currently grants resources directly when the
-  purchase modal confirms; replace with a real receipt-validated flow.
-- **Interstitial ads** between sectors (low frequency) — quick win for
-  +15% eCPM.
-- **Rewarded interstitial** for the spin-energy refill modal — players
-  who run out of spins are highly motivated to watch one ad.
-- **Push notifications** (FCM) — Expo Notifications + a Cloud Function
-  trigger on combat events.
+`adsService.showInterstitialAd()` is wired and pulls the unit ID from
+`process.env.ADMOB_INTERSTITIAL_ANDROID` / `..._IOS`. To use:
+
+```ts
+import { adsService } from '@/services/AdsService';
+await adsService.showInterstitialAd();
+```
+
+**Don't show on every action** — frequency-cap to avoid policy violations
+and burnout. Good triggers:
+- After a sector-victory screen on the Rift map
+- On the second app open of the day
+- When dismissing a major modal (build-complete, level-up)
+
+Add the env vars to `.env.local` and `eas env:push` before they'll fire
+real ads. Without them, the function silently returns `{ shown: false }`.
+
+### iOS App Tracking Transparency (already in `app.json`)
+
+`NSUserTrackingUsageDescription` is set. When you're ready for personalized
+ads (higher eCPM), install the prompt:
+
+```bash
+npx expo install expo-tracking-transparency
+```
+
+Call once in `app/_layout.tsx`:
+```ts
+import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
+await requestTrackingPermissionsAsync();
+```
+
+Then flip `requestNonPersonalizedAdsOnly: false` in `AdsService.ts`.
+
+### In-app purchases
+
+Currently the store **simulates** all purchases — `confirmPurchase()` in
+`store.tsx` grants resources directly. To replace with real IAP:
+
+1. **RevenueCat** (recommended for cross-platform): `npm install react-native-purchases`. SKUs in their dashboard, then `Purchases.purchaseProduct(sku)` returns a receipt. Cleanest receipt validation story.
+2. **expo-iap** (lighter, native-only): `npx expo install expo-iap`. SKUs in App Store Connect / Google Play Console. You implement receipt validation server-side.
+
+Either way, `confirmPurchase()` becomes:
+```ts
+const receipt = await Purchases.purchaseProduct(pendingPack.sku);
+if (receipt.transactionIdentifier) {
+  grantResources(pendingPack.rewards);
+}
+```
+
+### Rewarded interstitial for spin-refill
+
+When `spinsRemaining === 0`, surface a "WATCH AD FOR 5 SPINS" CTA in the
+spin screen header. Reuses `showRewardedAd()` — point the on-success
+handler at `grantResources({ spinRefill: true })` (or a partial refill).
+
+### Push notifications
+
+`expo-notifications` + a Cloud Function on the `combatRequests` collection.
+Out of scope until Phase 4 — see `progress.md`.
+
+---
+
+## Mediation networks (lifts eCPM 20–40%)
+
+Once you're past 10k DAU, add mediation adapters in AdMob Console
+(**Mediation → Create mediation group**). Common adapters:
+
+| Network | Adapter SDK | Setup difficulty |
+|---|---|---|
+| Meta Audience Network | `react-native-google-mobile-ads-mediation-meta` | Low — register Facebook app, add ID to AdMob |
+| AppLovin | `react-native-google-mobile-ads-mediation-applovin` | Low — single SDK key |
+| Unity Ads | `react-native-google-mobile-ads-mediation-unity` | Low — Unity Game ID + Placement ID |
+| Vungle / Liftoff | `react-native-google-mobile-ads-mediation-vungle` | Medium — separate dashboard |
+| Pangle (TikTok) | `react-native-google-mobile-ads-mediation-pangle` | Medium — high CPM in APAC |
+
+Each adapter is a separate `npm install` + `npx expo prebuild --clean` +
+fresh EAS build. Add them one at a time and verify ad fill in the
+**AdMob Reports** tab before adding the next one.
+
+> **Don't add adapters early.** Below ~5k DAU the additional ad latency
+> outweighs the eCPM lift, and the AdMob console mediation auctions need
+> volume to optimize.

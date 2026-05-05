@@ -21,18 +21,35 @@ export const BuildingSchema = z.object({
 });
 export type Building = z.infer<typeof BuildingSchema>;
 
-// Upgrade cost (credits) for each building level
-export const BUILDING_UPGRADE_COST: Record<BuildingType, (level: number) => number> = {
-  GENERATOR: (lvl) => 200 * lvl,
-  ARMORY: (lvl) => 300 * lvl,
-  VAULT: (lvl) => 350 * lvl,
-  TURRET: (lvl) => 500 * lvl,
-  HANGAR: (lvl) => 1000 * lvl,
-  BARRACKS: (lvl) => 200 * lvl,
+// Upgrade cost (credits) for each building level. Curve: base × lvl^1.4 —
+// gentler than exponential, harsher than linear. Tuned so a level-5 upgrade
+// is ~10× base and level-10 is ~25×, matching the tier-time progression.
+const BUILDING_BASE_COST: Record<BuildingType, number> = {
+  GENERATOR: 400,
+  ARMORY:    250,
+  VAULT:     350,
+  TURRET:    500,
+  HANGAR:    1000,
+  BARRACKS:  250,
 };
 
+function scaleCost(base: number, level: number): number {
+  return Math.round(base * Math.pow(level, 1.4));
+}
+
+export const BUILDING_UPGRADE_COST: Record<BuildingType, (level: number) => number> = {
+  GENERATOR: (lvl) => scaleCost(BUILDING_BASE_COST.GENERATOR, lvl),
+  ARMORY:    (lvl) => scaleCost(BUILDING_BASE_COST.ARMORY,    lvl),
+  VAULT:     (lvl) => scaleCost(BUILDING_BASE_COST.VAULT,     lvl),
+  TURRET:    (lvl) => scaleCost(BUILDING_BASE_COST.TURRET,    lvl),
+  HANGAR:    (lvl) => scaleCost(BUILDING_BASE_COST.HANGAR,    lvl),
+  BARRACKS:  (lvl) => scaleCost(BUILDING_BASE_COST.BARRACKS,  lvl),
+};
+
+// Base 25 spins; Barracks adds an escalating bonus per level (+5, +6, +7…).
+// Lvl 0 → 25, lvl 1 → 30, lvl 5 → 60, lvl 10 → 120.
 export function getMaxSpins(barracksLevel: number): number {
-  return 50 + barracksLevel * 5;
+  return 25 + barracksLevel * 5 + (barracksLevel * (barracksLevel - 1)) / 2;
 }
 
 // Build duration (ms) to upgrade TO the given level (level 1 is free/instant on first build)

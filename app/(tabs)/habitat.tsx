@@ -3,6 +3,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticBuildStart } from '@/constants/haptics';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
+import { IconButton } from '@/components/IconButton';
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
@@ -120,15 +121,17 @@ export default function HabitatScreen() {
         onClose={() => setOutpostModalVisible(false)}
       />
 
-      <Pressable style={[styles.legendBtn, { top: insets.top + 6 }]} onPress={() => setLegendVisible(true)} hitSlop={12}>
-        <Text style={styles.legendBtnText}>?</Text>
-      </Pressable>
+      <IconButton
+        glyph="?"
+        onPress={() => setLegendVisible(true)}
+        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
+      />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="BASE LEGEND" accentColor={Colors.credits}>
         <LegendSection label="BUILDINGS" />
         <LegendRow left="GENERATOR" right="Passive +level×20 CR / 30s" color={Colors.credits} />
         <LegendRow left="ARMORY" right="Raises Fuel Cell cap" color={Colors.attack} />
-        <LegendRow left="BARRACKS" right="Raises max spin storage (+5/lvl)" color={Colors.success} />
+        <LegendRow left="BARRACKS" right="Raises max spin storage (+5, then +6, +7…)" color={Colors.success} />
         <LegendRow left="VAULT" right="Absorbs level×5% raid loss" color={Colors.shield} />
         <LegendRow left="TURRET" right="Auto-blocks N attacks/day" color={Colors.accent} />
         <LegendRow left="HANGAR" right="Unlocks crew contract slots" color={Colors.primary} />
@@ -192,19 +195,5 @@ const styles = StyleSheet.create({
   builderText: { fontSize: Typography.sizes.xs, color: Colors.accent, fontWeight: Typography.weights.bold, letterSpacing: 1 },
   builderTextIdle: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 1 },
 
-  legendBtn: {
-    position: 'absolute',
-    top: 14,
-    right: Spacing.md,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 50,
-  },
-  legendBtnText: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.textMuted },
+  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

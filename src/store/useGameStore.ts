@@ -33,8 +33,13 @@ export interface SpinHistoryEntry {
   winLineIds: WinLineId[];
 }
 
-const MAX_SPINS = 50;
+const MAX_SPINS = 50; // generic cap for non-spin resource counts (attacks, raids, etc.)
 const SPIN_REFILL_MS = 5 * 60_000; // 1 spin every 5 minutes
+
+function getSpinCap(): number {
+  const barracksLevel = useHabitatStore.getState().buildingLevels['BARRACKS'] ?? 0;
+  return getMaxSpins(barracksLevel);
+}
 export const SPIN_ANIM_MS = 2200;  // reel animation duration — must match ReelDisplay
 
 interface Resources {
@@ -99,7 +104,7 @@ const INITIAL_RESOURCES: Resources = {
   shields: 0,
   intrusions: 0,
   extractions: 0,
-  spinsRemaining: 50,
+  spinsRemaining: 25,
   spinRefillStart: 0,
   xp: 0,
   level: 1,
@@ -302,18 +307,32 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   activateOverclock() {
-    const { attacks } = get();
+    const { attacks, overclockActive } = get();
+    if (overclockActive) {
+      const next = { attacks: attacks + 1 };
+      set({ ...next, overclockActive: false });
+      persistResources(next);
+      return false;
+    }
     if (attacks <= 0) return false;
-    set({ attacks: attacks - 1, overclockActive: true });
-    persistResources({ attacks: attacks - 1 });
+    const next = { attacks: attacks - 1 };
+    set({ ...next, overclockActive: true });
+    persistResources(next);
     return true;
   },
 
   activateSignalBoost() {
-    const { raids } = get();
+    const { raids, signalBoostActive } = get();
+    if (signalBoostActive) {
+      const next = { raids: raids + 1 };
+      set({ ...next, signalBoostActive: false });
+      persistResources(next);
+      return false;
+    }
     if (raids <= 0) return false;
-    set({ raids: raids - 1, signalBoostActive: true });
-    persistResources({ raids: raids - 1 });
+    const next = { raids: raids - 1 };
+    set({ ...next, signalBoostActive: true });
+    persistResources(next);
     return true;
   },
 
@@ -373,7 +392,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   refillSpins() {
-    const next = { spinsRemaining: MAX_SPINS, spinRefillStart: 0 };
+    const next = { spinsRemaining: getSpinCap(), spinRefillStart: 0 };
     set(next);
     persistResources(next);
   },
@@ -386,7 +405,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (rewards.boost)   next.raids   = Math.min(MAX_SPINS, s.raids   + rewards.boost);
     if (rewards.shields) next.shields = Math.min(MAX_SPINS, s.shields + rewards.shields);
     if (rewards.spinRefill) {
-      next.spinsRemaining  = MAX_SPINS;
+      next.spinsRemaining  = getSpinCap();
       next.spinRefillStart = 0;
     }
     set((state) => ({ ...state, ...next }));
@@ -429,7 +448,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Repair inconsistent state: spins below max but no refill timer running.
       // Happens when the user ran out of spins while offline and Firestore
       // recorded 0 spins but never set spinRefillStart.
-      if (merged.spinsRemaining < MAX_SPINS && merged.spinRefillStart === 0) {
+      if (merged.spinsRemaining < getSpinCap() && merged.spinRefillStart === 0) {
         const repaired = { ...merged, spinRefillStart: Date.now() };
         persistResources({ spinRefillStart: repaired.spinRefillStart });
         return repaired;
@@ -452,7 +471,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         shields:        Math.max(0, s.shields        + (delta.shields        ?? 0)),
         intrusions:     Math.max(0, s.intrusions     + (delta.intrusions     ?? 0)),
         extractions:    Math.max(0, s.extractions    + (delta.extractions    ?? 0)),
-        spinsRemaining: Math.min(MAX_SPINS, Math.max(0, s.spinsRemaining + (delta.spinsRemaining ?? 0))),
+        spinsRemaining: Math.min(getSpinCap(), Math.max(0, s.spinsRemaining + (delta.spinsRemaining ?? 0))),
       };
       persistResources(next);
       return { ...s, ...next };
