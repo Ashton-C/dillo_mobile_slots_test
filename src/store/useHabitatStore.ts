@@ -35,6 +35,22 @@ export function getNumActiveLines(outpostLevel: number): 1 | 3 | 5 {
   return 1;
 }
 
+export type GridSize = '1x3' | '3x3' | '5x5';
+
+export interface GridConfig {
+  size: GridSize;
+  rows: 1 | 3 | 5;
+  cols: 3 | 5;
+  numLines: number;
+}
+
+export function getGridConfig(outpostLevel: number): GridConfig {
+  if (outpostLevel >= 10) return { size: '5x5', rows: 5, cols: 5, numLines: 10 };
+  if (outpostLevel >= 6)  return { size: '3x3', rows: 3, cols: 3, numLines: 5  };
+  if (outpostLevel >= 3)  return { size: '3x3', rows: 3, cols: 3, numLines: 3  };
+  return                         { size: '1x3', rows: 1, cols: 3, numLines: 1  };
+}
+
 export const useHabitatStore = create<HabitatState>((set, get) => ({
   habitatId: null,
   buildingLevels: {},

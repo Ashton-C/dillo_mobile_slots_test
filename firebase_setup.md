@@ -134,12 +134,19 @@ service cloud.firestore {
 
 The `resolveCombat` function lives in `functions/src/index.ts`. It triggers on every new `combatRequests` document and handles the full PvP resolution loop.
 
+The repo ships with a root `firebase.json` (functions config) and `.firebaserc` (project alias `default → reelwright`). The CLI requires both — without them you'll see `Error: Not in a Firebase app directory (could not locate firebase.json)`.
+
+If your Firebase project ID is something other than `reelwright`, either edit `.firebaserc` or run `firebase use --add` once to alias it.
+
+Run the deploy from the **repo root** (not from `functions/`):
+
 ```bash
-cd functions
-npm install
-npm run build
+# From repo root
+cd functions && npm install && cd ..
 firebase deploy --only functions
 ```
+
+The `predeploy` hook in `firebase.json` runs `npm run build` inside `functions/` automatically.
 
 Requires the Firebase CLI: `npm install -g firebase-tools` and `firebase login`.
 
@@ -160,6 +167,17 @@ FIRESTORE_EMULATOR_HOST=localhost:8080 node scripts/seed-mock-users.js
 ```
 
 `AlphaRaider` has Outpost LVL 3 and TURRET LVL 2 (blocks 2 attacks/day). `BetaOps` is a softer target at Outpost LVL 1 with no TURRET.
+
+To remove them later (e.g. before launch so real players don't see them on WIRE):
+
+```bash
+node scripts/clear-mock-users.js
+
+# Or against the emulator
+FIRESTORE_EMULATOR_HOST=localhost:8080 node scripts/clear-mock-users.js
+```
+
+This deletes both `users/`, `habitats/`, `playerIndex/` entries plus any queued events for the mock UIDs.
 
 ---
 

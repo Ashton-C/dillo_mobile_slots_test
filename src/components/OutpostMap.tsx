@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, ImageSourcePropType } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue,
@@ -15,13 +15,13 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 const TAN_30 = Math.tan(Math.PI / 6); // ≈ 0.5774
 const ISO_STEP = 26;
 
-const BUILDING_META: Record<BuildingType, { icon: string; label: string; color: string }> = {
-  GENERATOR: { icon: '⚡', label: 'GEN',      color: Colors.credits },
-  ARMORY:    { icon: '⚔',  label: 'ARMORY',   color: Colors.attack },
-  VAULT:     { icon: '◈',  label: 'VAULT',    color: Colors.shield },
-  TURRET:    { icon: '◎',  label: 'TURRET',   color: Colors.accent },
-  HANGAR:    { icon: '▲',  label: 'HANGAR',   color: Colors.primary },
-  BARRACKS:  { icon: '◉',  label: 'BRCKS',    color: Colors.success },
+const BUILDING_META: Record<BuildingType, { icon: ImageSourcePropType; label: string; color: string }> = {
+  GENERATOR: { icon: require('../../assets/buildings/generator.png'), label: 'GEN',    color: Colors.credits },
+  ARMORY:    { icon: require('../../assets/buildings/armory.png'),    label: 'ARMORY', color: Colors.attack },
+  VAULT:     { icon: require('../../assets/buildings/vault.png'),     label: 'VAULT',  color: Colors.shield },
+  TURRET:    { icon: require('../../assets/buildings/turret.png'),    label: 'TURRET', color: Colors.accent },
+  HANGAR:    { icon: require('../../assets/buildings/hangar.png'),    label: 'HANGAR', color: Colors.primary },
+  BARRACKS:  { icon: require('../../assets/buildings/barracks.png'),  label: 'BRCKS',  color: Colors.success },
 };
 
 // Node positions as [xFraction, yFraction] of the map container
@@ -36,8 +36,8 @@ const NODE_POSITIONS: Record<BuildingType | 'OUTPOST', [number, number]> = {
 };
 
 const ALL_BUILDINGS: BuildingType[] = ['GENERATOR', 'ARMORY', 'VAULT', 'TURRET', 'HANGAR', 'BARRACKS'];
-const OUTPOST_SIZE = 56;
-const NODE_SIZE = 44;
+const OUTPOST_SIZE = 84;
+const NODE_SIZE = 66;
 
 function formatTimer(ms: number): string {
   const s = Math.ceil(ms / 1000);
@@ -203,7 +203,11 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
                 >
                   {isBuilding && <PulseRing color={color} size={NODE_SIZE} />}
                   {isGated && <View style={styles.lockIndicator}><Text style={styles.lockText}>▲</Text></View>}
-                  <Text style={[styles.nodeIcon, isUnbuilt && styles.nodeIconDim]}>{BUILDING_META[type].icon}</Text>
+                  <Image
+                    source={BUILDING_META[type].icon}
+                    style={[styles.nodeImage, isUnbuilt && styles.nodeIconDim]}
+                    resizeMode="contain"
+                  />
                   <Text style={[styles.nodeLevel, { color: isUnbuilt ? Colors.textMuted : color }]}>{isUnbuilt ? '—' : `${level}`}</Text>
                 </Pressable>
                 <Text style={[styles.nodeLabel, { color: isUnbuilt ? Colors.textMuted : color + 'CC' }]}>{BUILDING_META[type].label}</Text>
@@ -266,6 +270,10 @@ const styles = StyleSheet.create({
   nodeIcon: {
     fontSize: Typography.sizes.md,
     color: Colors.textSecondary,
+  },
+  nodeImage: {
+    width: NODE_SIZE - 14,
+    height: NODE_SIZE - 14,
   },
   nodeIconDim: {
     opacity: 0.4,

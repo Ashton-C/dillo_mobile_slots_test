@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Image } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -13,10 +13,13 @@ import { SlotSymbol, SpinResult, ReelWindow, WinLine, WinLineId, LINE_PATTERNS }
 import {
   SYMBOL_PACK_GLYPHS,
   REEL_THEME_TOKENS,
+  REEL_THEME_IMAGE_MAP,
   ReelThemeTokens,
+  SymbolGlyph,
+  SymbolGlyphs,
 } from '@/services/CosmeticsService';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
-import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
+import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
 import { soundService, SoundKey } from '@/services/SoundService';
 import { Colors, BorderRadius, Typography } from '@/constants/theme';
 
@@ -51,8 +54,50 @@ interface ReelProps {
   highlightColor?: string | null;
   cellHeight?: number;
   symbolSize?: number;
-  glyphs: Record<SlotSymbol, string>;
+  glyphs: SymbolGlyphs;
   cellBg: string;
+}
+
+function isImageGlyph(g: SymbolGlyph): boolean {
+  return typeof g !== 'string';
+}
+
+interface GlyphViewProps {
+  glyph: SymbolGlyph;
+  color: string;
+  fontSize: number;
+  animated?: boolean;
+  animatedStyle?: any;
+}
+
+function GlyphView({ glyph, color, fontSize, animated, animatedStyle }: GlyphViewProps) {
+  if (isImageGlyph(glyph)) {
+    const size = Math.round(fontSize * 1.25);
+    if (animated) {
+      return (
+        <Animated.Image
+          source={glyph as any}
+          style={[{ width: size, height: size }, animatedStyle]}
+          resizeMode="contain"
+        />
+      );
+    }
+    return (
+      <Image source={glyph as any} style={{ width: size, height: size }} resizeMode="contain" />
+    );
+  }
+  if (animated) {
+    return (
+      <Animated.Text style={[styles.symbol, { color, fontSize, lineHeight: fontSize + 8 }, animatedStyle]}>
+        {glyph as string}
+      </Animated.Text>
+    );
+  }
+  return (
+    <Text style={[styles.symbol, { color, fontSize, lineHeight: fontSize + 8 }]}>
+      {glyph as string}
+    </Text>
+  );
 }
 
 // Each reel renders a clipped strip of STRIP_LEN + 1 cells that scrolls vertically.
@@ -193,15 +238,13 @@ function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500,
       <Animated.View style={[{ position: 'absolute', left: 0, right: 0, top: 0, height: TOTAL_H }, stripStyle]}>
         {stripRef.current.map((sym, i) => (
           <View key={i} style={{ height: STRIP_CELL_H, alignItems: 'center', justifyContent: 'center' }}>
-            {i === STRIP_LEN ? (
-              <Animated.Text style={[styles.symbol, { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 }, cellScaleStyle]}>
-                {glyphs[sym]}
-              </Animated.Text>
-            ) : (
-              <Text style={[styles.symbol, { color: SYMBOL_COLORS[sym], fontSize, lineHeight: fontSize + 8 }]}>
-                {glyphs[sym]}
-              </Text>
-            )}
+            <GlyphView
+              glyph={glyphs[sym]}
+              color={SYMBOL_COLORS[sym]}
+              fontSize={fontSize}
+              animated={i === STRIP_LEN}
+              animatedStyle={cellScaleStyle}
+            />
           </View>
         ))}
       </Animated.View>
@@ -229,50 +272,61 @@ export const PAYLINE_COLORS: Record<WinLineId, string> = {
   BOT:       Colors.raid,
   DIAG_DOWN: Colors.accent,
   DIAG_UP:   Colors.success,
+  HR0:       Colors.attack,
+  HR1:       Colors.credits,
+  HR2:       Colors.primary,
+  HR3:       Colors.raid,
+  HR4:       Colors.shield,
+  D5_DOWN:   Colors.accent,
+  D5_UP:     Colors.success,
+  V_DOWN:    Colors.warning,
+  V_UP:      Colors.info,
+  W_SHAPE:   Colors.danger,
 };
 
-const ALL_LINE_IDS: WinLineId[] = ['MID', 'TOP', 'BOT', 'DIAG_DOWN', 'DIAG_UP'];
 const ACTIVE_LINE_IDS: Record<1 | 3 | 5, WinLineId[]> = {
   1: ['MID'],
   3: ['MID', 'TOP', 'BOT'],
   5: ['MID', 'TOP', 'BOT', 'DIAG_DOWN', 'DIAG_UP'],
 };
 
+const ACTIVE_LINE_IDS_5X5: WinLineId[] = [
+  'HR0', 'HR1', 'HR2', 'HR3', 'HR4',
+  'D5_DOWN', 'D5_UP', 'V_DOWN', 'V_UP', 'W_SHAPE',
+];
+
 // Container has paddingHorizontal: 24, so track width = screen width - 48
 const TRACK_W = Dimensions.get('window').width - 48;
 
 interface PaylineGuidesProps {
-  numLines: 1 | 3 | 5;
+  activeIds: WinLineId[];
   winLineIds: Set<WinLineId>;
   isSpinning: boolean;
   CELL_H: number;
+  cols: number;
 }
 
-function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuidesProps) {
-  const activeIds = ACTIVE_LINE_IDS[numLines];
+function PaylineGuides({ activeIds, winLineIds, isSpinning, CELL_H, cols }: PaylineGuidesProps) {
   const ROW_H = CELL_H + 1; // +1 for divider
-  const cellW = TRACK_W / 3;
+  const cellW = TRACK_W / cols;
 
   const rowY = (r: number) => r * ROW_H + CELL_H / 2;
   const colX = (c: number) => c * cellW + cellW / 2;
 
+  // Render each line as a chain of segments between adjacent column points so
+  // multi-bend patterns (zigzag, W-shape) render correctly for 5x5.
   return (
     <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' as any }]}>
-      {ALL_LINE_IDS.map((lineId) => {
+      {activeIds.map((lineId) => {
         const pattern = LINE_PATTERNS[lineId];
-        const isEnabled = activeIds.includes(lineId);
         const isWinning = !isSpinning && winLineIds.has(lineId);
-
-        if (!isEnabled) return null;
-
-        // During spin: all lines gray at low opacity; after spin: winning lines vivid, others very faint
         const lineColor = isWinning
           ? PAYLINE_COLORS[lineId]
           : isSpinning
             ? Colors.textMuted + '60'
             : Colors.textMuted + '30';
         const thickness = isWinning ? 3 : 2;
-        const isStraight = pattern[0] === pattern[1] && pattern[1] === pattern[2];
+        const isStraight = pattern.every((r) => r === pattern[0]);
 
         if (isStraight) {
           const y = rowY(pattern[0]);
@@ -291,30 +345,37 @@ function PaylineGuides({ numLines, winLineIds, isSpinning, CELL_H }: PaylineGuid
           );
         }
 
-        const x0 = colX(0);
-        const y0 = rowY(pattern[0]);
-        const x2 = colX(2);
-        const y2 = rowY(pattern[2]);
-        const dx = x2 - x0;
-        const dy = y2 - y0;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-        const cx = (x0 + x2) / 2;
-        const cy = (y0 + y2) / 2;
-
+        const segments: { left: number; top: number; width: number; angle: number }[] = [];
+        for (let c = 0; c < pattern.length - 1; c++) {
+          const x0 = colX(c);
+          const y0 = rowY(pattern[c]);
+          const x1 = colX(c + 1);
+          const y1 = rowY(pattern[c + 1]);
+          const dx = x1 - x0;
+          const dy = y1 - y0;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          const cx = (x0 + x1) / 2;
+          const cy = (y0 + y1) / 2;
+          segments.push({ left: cx - length / 2, top: cy - Math.floor(thickness / 2), width: length, angle });
+        }
         return (
-          <View
-            key={lineId}
-            style={{
-              position: 'absolute',
-              left: cx - length / 2,
-              top: cy - Math.floor(thickness / 2),
-              width: length,
-              height: thickness,
-              backgroundColor: lineColor,
-              transform: [{ rotate: `${angle}deg` }],
-            }}
-          />
+          <View key={lineId} style={StyleSheet.absoluteFill} pointerEvents="none">
+            {segments.map((s, i) => (
+              <View
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: s.left,
+                  top: s.top,
+                  width: s.width,
+                  height: thickness,
+                  backgroundColor: lineColor,
+                  transform: [{ rotate: `${s.angle}deg` }],
+                }}
+              />
+            ))}
+          </View>
         );
       })}
     </View>
@@ -335,6 +396,7 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
   const activeThemeId  = useCosmeticsStore((s) => s.active['REEL_THEME']  ?? 'theme_standard');
   const activeSymbolId = useCosmeticsStore((s) => s.active['SYMBOL_PACK'] ?? 'sym_default');
   const theme: ReelThemeTokens = REEL_THEME_TOKENS[activeThemeId] ?? REEL_THEME_TOKENS.theme_standard;
+  const themeImage = REEL_THEME_IMAGE_MAP[activeThemeId];
   const glyphs = SYMBOL_PACK_GLYPHS[activeSymbolId] ?? SYMBOL_PACK_GLYPHS.sym_default;
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
 
@@ -369,19 +431,24 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
     return 'LINE WIN';
   }, [activeWinLines, isSpinning]);
 
-  // Per-cell highlight colors for multi-row mode
+  const grid = getGridConfig(outpostLevel);
+
+  // Per-cell highlight colors for multi-row mode (sized to grid).
   const cellHighlights = useMemo(() => {
-    const h: (string | null)[][] = [[null, null, null], [null, null, null], [null, null, null]];
+    const h: (string | null)[][] = Array.from({ length: grid.rows }, () =>
+      Array.from({ length: grid.cols }, () => null as string | null),
+    );
     if (!activeWinLines || isSpinning) return h;
     for (const wl of activeWinLines) {
       const pattern = LINE_PATTERNS[wl.id];
       const color = winLineColor(wl);
-      for (let col = 0; col < 3; col++) {
-        h[pattern[col]][col] = color;
+      for (let col = 0; col < pattern.length && col < grid.cols; col++) {
+        const row = pattern[col];
+        if (row < grid.rows) h[row][col] = color;
       }
     }
     return h;
-  }, [activeWinLines, isSpinning]);
+  }, [activeWinLines, isSpinning, grid.rows, grid.cols]);
 
   useEffect(() => {
     const hasWin = reelWindow
@@ -400,83 +467,113 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
     transform: [{ scale: trackScale.value }],
   }));
 
-  // --- Multi-row rendering ---
-  if (reelWindow) {
-    const CELL_H = 62;
-    const displayLabel = multiWinLabel;
-    const displayColor = displayLabel === 'JACKPOT' ? Colors.credits
-                       : displayLabel === 'TRIPLE'  ? Colors.primary
-                       : Colors.success;
-
-    const numLines = getNumActiveLines(outpostLevel);
-    const winIds = new Set<WinLineId>((activeWinLines ?? []).map((wl) => wl.id));
-
-    // Unlock info for lines not yet available
-    const nextUnlock = numLines < 3 ? { lines: 3, level: 3 }
-                     : numLines < 5 ? { lines: 5, level: 6 }
-                     : null;
-
+  // --- 1x3 single-row rendering (outpost levels 1-2) ---
+  if (grid.size === '1x3') {
+    const midRowIdx = reelWindow ? Math.floor(reelWindow.length / 2) : 0;
+    const r0 = reelWindow ? reelWindow[midRowIdx][0] : reels[0];
+    const r1 = reelWindow ? reelWindow[midRowIdx][1] : reels[1];
+    const r2 = reelWindow ? reelWindow[midRowIdx][2] : reels[2];
     return (
       <View style={styles.container}>
-        <Animated.View style={[styles.track, styles.multiTrack, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
-          {([0, 1, 2] as const).map((rowIdx) => (
-            <View key={rowIdx}>
-              {rowIdx > 0 && <View style={[styles.hDivider, { backgroundColor: theme.borderColor + '66' }]} />}
-              <View style={[styles.multiRow, rowIdx === 1 && { backgroundColor: theme.midRowBg }]}>
-                {([0, 1, 2] as const).map((col) => (
-                  <View key={col} style={styles.multiCellWrap}>
-                    {col > 0 && <View style={[styles.divider, { backgroundColor: theme.borderColor + '66' }]} />}
-                    <Reel
-                      symbol={reelWindow[rowIdx][col]}
-                      isSpinning={isSpinning}
-                      isWinning={cellHighlights[rowIdx][col] !== null}
-                      highlightColor={cellHighlights[rowIdx][col]}
-                      colIndex={col}
-                      decelStartMs={col * 400 + 400}
-                      cellHeight={CELL_H}
-                      symbolSize={Typography.sizes.xl}
-                      glyphs={glyphs}
-                      cellBg={theme.cellBg}
-                    />
-                  </View>
-                ))}
-              </View>
-            </View>
-          ))}
-          {/* Payline guides rendered AFTER cells so they appear on top */}
-          <PaylineGuides numLines={numLines} winLineIds={winIds} isSpinning={isSpinning} CELL_H={CELL_H} />
+        <Animated.View style={[styles.track, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
+          {themeImage && (
+            <Image
+              source={themeImage}
+              style={[StyleSheet.absoluteFill, { opacity: 0.35 }]}
+              resizeMode="cover"
+              pointerEvents="none"
+            />
+          )}
+          <Reel symbol={r0} isSpinning={isSpinning} isWinning={reelWins[0]} colIndex={0} decelStartMs={400}  glyphs={glyphs} cellBg={theme.cellBg} />
+          <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
+          <Reel symbol={r1} isSpinning={isSpinning} isWinning={reelWins[1]} colIndex={1} decelStartMs={800}  glyphs={glyphs} cellBg={theme.cellBg} />
+          <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
+          <Reel symbol={r2} isSpinning={isSpinning} isWinning={reelWins[2]} colIndex={2} decelStartMs={1200} glyphs={glyphs} cellBg={theme.cellBg} />
         </Animated.View>
-        {displayLabel !== '' && !isSpinning && (
-          <View style={[styles.winBadge, { backgroundColor: displayColor }]}>
-            <Text style={styles.winBadgeText}>{displayLabel}</Text>
+        {winLabel !== '' && !isSpinning && (
+          <View style={[styles.winBadge, { backgroundColor: winColor }]}>
+            <Text style={styles.winBadgeText}>{winLabel}</Text>
           </View>
         )}
-        {/* Active paylines + unlock hint */}
         <View style={styles.linesRow}>
-          <Text style={styles.linesActive}>{numLines} PAYLINE{numLines !== 1 ? 'S' : ''}</Text>
-          {nextUnlock && (
-            <Text style={styles.linesUnlock}>+{nextUnlock.lines - numLines} at Outpost Lv.{nextUnlock.level}</Text>
-          )}
+          <Text style={styles.linesActive}>1 PAYLINE</Text>
+          <Text style={styles.linesUnlock}>+2 at Outpost Lv.3</Text>
         </View>
       </View>
     );
   }
 
-  // --- Single-row rendering ---
+  // --- 3x3 / 5x5 multi-row rendering ---
+  const isFiveByFive = grid.size === '5x5';
+  const CELL_H = isFiveByFive ? 46 : 62;
+  const displayLabel = multiWinLabel;
+  const displayColor = displayLabel === 'JACKPOT' ? Colors.credits
+                     : displayLabel === 'TRIPLE'  ? Colors.primary
+                     : Colors.success;
+
+  const activeIds = isFiveByFive ? ACTIVE_LINE_IDS_5X5 : ACTIVE_LINE_IDS[grid.numLines as 1 | 3 | 5];
+  const winIds = new Set<WinLineId>((activeWinLines ?? []).map((wl) => wl.id));
+
+  const nextUnlock = !isFiveByFive && grid.numLines < 3 ? { lines: 3, level: 3 }
+                   : !isFiveByFive && grid.numLines < 5 ? { lines: 5, level: 6 }
+                   : !isFiveByFive ? { lines: 10, level: 10 }
+                   : null;
+
+  const rowIndices = Array.from({ length: grid.rows }, (_, i) => i);
+  const colIndices = Array.from({ length: grid.cols }, (_, i) => i);
+  const midRow = Math.floor(grid.rows / 2);
+
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.track, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
-        <Reel symbol={reels[0]} isSpinning={isSpinning} isWinning={reelWins[0]} colIndex={0} decelStartMs={400} glyphs={glyphs} cellBg={theme.cellBg} />
-        <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-        <Reel symbol={reels[1]} isSpinning={isSpinning} isWinning={reelWins[1]} colIndex={1} decelStartMs={800} glyphs={glyphs} cellBg={theme.cellBg} />
-        <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-        <Reel symbol={reels[2]} isSpinning={isSpinning} isWinning={reelWins[2]} colIndex={2} decelStartMs={1200} glyphs={glyphs} cellBg={theme.cellBg} />
+      <Animated.View style={[styles.track, styles.multiTrack, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
+        {themeImage && (
+          <Image
+            source={themeImage}
+            style={[StyleSheet.absoluteFill, { opacity: 0.35 }]}
+            resizeMode="cover"
+            pointerEvents="none"
+          />
+        )}
+        {rowIndices.map((rowIdx) => (
+          <View key={rowIdx}>
+            {rowIdx > 0 && <View style={[styles.hDivider, { backgroundColor: theme.borderColor + '66' }]} />}
+            <View style={[styles.multiRow, rowIdx === midRow && { backgroundColor: theme.midRowBg }]}>
+              {colIndices.map((col) => {
+                const sym = reelWindow?.[rowIdx]?.[col] ?? 'EMPTY' as SlotSymbol;
+                return (
+                  <View key={col} style={styles.multiCellWrap}>
+                    {col > 0 && <View style={[styles.divider, { backgroundColor: theme.borderColor + '66' }]} />}
+                    <Reel
+                      symbol={sym}
+                      isSpinning={isSpinning}
+                      isWinning={cellHighlights[rowIdx]?.[col] != null}
+                      highlightColor={cellHighlights[rowIdx]?.[col]}
+                      colIndex={col}
+                      decelStartMs={col * 300 + 400}
+                      cellHeight={CELL_H}
+                      symbolSize={isFiveByFive ? Typography.sizes.md : Typography.sizes.xl}
+                      glyphs={glyphs}
+                      cellBg={theme.cellBg}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+        <PaylineGuides activeIds={activeIds} winLineIds={winIds} isSpinning={isSpinning} CELL_H={CELL_H} cols={grid.cols} />
       </Animated.View>
-      {winLabel !== '' && !isSpinning && (
-        <View style={[styles.winBadge, { backgroundColor: winColor }]}>
-          <Text style={styles.winBadgeText}>{winLabel}</Text>
+      {displayLabel !== '' && !isSpinning && (
+        <View style={[styles.winBadge, { backgroundColor: displayColor }]}>
+          <Text style={styles.winBadgeText}>{displayLabel}</Text>
         </View>
       )}
+      <View style={styles.linesRow}>
+        <Text style={styles.linesActive}>{activeIds.length} PAYLINE{activeIds.length !== 1 ? 'S' : ''}</Text>
+        {nextUnlock && (
+          <Text style={styles.linesUnlock}>+{nextUnlock.lines - activeIds.length} at Outpost Lv.{nextUnlock.level}</Text>
+        )}
+      </View>
     </View>
   );
 }

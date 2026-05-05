@@ -73,9 +73,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="dev"
         options={{
-          title: 'Dev',
-          tabBarButton: () => null,
-          tabBarIcon: ({ focused }) => <TabIcon label="DEV" focused={focused} />,
+          href: null,
         }}
       />
     </Tabs>

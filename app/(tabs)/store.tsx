@@ -58,7 +58,11 @@ function formatCooldown(ms: number): string {
 const CATEGORY_DESCRIPTIONS: Partial<Record<CosmeticCategory, string>> = {
   REEL_THEME:  'Reskins the slot reel track — background color, cell tints, and border glow.',
   SYMBOL_PACK: 'Replaces all 9 slot symbols with a themed icon set. Odds are never affected.',
-  SUIT_COLOR:  'Tints your pilot avatar and badge across every screen.',
+  SUIT_COLOR:  'Swaps your pilot suit artwork — body silhouette across every screen.',
+  HELMET:      'Overlays a helmet on the pilot avatar — visible on Pilot, Spin HUD, and RADAR.',
+  FRAME:       'Frames the avatar with a decorative ring shown on Pilot and resource bars.',
+  NAMEPLATE:   'Background banner behind your pilot name on Pilot and RADAR cards.',
+  ACCESSORY:   'Small badge, pin, or scarf overlay layered on the pilot avatar.',
   EMBLEM:      'Adds a small icon badge next to your pilot name in the resource bar and RADAR.',
   TITLE:       'Prefixes your pilot name (e.g. "COMMANDER ASHTON") — shown in HUD and on RADAR.',
   SPIN_BUTTON: 'Changes the spin button shape, glow color, and border animation.',
@@ -70,7 +74,11 @@ const CATEGORY_DESCRIPTIONS: Partial<Record<CosmeticCategory, string>> = {
 const CATEGORY_LABELS: Partial<Record<CosmeticCategory, string>> = {
   REEL_THEME:  'REEL THEMES',
   SYMBOL_PACK: 'SYMBOL PACKS',
-  SUIT_COLOR:  'SUIT COLORS',
+  SUIT_COLOR:  'PILOT SUITS',
+  HELMET:      'HELMETS',
+  FRAME:       'AVATAR FRAMES',
+  NAMEPLATE:   'NAMEPLATES',
+  ACCESSORY:   'ACCESSORIES',
   EMBLEM:      'EMBLEMS',
   TITLE:       'PILOT TITLES',
   SPIN_BUTTON: 'SPIN BUTTON SKINS',
@@ -80,7 +88,8 @@ const CATEGORY_LABELS: Partial<Record<CosmeticCategory, string>> = {
 };
 
 const CATEGORY_ORDER: CosmeticCategory[] = [
-  'REEL_THEME', 'SYMBOL_PACK', 'SUIT_COLOR', 'EMBLEM', 'TITLE',
+  'REEL_THEME', 'SYMBOL_PACK', 'SUIT_COLOR', 'HELMET', 'FRAME',
+  'NAMEPLATE', 'ACCESSORY', 'EMBLEM', 'TITLE',
   'SPIN_BUTTON', 'BACKGROUND', 'HUD_SKIN', 'BUNDLE',
 ];
 
@@ -160,7 +169,7 @@ function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => vo
 export default function StoreScreen() {
   const insets = useSafeAreaInsets();
   const { grantResources, subtractCredits, credits } = useGameStore();
-  const { buy: buyCosmetic, equip: equipCosmetic, isOwned, getActive, load: loadCosmetics } = useCosmeticsStore();
+  const { buy: buyCosmetic, equip: equipCosmetic, unequip: unequipCosmetic, isOwned, getActive, load: loadCosmetics } = useCosmeticsStore();
 
   const [adSlots, setAdSlots]     = useState<AdReward[]>(() => pickRandom(2, AD_REWARDS));
   const [adReadyAt, setAdReadyAt] = useState<Record<string, number>>({});
@@ -511,9 +520,17 @@ export default function StoreScreen() {
                     <Text style={styles.detailCloseText}>CLOSE</Text>
                   </Pressable>
                   {detailIsActive ? (
-                    <View style={[styles.detailBuyBtn, { backgroundColor: detailAccent + '33' }]}>
-                      <Text style={[styles.detailBuyText, { color: detailAccent }]}>EQUIPPED</Text>
-                    </View>
+                    <Pressable
+                      style={[styles.detailBuyBtn, { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: detailAccent }]}
+                      onPress={() => {
+                        unequipCosmetic(cosmeticDetail.category);
+                        hapticActivateBuff();
+                        showToast(`Unequipped: ${cosmeticDetail.name} — base skin restored`);
+                        setCosmeticDetail(null);
+                      }}
+                    >
+                      <Text style={[styles.detailBuyText, { color: detailAccent }]}>UNEQUIP</Text>
+                    </Pressable>
                   ) : detailIsOwned ? (
                     <Pressable
                       style={[styles.detailBuyBtn, { backgroundColor: detailAccent }]}

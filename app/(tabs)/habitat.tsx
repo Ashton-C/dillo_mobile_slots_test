@@ -6,7 +6,7 @@ import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/L
 import { IconButton } from '@/components/IconButton';
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/useGameStore';
-import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
+import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
 import { BuildingDetailModal } from '@/components/BuildingDetailModal';
 import { OutpostDetailModal } from '@/components/OutpostDetailModal';
 import { OutpostMapInteractive } from '@/components/OutpostMap';
@@ -36,9 +36,11 @@ export default function HabitatScreen() {
   const isUpgradingOutpost = activeBuildJob?.isOutpost === true;
   const outpostMaxed = outpostLevel >= 10;
 
-  const numPaylines = getNumActiveLines(outpostLevel);
-  const paylinesNextHint = numPaylines < 3 ? '+2 AT LV 3'
-                         : numPaylines < 5 ? '+2 AT LV 6'
+  const gridCfg = getGridConfig(outpostLevel);
+  const numPaylines = gridCfg.numLines;
+  const paylinesNextHint = numPaylines < 3  ? '+2 AT LV 3'
+                         : numPaylines < 5  ? '+2 AT LV 6'
+                         : numPaylines < 10 ? '5×5 + 10 LINES AT LV 10'
                          : 'MAX';
 
   return (

@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import {
   SpinResult, SlotSymbol, SpinOutcomeType, slotsEngine, TemporalRiftTier, RIFT_COSTS,
-  MultiSpinResult, ReelWindow, WinLine, WinLineId,
+  MultiSpinResult, ReelWindow, WinLine, WinLineId, ACTIVE_LINES_5X5,
 } from '@/services/SlotsEngine';
 import { useDroneStore } from '@/store/useDroneStore';
-import { useHabitatStore, getNumActiveLines } from '@/store/useHabitatStore';
+import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
 import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
 import { getMaxSpins } from '@/models/Habitat';
@@ -164,15 +164,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (riftCost > credits) return null;
 
     const outpostLevel = useHabitatStore.getState().outpostLevel;
-    const numLines = getNumActiveLines(outpostLevel);
+    const grid = getGridConfig(outpostLevel);
 
     slotsEngine.setRiftTier(riftTier);
     if (signalBoostActive) slotsEngine.setSignalBoost(true);
-    const multi = slotsEngine.spinRows(numLines);
+    const multi = grid.size === '5x5'
+      ? slotsEngine.spinGrid(5, 5, ACTIVE_LINES_5X5)
+      : slotsEngine.spinRows(grid.numLines as 1 | 3 | 5);
     if (signalBoostActive) slotsEngine.setSignalBoost(false);
 
+    const midRowIdx = Math.floor(multi.reelWindow.length / 2);
+    const midRow = multi.reelWindow[midRowIdx];
     const result: SpinResult = {
-      reels: multi.reelWindow[1],
+      reels: [midRow[0], midRow[1] ?? midRow[0], midRow[2] ?? midRow[0]],
       outcomeType: deriveOutcomeType(multi),
       creditsWon: multi.creditsWon,
       attacksWon: multi.attacksWon,

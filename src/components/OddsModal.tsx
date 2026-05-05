@@ -1,4 +1,4 @@
-import { Modal, View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { Modal, View, Text, ScrollView, StyleSheet, Pressable, Image } from 'react-native';
 import { SlotSymbol, TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
 import { SYMBOL_PACK_GLYPHS } from '@/services/CosmeticsService';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
@@ -95,7 +95,9 @@ export function OddsModal({ visible, onClose, riftTier, signalBoost, creditMulti
               return (
                 <View key={sym} style={styles.tableRow}>
                   <View style={[styles.td, { flex: 2.2, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-                    <Text style={[styles.glyph, { color }]}>{glyphs[sym]}</Text>
+                    {typeof glyphs[sym] === 'string'
+                      ? <Text style={[styles.glyph, { color }]}>{glyphs[sym] as string}</Text>
+                      : <Image source={glyphs[sym] as any} style={{ width: 18, height: 18 }} resizeMode="contain" />}
                     <Text style={[styles.tdText, { color }]}>{SYMBOL_LABELS[sym]}</Text>
                   </View>
                   <Text style={[styles.td, styles.tdRight]}>{fmt(rates.singlePct, 1)}%</Text>

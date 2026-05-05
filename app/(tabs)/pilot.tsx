@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform, Image, ImageBackground } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
+import { useCosmeticsStore } from '@/store/useCosmeticsStore';
+import { NAMEPLATE_IMAGE_MAP, EMBLEM_GLYPHS, TITLE_LABELS } from '@/services/CosmeticsService';
 import { GameEvent } from '@/services/FirestoreService';
 import { PilotAvatar, AvatarAccessory } from '@/components/PilotAvatar';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
@@ -36,6 +38,12 @@ function xpToNextLevel(level: number) { return 100 * level; }
 export default function PilotScreen() {
   const insets = useSafeAreaInsets();
   const { displayName, avatarColor, avatarAccessory, setDisplayName, setAvatarColor, setAvatarAccessory } = useAuthStore();
+  const activeNameplate = useCosmeticsStore((s) => s.active.NAMEPLATE);
+  const activeEmblem    = useCosmeticsStore((s) => s.active.EMBLEM);
+  const activeTitle     = useCosmeticsStore((s) => s.active.TITLE);
+  const nameplateImage = NAMEPLATE_IMAGE_MAP[activeNameplate];
+  const emblemGlyph    = EMBLEM_GLYPHS[activeEmblem] ?? '';
+  const titleLabel     = TITLE_LABELS[activeTitle] ?? '';
   const { credits, attacks, raids, shields, intrusions, extractions, level, xp,
           totalSpins, totalCreditsEarned, totalJackpots,
           totalBreachesAttempted, totalExtractionsAttempted, totalRaidsSuffered } = useGameStore();
@@ -75,8 +83,22 @@ export default function PilotScreen() {
               <PilotAvatar color={avatarColor} size={80} accessory={avatarAccessory as AvatarAccessory} />
             </View>
           </View>
-          <Text style={styles.pilotTitle}>PILOT</Text>
-          <Text style={styles.pilotName}>{displayName ?? '—'}</Text>
+          <Text style={styles.pilotTitle}>{titleLabel || 'PILOT'}</Text>
+          {nameplateImage ? (
+            <ImageBackground
+              source={nameplateImage}
+              style={styles.nameplate}
+              imageStyle={{ resizeMode: 'contain' }}
+            >
+              <Text style={[styles.pilotName, styles.pilotNameOnPlate]}>
+                {emblemGlyph ? `${emblemGlyph}  ` : ''}{displayName ?? '—'}
+              </Text>
+            </ImageBackground>
+          ) : (
+            <Text style={styles.pilotName}>
+              {emblemGlyph ? `${emblemGlyph}  ` : ''}{displayName ?? '—'}
+            </Text>
+          )}
           <View style={styles.avatarActions}>
             <Pressable onPress={() => { setEditName(displayName ?? ''); setEditVisible(true); }} style={styles.editButton}>
               <Text style={styles.editButtonText}>EDIT NAME</Text>
@@ -332,6 +354,19 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
     letterSpacing: 3,
+  },
+  nameplate: {
+    width: 240,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  pilotNameOnPlate: {
+    color: Colors.textPrimary,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   editButton: {
     paddingHorizontal: Spacing.md,

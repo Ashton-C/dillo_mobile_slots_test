@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -115,9 +115,6 @@ export default function SpinScreen() {
   const [muted, setMuted]                     = useState(() => soundService.getMuted());
   const [tooltipVisible, setTooltipVisible]   = useState(false);
   const [tooltipText, setTooltipText]         = useState('');
-  const [contentH, setContentH]               = useState(0);
-  const [containerH, setContainerH]           = useState(0);
-  const contentOverflows = contentH > containerH + 1;
 
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const showTooltip = (text: string) => {
@@ -343,16 +340,7 @@ export default function SpinScreen() {
 
       <ModifierPanel />
 
-      <ScrollView
-        style={styles.contentScroll}
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bounces={contentOverflows}
-        scrollEnabled={contentOverflows}
-        onContentSizeChange={(_, h) => setContentH(h)}
-        onLayout={(e) => setContainerH(e.nativeEvent.layout.height)}
-      >
+      <View style={[styles.contentScroll, styles.content, { paddingBottom: tabBarHeight + 16 }]}>
         {/* Digital payout indicator — fixed 64px, always rendered */}
         <View style={styles.payoutArea}>
           <Animated.View pointerEvents="none" style={[styles.tripleBadgeWrap, tripleBadgeStyle]}>
@@ -489,7 +477,7 @@ export default function SpinScreen() {
             <Text style={styles.combatHint}>→ RADAR</Text>
           </View>
         )}
-      </ScrollView>
+      </View>
       </Animated.View>
 
       <LedgerDrawer visible={historyVisible} onClose={() => setHistoryVisible(false)} />

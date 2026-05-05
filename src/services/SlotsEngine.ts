@@ -39,19 +39,21 @@ export const SpinResult = z.object({
 });
 export type SpinResult = z.infer<typeof SpinResult>;
 
-export type WinLineId = 'MID' | 'TOP' | 'BOT' | 'DIAG_DOWN' | 'DIAG_UP';
+// 3x3 line IDs — used for 1x3 (MID only) and 3x3 grids.
+// 5x5 line IDs — used at outpost level 10+.
+export type WinLineId =
+  | 'MID' | 'TOP' | 'BOT' | 'DIAG_DOWN' | 'DIAG_UP'
+  | 'HR0' | 'HR1' | 'HR2' | 'HR3' | 'HR4'
+  | 'D5_DOWN' | 'D5_UP' | 'V_DOWN' | 'V_UP' | 'W_SHAPE';
 
 export interface WinLine {
   id: WinLineId;
   result: SpinResult;
 }
 
-// reelWindow[row][col] — row 0=top, row 1=mid, row 2=bot
-export type ReelWindow = [
-  [SlotSymbol, SlotSymbol, SlotSymbol],
-  [SlotSymbol, SlotSymbol, SlotSymbol],
-  [SlotSymbol, SlotSymbol, SlotSymbol],
-];
+// reelWindow[row][col] — generic rows×cols grid, indexed [row][col].
+// 1x3 grids use a single row of 3 symbols; 3x3 has 3×3; 5x5 has 5×5.
+export type ReelWindow = SlotSymbol[][];
 
 export interface MultiSpinResult {
   reelWindow: ReelWindow;
@@ -123,13 +125,26 @@ const PAIR_PAYOUTS: Partial<Record<SlotSymbol, Partial<SpinResult>>> = {
 
 // --- Multiline Patterns ---
 
-// LINE_PATTERNS[id] = [rowForCol0, rowForCol1, rowForCol2]
-export const LINE_PATTERNS: Record<WinLineId, [number, number, number]> = {
+// LINE_PATTERNS[id] = number[] — row index for each column in left-to-right
+// order. 3x3 patterns are length 3; 5x5 patterns are length 5.
+export const LINE_PATTERNS: Record<WinLineId, number[]> = {
+  // 3x3 lines
   MID:       [1, 1, 1],
   TOP:       [0, 0, 0],
   BOT:       [2, 2, 2],
   DIAG_DOWN: [0, 1, 2],
   DIAG_UP:   [2, 1, 0],
+  // 5x5 lines (10 active at outpost lvl 10+)
+  HR0:       [0, 0, 0, 0, 0],
+  HR1:       [1, 1, 1, 1, 1],
+  HR2:       [2, 2, 2, 2, 2],
+  HR3:       [3, 3, 3, 3, 3],
+  HR4:       [4, 4, 4, 4, 4],
+  D5_DOWN:   [0, 1, 2, 3, 4],
+  D5_UP:     [4, 3, 2, 1, 0],
+  V_DOWN:    [0, 1, 2, 1, 0],
+  V_UP:      [4, 3, 2, 3, 4],
+  W_SHAPE:   [0, 2, 0, 2, 0],
 };
 
 const ACTIVE_LINES: Record<1 | 3 | 5, WinLineId[]> = {
@@ -137,6 +152,11 @@ const ACTIVE_LINES: Record<1 | 3 | 5, WinLineId[]> = {
   3: ['MID', 'TOP', 'BOT'],
   5: ['MID', 'TOP', 'BOT', 'DIAG_DOWN', 'DIAG_UP'],
 };
+
+export const ACTIVE_LINES_5X5: WinLineId[] = [
+  'HR0', 'HR1', 'HR2', 'HR3', 'HR4',
+  'D5_DOWN', 'D5_UP', 'V_DOWN', 'V_UP', 'W_SHAPE',
+];
 
 // --- Core Engine ---
 
@@ -179,16 +199,33 @@ export class SlotsEngine {
     ];
 
     const activeLineIds = ACTIVE_LINES[numLines];
+    return this.evaluateGrid(reelWindow, activeLineIds);
+  }
+
+  // Generic grid spin — accepts arbitrary rows×cols and a list of active line
+  // ids. Used by both 1x3 (single MID line, hidden TOP/BOT rows in render),
+  // 3x3 (1/3/5 lines), and 5x5 (10 lines at outpost lvl 10+).
+  spinGrid(rows: number, cols: number, activeLineIds: WinLineId[]): MultiSpinResult {
+    const reelWindow: ReelWindow = [];
+    for (let r = 0; r < rows; r++) {
+      const row: SlotSymbol[] = [];
+      for (let c = 0; c < cols; c++) row.push(this.drawSymbol());
+      reelWindow.push(row);
+    }
+    return this.evaluateGrid(reelWindow, activeLineIds);
+  }
+
+  private evaluateGrid(reelWindow: ReelWindow, activeLineIds: WinLineId[]): MultiSpinResult {
     const winLines: WinLine[] = [];
     let creditsWon = 0, attacksWon = 0, raidsWon = 0, shieldsWon = 0;
     let intrusionsWon = 0, extractionsWon = 0, isJackpot = false;
 
     for (const lineId of activeLineIds) {
-      const [r0, r1, r2] = LINE_PATTERNS[lineId];
-      const lineReels: [SlotSymbol, SlotSymbol, SlotSymbol] = [
-        reelWindow[r0][0], reelWindow[r1][1], reelWindow[r2][2],
-      ];
-      const lineResult = this.evaluate(lineReels);
+      const pattern = LINE_PATTERNS[lineId];
+      const lineReels: SlotSymbol[] = pattern.map((r, c) => reelWindow[r][c]);
+      const lineResult = pattern.length >= 5
+        ? this.evaluate5(lineReels)
+        : this.evaluate([lineReels[0], lineReels[1], lineReels[2]]);
       if (lineResult.outcomeType !== 'NOTHING') {
         winLines.push({ id: lineId, result: lineResult });
         creditsWon     += lineResult.creditsWon;
@@ -201,6 +238,12 @@ export class SlotsEngine {
       }
     }
 
+    // primaryResult is the middle-row left-3 — kept for SpinResult compat.
+    const midRow = reelWindow[Math.floor(reelWindow.length / 2)] ?? reelWindow[0];
+    const primaryReels: [SlotSymbol, SlotSymbol, SlotSymbol] = [
+      midRow[0], midRow[1] ?? midRow[0], midRow[2] ?? midRow[0],
+    ];
+
     return {
       reelWindow,
       winLines,
@@ -211,13 +254,60 @@ export class SlotsEngine {
       intrusionsWon,
       extractionsWon,
       isJackpot,
-      primaryResult: this.evaluate(reelWindow[1]),
+      primaryResult: this.evaluate(primaryReels),
     };
   }
 
-  evaluate(reels: [SlotSymbol, SlotSymbol, SlotSymbol]): SpinResult {
+  // 5-cell line evaluator: counts leftmost-consecutive matches. >=3 same scales
+  // a pair payout by (count - 2); 5 same flags isJackpot.
+  evaluate5(reels: SlotSymbol[]): SpinResult {
+    const tupleReels: [SlotSymbol, SlotSymbol, SlotSymbol] = [reels[0], reels[1], reels[2]];
     const base: SpinResult = {
-      reels,
+      reels: tupleReels,
+      outcomeType: 'NOTHING',
+      creditsWon: 0,
+      attacksWon: 0,
+      raidsWon: 0,
+      shieldsWon: 0,
+      intrusionsWon: 0,
+      extractionsWon: 0,
+      isJackpot: false,
+    };
+
+    const first = reels[0];
+    let count = 1;
+    for (let i = 1; i < reels.length; i++) {
+      if (reels[i] === first) count++;
+      else break;
+    }
+    if (count < 3) return base;
+
+    const payout = count === 5
+      ? JACKPOT_PAYOUTS[first]
+      : PAIR_PAYOUTS[first];
+    if (!payout) return base;
+
+    const scale = count - 2; // 3→1×, 4→2×, 5→3×
+    const isJackpotLine = count === 5 && first === 'CREDIT_LARGE';
+    return {
+      ...base,
+      outcomeType:    payout.outcomeType ?? base.outcomeType,
+      creditsWon:     (payout.creditsWon     ?? 0) * scale,
+      attacksWon:     (payout.attacksWon     ?? 0) * scale,
+      raidsWon:       (payout.raidsWon       ?? 0) * scale,
+      shieldsWon:     (payout.shieldsWon     ?? 0) * scale,
+      intrusionsWon:  (payout.intrusionsWon  ?? 0) * scale,
+      extractionsWon: (payout.extractionsWon ?? 0) * scale,
+      isJackpot:      isJackpotLine,
+    };
+  }
+
+  evaluate(reels: [SlotSymbol, SlotSymbol, SlotSymbol]): SpinResult;
+  evaluate(reels: SlotSymbol[]): SpinResult;
+  evaluate(reels: SlotSymbol[]): SpinResult {
+    const tuple: [SlotSymbol, SlotSymbol, SlotSymbol] = [reels[0], reels[1], reels[2]];
+    const base: SpinResult = {
+      reels: tuple,
       outcomeType: 'NOTHING',
       creditsWon: 0,
       attacksWon: 0,

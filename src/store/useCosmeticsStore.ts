@@ -17,6 +17,7 @@ interface CosmeticsState {
   load: () => Promise<void>;
   buy: (id: string) => 'ok' | 'insufficient_credits' | 'iap_required' | 'already_owned';
   equip: (id: string) => void;
+  unequip: (category: CosmeticCategory) => void;
   isOwned: (id: string) => boolean;
   getActive: (category: CosmeticCategory) => string;
 }
@@ -90,6 +91,13 @@ export const useCosmeticsStore = create<CosmeticsState>((set, get) => ({
     const category = item?.category;
     if (!category) return;
     const next = { ...get().active, [category]: id };
+    set({ active: next });
+    AsyncStorage.setItem(STORAGE_ACTIVE, JSON.stringify(next));
+  },
+
+  unequip(category) {
+    const defaultId = COSMETIC_ACTIVE_DEFAULTS[category];
+    const next = { ...get().active, [category]: defaultId };
     set({ active: next });
     AsyncStorage.setItem(STORAGE_ACTIVE, JSON.stringify(next));
   },
