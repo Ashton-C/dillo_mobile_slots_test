@@ -6,7 +6,11 @@ import { Colors, Typography } from '@/constants/theme';
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return (
     <View style={styles.iconContainer}>
-      <Text style={[styles.iconLabel, focused && styles.iconLabelActive]}>
+      <Text
+        style={[styles.iconLabel, focused && styles.iconLabelActive]}
+        numberOfLines={1}
+        allowFontScaling={false}
+      >
         {label}
       </Text>
     </View>
@@ -21,8 +25,9 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: [
           styles.tabBar,
-          { height: 60 + insets.bottom, paddingBottom: 8 + insets.bottom },
+          { height: 68 + insets.bottom, paddingBottom: 8 + insets.bottom },
         ],
+        tabBarItemStyle: styles.tabBarItem,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarShowLabel: false,
@@ -86,7 +91,11 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     borderTopWidth: 1,
   },
+  tabBarItem: {
+    paddingHorizontal: 0,
+  },
   iconContainer: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 8,
@@ -94,7 +103,7 @@ const styles = StyleSheet.create({
   iconLabel: {
     fontSize: Typography.sizes.xs,
     fontWeight: Typography.weights.bold,
-    letterSpacing: 2,
+    letterSpacing: 1,
     color: Colors.textMuted,
   },
   iconLabelActive: {

@@ -181,6 +181,24 @@ export const NAMEPLATE_IMAGE_MAP: Record<string, ImageSourcePropType | undefined
   nameplate_sovereign:  require('../../assets/cosmetics/nameplates/sovereign.png'),
 };
 
+// React-rendered nameplate styling tokens. Lets us draw a banner without
+// depending on the static PNG. Each preset defines the gradient, border and
+// inner accent of the chip displayed behind the pilot's name.
+export interface NameplateStyle {
+  gradient: readonly [string, string];
+  borderColor: string;
+  accentColor: string;
+  textColor: string;
+}
+
+export const NAMEPLATE_STYLES: Record<string, NameplateStyle> = {
+  nameplate_none:       { gradient: ['#1A1A2E',   '#1A1A2E'],   borderColor: Colors.border,        accentColor: Colors.textMuted,    textColor: Colors.textPrimary },
+  nameplate_standard:   { gradient: ['#22223A',   '#161628'],   borderColor: Colors.textSecondary, accentColor: Colors.textSecondary, textColor: Colors.textPrimary },
+  nameplate_ranger:     { gradient: ['#0E2A14',   '#06140A'],   borderColor: Colors.success,       accentColor: Colors.success,      textColor: Colors.textPrimary },
+  nameplate_riftwalker: { gradient: ['#1A0A2E',   '#0A0420'],   borderColor: Colors.accent,        accentColor: Colors.accent,       textColor: Colors.textPrimary },
+  nameplate_sovereign:  { gradient: ['#3A2A02',   '#1A1200'],   borderColor: Colors.credits,       accentColor: Colors.credits,      textColor: Colors.credits     },
+};
+
 export const ACCESSORY_IMAGE_MAP: Record<string, ImageSourcePropType | undefined> = {
   acc_none:           undefined,
   acc_badge_ranger:   require('../../assets/cosmetics/accessories/badge-ranger.png'),

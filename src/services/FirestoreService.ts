@@ -138,13 +138,15 @@ export async function writeCombatRequest(data: {
 // Subscribe to the player's incoming events subcollection.
 export function subscribeToEvents(
   uid: string,
-  onEvent: (event: GameEvent) => void,
+  onEvent: (event: GameEvent, isInitialLoad: boolean) => void,
 ): Unsubscribe {
   const ref = collection(db, 'users', uid, 'events');
   const q = query(ref, orderBy('timestamp', 'desc'), limit(20));
+  let firstSnapshot = true;
   return onSnapshot(
     q,
     (snap) => {
+      const isInitial = firstSnapshot;
       snap.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const d = change.doc.data();
@@ -158,9 +160,10 @@ export function subscribeToEvents(
             attackerWon:      d.attackerWon,
             timestamp:        d.timestamp ?? Date.now(),
             read:             d.read ?? false,
-          });
+          }, isInitial);
         }
       });
+      firstSnapshot = false;
     },
     (err) => console.error('subscribeToEvents error:', err),
   );

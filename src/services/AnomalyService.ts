@@ -129,8 +129,10 @@ export class AnomalyService {
       const now = Date.now();
 
       if (!snap.exists() || snap.data().endsAt < now) {
-        // Seed a new anomaly — first connected client wins, others get it via onSnapshot
-        const next = this.generateAnomaly(now);
+        // Seed a new anomaly — first connected client wins, others get it via onSnapshot.
+        // Exclude the just-expired one so we don't roll the same anomaly twice in a row.
+        const previousId = snap.exists() ? (snap.data() as ActiveAnomaly).id : null;
+        const next = this.generateAnomaly(now, previousId);
         await setDoc(ref, next).catch(() => {
           // Another client may have written first — harmless, onSnapshot will fire again
         });
@@ -167,11 +169,14 @@ export class AnomalyService {
     return Math.max(0, this.currentAnomaly.endsAt - Date.now());
   }
 
-  private generateAnomaly(now: number): ActiveAnomaly {
-    // Pick a random anomaly, weighted so CALM is half as likely as the others
-    const pool: AnomalyId[] = ANOMALY_IDS.flatMap((id) =>
-      id === 'CALM' ? [id] : [id, id],
-    );
+  private generateAnomaly(now: number, excludeId: AnomalyId | null = null): ActiveAnomaly {
+    // Pick a random anomaly, weighted so CALM is half as likely as the others.
+    // The previously active anomaly is excluded so the same one never repeats
+    // back-to-back.
+    const pool: AnomalyId[] = ANOMALY_IDS.flatMap((id) => {
+      if (id === excludeId) return [];
+      return id === 'CALM' ? [id] : [id, id];
+    });
     const id = pool[Math.floor(Math.random() * pool.length)];
     return { id, startedAt: now, endsAt: now + ANOMALY_DURATION_MS };
   }

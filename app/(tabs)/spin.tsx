@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Modal, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,6 +36,9 @@ import { IconButton } from '@/components/IconButton';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { soundService } from '@/services/SoundService';
 import { OddsModal } from '@/components/OddsModal';
+import { CosmeticCategoryGrid } from '@/components/CosmeticCategoryGrid';
+import { CosmeticPurchaseModal } from '@/components/CosmeticPurchaseModal';
+import { CosmeticItem } from '@/services/CosmeticsService';
 import { useDroneStore } from '@/store/useDroneStore';
 import { anomalyService } from '@/services/AnomalyService';
 import { getMaxSpins } from '@/models/Habitat';
@@ -114,6 +117,9 @@ export default function SpinScreen() {
   const [riftModalVisible, setRiftModalVisible] = useState(false);
   const [muted, setMuted]                     = useState(() => soundService.getMuted());
   const [tooltipVisible, setTooltipVisible]   = useState(false);
+  const [reelCustomizeVisible, setReelCustomizeVisible] = useState(false);
+  const [pendingPurchase, setPendingPurchase] = useState<CosmeticItem | null>(null);
+  const [customizeToast, setCustomizeToast]   = useState<string | null>(null);
   const [tooltipText, setTooltipText]         = useState('');
 
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -334,6 +340,7 @@ export default function SpinScreen() {
           shields={shields}
           spinsRemaining={spinsRemaining}
           displayName={displayName ?? undefined}
+          level={level}
           style={styles.resourceBarTransparent}
         />
       </LinearGradient>
@@ -502,6 +509,7 @@ export default function SpinScreen() {
       </Modal>
 
       <View style={[styles.iconButtonRow, { top: insets.top + 6 }]} pointerEvents="box-none">
+        <IconButton glyph="◈" onPress={() => setReelCustomizeVisible(true)} />
         <IconButton glyph="%" onPress={() => setOddsVisible(true)} />
         <IconButton
           glyph={muted ? '✕' : '♪'}
@@ -514,6 +522,57 @@ export default function SpinScreen() {
         />
         <IconButton glyph="?" onPress={() => setLegendVisible(true)} />
       </View>
+
+      {/* Reels customize modal */}
+      <Modal visible={reelCustomizeVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setReelCustomizeVisible(false)}>
+        <View style={styles.reelCustomizeOverlay}>
+          <View style={styles.reelCustomizeCard}>
+            <Text style={styles.reelCustomizeTitle}>CUSTOMIZE REELS</Text>
+            <ScrollView contentContainerStyle={{ gap: Spacing.sm }} showsVerticalScrollIndicator={false}>
+              <CosmeticCategoryGrid
+                label="SYMBOL PACKS"
+                category="SYMBOL_PACK"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="REEL THEMES"
+                category="REEL_THEME"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="HUD SKINS"
+                category="HUD_SKIN"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="SPIN BUTTONS"
+                category="SPIN_BUTTON"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="BACKGROUNDS"
+                category="BACKGROUND"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+            </ScrollView>
+            {customizeToast && <Text style={styles.reelCustomizeToast}>{customizeToast}</Text>}
+            <Pressable onPress={() => setReelCustomizeVisible(false)} style={styles.reelCustomizeBack}>
+              <Text style={styles.reelCustomizeBackText}>BACK</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <CosmeticPurchaseModal
+        item={pendingPurchase}
+        onDismiss={() => setPendingPurchase(null)}
+        onResult={(msg) => { setCustomizeToast(msg); setTimeout(() => setCustomizeToast(null), 2200); }}
+      />
 
       <OddsModal
         visible={oddsVisible}
@@ -798,5 +857,52 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: Spacing.md,
+  },
+
+  reelCustomizeOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  reelCustomizeCard: {
+    width: '92%',
+    maxHeight: '85%',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  reelCustomizeTitle: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.textPrimary,
+    letterSpacing: 4,
+    textAlign: 'center',
+    fontWeight: Typography.weights.bold,
+    marginBottom: Spacing.sm,
+  },
+  reelCustomizeToast: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.success,
+    letterSpacing: 2,
+    textAlign: 'center',
+    fontWeight: Typography.weights.bold,
+    paddingVertical: 6,
+  },
+  reelCustomizeBack: {
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  reelCustomizeBackText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.background,
+    letterSpacing: 4,
   },
 });

@@ -18,16 +18,25 @@ export const useEventStore = create<EventState>((set, get) => ({
 
   subscribe(uid) {
     set({ ownerUid: uid });
-    return subscribeToEvents(uid, (event) => {
+    return subscribeToEvents(uid, (event, isInitialLoad) => {
       set((s) => {
         const alreadyExists = s.events.some((e) => e.id === event.id);
         if (alreadyExists) return s;
-        if (event.type === 'RAID_RESOLVED') {
+        if (event.type === 'RAID_RESOLVED' && !isInitialLoad) {
           useGameStore.getState().recordRaidSuffered();
         }
+        // Banner suppression rules:
+        //  - never banner during the initial Firestore snapshot (those are
+        //    historical events the user has already seen)
+        //  - never banner the user's own outgoing combat results — that's
+        //    just confirmation, the pilot log already shows it
+        //  - read events stay out of the banner queue
+        const skipBanner = isInitialLoad
+          || event.type === 'COMBAT_RESULT'
+          || event.read;
         return {
           events: [event, ...s.events].slice(0, 50),
-          activeEvent: s.activeEvent ?? event,
+          activeEvent: skipBanner ? s.activeEvent : (s.activeEvent ?? event),
         };
       });
     });

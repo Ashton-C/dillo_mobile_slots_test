@@ -9,19 +9,21 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useEffect, useMemo, useState } from 'react';
 import { useHabitatStore } from '@/store/useHabitatStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { BuildingType } from '@/models/Habitat';
+import { HexFrame } from '@/components/HexFrame';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const TAN_30 = Math.tan(Math.PI / 6); // ≈ 0.5774
 const ISO_STEP = 26;
 
 const BUILDING_META: Record<BuildingType, { icon: ImageSourcePropType; label: string; color: string }> = {
-  GENERATOR: { icon: require('../../assets/buildings/generator.png'), label: 'GEN',    color: Colors.credits },
-  ARMORY:    { icon: require('../../assets/buildings/armory.png'),    label: 'ARMORY', color: Colors.attack },
-  VAULT:     { icon: require('../../assets/buildings/vault.png'),     label: 'VAULT',  color: Colors.shield },
-  TURRET:    { icon: require('../../assets/buildings/turret.png'),    label: 'TURRET', color: Colors.accent },
-  HANGAR:    { icon: require('../../assets/buildings/hangar.png'),    label: 'HANGAR', color: Colors.primary },
-  BARRACKS:  { icon: require('../../assets/buildings/barracks.png'),  label: 'BRCKS',  color: Colors.success },
+  GENERATOR: { icon: require('../../assets/buildings/generator.png'), label: 'GEN',    color: Colors.primary  }, // orange
+  ARMORY:    { icon: require('../../assets/buildings/armory.png'),    label: 'ARMORY', color: Colors.attack   }, // red
+  VAULT:     { icon: require('../../assets/buildings/vault.png'),     label: 'VAULT',  color: Colors.credits  }, // yellow
+  TURRET:    { icon: require('../../assets/buildings/turret.png'),    label: 'TURRET', color: Colors.shield   }, // blue
+  HANGAR:    { icon: require('../../assets/buildings/hangar.png'),    label: 'HANGAR', color: Colors.accent   }, // purple
+  BARRACKS:  { icon: require('../../assets/buildings/barracks.png'),  label: 'BRCKS',  color: Colors.success  }, // green
 };
 
 // Node positions as [xFraction, yFraction] of the map container
@@ -65,14 +67,9 @@ function PulseRing({ color, size }: PulseRingProps) {
   }));
 
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        StyleSheet.absoluteFill,
-        { borderRadius: BorderRadius.sm, borderWidth: 2, borderColor: color },
-        style,
-      ]}
-    />
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }, style]}>
+      <HexFrame size={size} color={color} thickness={2} />
+    </Animated.View>
   );
 }
 
@@ -116,6 +113,7 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
   const outpostLevel    = useHabitatStore((s) => s.outpostLevel);
   const activeBuildJob  = useHabitatStore((s) => s.activeBuildJob);
   const msUntilComplete = useHabitatStore((s) => s.msUntilComplete);
+  const outpostColor    = useAuthStore((s) => s.outpostColor) ?? Colors.accent;
 
   const nodeCoords = (key: BuildingType | 'OUTPOST') => {
     const [fx, fy] = NODE_POSITIONS[key];
@@ -190,6 +188,8 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
             const isUnbuilt  = level === 0;
             const isGated    = !isUnbuilt && (level + 1) > outpostLevel;
             const halfSize   = NODE_SIZE / 2;
+            const imageSize  = NODE_SIZE * 2;
+            const imageHalf  = imageSize / 2;
 
             return (
               <View
@@ -198,17 +198,30 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
                 style={[styles.nodeContainer, { left: x - halfSize, top: y - halfSize, width: NODE_SIZE, height: NODE_SIZE }]}
               >
                 <Pressable
-                  style={[styles.nodeBadge, { width: NODE_SIZE, height: NODE_SIZE, borderColor: color + (isUnbuilt ? '44' : 'CC'), backgroundColor: color + (isUnbuilt ? '0A' : '1E') }]}
+                  style={[styles.nodeHex, { width: NODE_SIZE, height: NODE_SIZE }]}
                   onPress={() => onTapBuilding(type)}
+                  hitSlop={6}
                 >
+                  <HexFrame
+                    size={NODE_SIZE}
+                    color={color + (isUnbuilt ? '55' : 'CC')}
+                    thickness={1.5}
+                    fillColor={color + (isUnbuilt ? '0A' : '1E')}
+                  />
                   {isBuilding && <PulseRing color={color} size={NODE_SIZE} />}
                   {isGated && <View style={styles.lockIndicator}><Text style={styles.lockText}>▲</Text></View>}
                   <Image
                     source={BUILDING_META[type].icon}
-                    style={[styles.nodeImage, isUnbuilt && styles.nodeIconDim]}
+                    style={[
+                      styles.nodeImageOverflow,
+                      { width: imageSize, height: imageSize, left: -imageHalf + NODE_SIZE / 2, top: -imageHalf + NODE_SIZE / 2 },
+                      isUnbuilt && styles.nodeIconDim,
+                    ]}
                     resizeMode="contain"
                   />
-                  <Text style={[styles.nodeLevel, { color: isUnbuilt ? Colors.textMuted : color }]}>{isUnbuilt ? '—' : `${level}`}</Text>
+                  <Text style={[styles.nodeLevelOverlay, { color: isUnbuilt ? Colors.textMuted : color }]}>
+                    {isUnbuilt ? '—' : `${level}`}
+                  </Text>
                 </Pressable>
                 <Text style={[styles.nodeLabel, { color: isUnbuilt ? Colors.textMuted : color + 'CC' }]}>{BUILDING_META[type].label}</Text>
                 {isBuilding && <Text style={[styles.buildTimer, { color }]}>{formatTimer(msUntilComplete)}</Text>}
@@ -227,15 +240,22 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
                 style={[styles.nodeContainer, { left: x - halfSize, top: y - halfSize, width: OUTPOST_SIZE, height: OUTPOST_SIZE }]}
               >
                 <Pressable
-                  style={[styles.nodeBadge, { width: OUTPOST_SIZE, height: OUTPOST_SIZE, borderColor: Colors.accent + 'CC', backgroundColor: Colors.accent + '22' }]}
+                  style={[styles.nodeHex, { width: OUTPOST_SIZE, height: OUTPOST_SIZE }]}
                   onPress={onTapOutpost}
+                  hitSlop={6}
                 >
-                  {isUpgrading && <PulseRing color={Colors.accent} size={OUTPOST_SIZE} />}
-                  <Text style={styles.nodeIcon}>◎</Text>
-                  <Text style={[styles.nodeLevel, { color: Colors.accent }]}>{outpostLevel}</Text>
+                  <HexFrame
+                    size={OUTPOST_SIZE}
+                    color={outpostColor + 'CC'}
+                    thickness={2}
+                    fillColor={outpostColor + '22'}
+                  />
+                  {isUpgrading && <PulseRing color={outpostColor} size={OUTPOST_SIZE} />}
+                  <Text style={styles.nodeOutpostGlyph}>◎</Text>
+                  <Text style={[styles.nodeLevelOverlay, { color: outpostColor, bottom: 4 }]}>{outpostLevel}</Text>
                 </Pressable>
-                <Text style={[styles.nodeLabel, { color: Colors.accent + 'CC' }]}>OUTPOST</Text>
-                {isUpgrading && <Text style={[styles.buildTimer, { color: Colors.accent }]}>{formatTimer(msUntilComplete)}</Text>}
+                <Text style={[styles.nodeLabel, { color: outpostColor + 'CC' }]}>OUTPOST</Text>
+                {isUpgrading && <Text style={[styles.buildTimer, { color: outpostColor }]}>{formatTimer(msUntilComplete)}</Text>}
               </View>
             );
           })()}
@@ -259,29 +279,34 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     zIndex: 5,
+    overflow: 'visible',
   },
-  nodeBadge: {
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1.5,
+  nodeHex: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
+    overflow: 'visible',
   },
-  nodeIcon: {
-    fontSize: Typography.sizes.md,
+  nodeOutpostGlyph: {
+    fontSize: Typography.sizes.xl,
     color: Colors.textSecondary,
   },
-  nodeImage: {
-    width: NODE_SIZE - 14,
-    height: NODE_SIZE - 14,
+  nodeImageOverflow: {
+    position: 'absolute',
   },
   nodeIconDim: {
     opacity: 0.4,
   },
-  nodeLevel: {
-    fontSize: 9,
+  nodeLevelOverlay: {
+    position: 'absolute',
+    bottom: -4,
+    fontSize: 11,
     fontWeight: Typography.weights.bold,
     letterSpacing: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    backgroundColor: Colors.background + 'EE',
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   nodeLabel: {
     fontSize: 8,

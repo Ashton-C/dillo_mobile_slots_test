@@ -35,10 +35,11 @@ interface Props {
   shields: number;
   spinsRemaining: number;
   displayName?: string;
+  level?: number;
   style?: ViewStyle;
 }
 
-export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, displayName, style }: Props) {
+export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, displayName, level, style }: Props) {
   const activeHudId    = useCosmeticsStore((s) => s.active['HUD_SKIN']   ?? 'hud_default');
   const activeEmblemId = useCosmeticsStore((s) => s.active['EMBLEM']     ?? 'emblem_none');
   const activeTitleId  = useCosmeticsStore((s) => s.active['TITLE']      ?? 'title_none');
@@ -51,14 +52,27 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, 
 
   const spinsColor = spinsRemaining <= 5 ? Colors.warning : Colors.accent;
 
-  const pilotLabel = [title, displayName].filter(Boolean).join(' ');
-
   return (
     <View style={[styles.container, { backgroundColor: hud.backgroundColor, borderBottomColor: hud.borderColor }, style]}>
-      {pilotLabel ? (
+      {(displayName || title) ? (
         <View style={styles.pilotRow}>
-          {emblem ? <Text style={[styles.emblem, { color: suitColor }]}>{emblem} </Text> : null}
-          <Text style={[styles.pilotName, { color: suitColor }]} numberOfLines={1}>{pilotLabel}</Text>
+          {emblem ? (
+            <View style={[styles.emblemBadge, { borderColor: suitColor + 'AA', backgroundColor: suitColor + '1A' }]}>
+              <Text style={[styles.emblemGlyph, { color: suitColor }]}>{emblem}</Text>
+            </View>
+          ) : null}
+          <View style={styles.pilotTextCol}>
+            {title ? <Text style={[styles.pilotTitle, { color: suitColor + 'CC' }]} numberOfLines={1}>{title}</Text> : null}
+            <Text style={[styles.pilotName, { color: Colors.textPrimary }]} numberOfLines={1}>
+              {displayName ?? '—'}
+            </Text>
+          </View>
+          {level !== undefined ? (
+            <View style={[styles.levelChip, { borderColor: suitColor + '88' }]}>
+              <Text style={styles.levelChipLabel}>LVL</Text>
+              <Text style={[styles.levelChipValue, { color: suitColor }]}>{level}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
       <View style={styles.pillsRow}>
@@ -75,6 +89,7 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, 
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: Spacing.md,
+    paddingTop: 32,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
@@ -82,18 +97,55 @@ const styles = StyleSheet.create({
   pilotRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 4,
-    paddingBottom: 2,
+    paddingTop: 6,
+    paddingBottom: 4,
+    gap: 10,
   },
-  emblem: {
-    fontSize: Typography.sizes.xs,
+  emblemBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emblemGlyph: {
+    fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.bold,
+  },
+  pilotTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pilotTitle: {
+    fontSize: 9,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2.5,
   },
   pilotName: {
-    fontSize: Typography.sizes.xs,
+    fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.bold,
-    letterSpacing: 2,
-    color: Colors.textSecondary,
+    letterSpacing: 1,
+  },
+  levelChip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  levelChipLabel: {
+    fontSize: 9,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1.5,
+    color: Colors.textMuted,
+  },
+  levelChipValue: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    lineHeight: 18,
   },
   pillsRow: {
     flexDirection: 'row',

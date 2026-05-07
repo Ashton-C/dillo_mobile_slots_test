@@ -22,6 +22,7 @@ interface AuthState {
   displayName: string | null;
   avatarColor: string;
   avatarAccessory: string;
+  outpostColor: string;
   needsUsername: boolean;
   isLoading: boolean;
   error: string | null;
@@ -29,6 +30,7 @@ interface AuthState {
   setDisplayName: (name: string) => Promise<void>;
   setAvatarColor: (color: string) => Promise<void>;
   setAvatarAccessory: (accessory: string) => Promise<void>;
+  setOutpostColor: (color: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -36,6 +38,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   displayName: null,
   avatarColor: '#FF6B35',
   avatarAccessory: 'none',
+  outpostColor: '#9B59FF', // purple — Colors.accent
   needsUsername: false,
   isLoading: true,
   error: null,
@@ -80,6 +83,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             displayName: profile.displayName,
             avatarColor: profile.avatarColor,
             avatarAccessory: profile.avatarAccessory,
+            outpostColor: profile.outpostColor,
             needsUsername: !profile.hasSetUsername,
             isLoading: false,
             error: null,
@@ -148,12 +152,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     await updateDoc(doc(db, 'users', uid), { avatarAccessory: accessory, updatedAt: serverTimestamp() });
     set({ avatarAccessory: accessory });
   },
+
+  async setOutpostColor(color) {
+    set({ outpostColor: color });
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    await updateDoc(doc(db, 'users', uid), { outpostColor: color, updatedAt: serverTimestamp() }).catch(console.error);
+  },
 }));
 
 interface UserProfile {
   displayName: string;
   avatarColor: string;
   avatarAccessory: string;
+  outpostColor: string;
   hasSetUsername: boolean;
 }
 
@@ -166,6 +178,7 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
       displayName: d.displayName ?? `Pilot_${user.uid.slice(0, 5)}`,
       avatarColor: d.avatarColor ?? '#FF6B35',
       avatarAccessory: d.avatarAccessory ?? 'none',
+      outpostColor: d.outpostColor ?? '#9B59FF',
       hasSetUsername: d.hasSetUsername ?? false,
     };
   }
@@ -190,5 +203,5 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     updatedAt: serverTimestamp(),
   });
 
-  return { displayName: defaultName, avatarColor: '#FF6B35', avatarAccessory: 'none', hasSetUsername: false };
+  return { displayName: defaultName, avatarColor: '#FF6B35', avatarAccessory: 'none', outpostColor: '#9B59FF', hasSetUsername: false };
 }
