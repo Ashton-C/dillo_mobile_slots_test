@@ -12,6 +12,7 @@ import {
   limit,
   query,
   orderBy,
+  where,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -103,20 +104,73 @@ export async function writePlayerIndex(
   await setDoc(ref, { uid, ...entry, updatedAt: serverTimestamp() }, { merge: true });
 }
 
-// Fetch ~5 random-ish nearby targets (excluding self).
+// Partial update — useful when only one field changes (e.g. outpostLevel after
+// an upgrade completes) and we don't want to require the caller to look up the
+// rest of the profile.
+export async function writePlayerIndexPartial(
+  uid: string,
+  partial: Partial<Omit<PlayerIndexEntry, 'uid' | 'updatedAt'>>,
+): Promise<void> {
+  const ref = doc(db, 'playerIndex', uid);
+  await setDoc(ref, { uid, ...partial, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+// Fetch up to `count` opponents in a level band around `selfOutpostLevel`.
+// Asymmetric on purpose — players can punch up further than they punch down.
+// If the tight band is sparse (<3 hits), retry with a wider band before
+// finally falling back to no filter so testers in low-population pools still
+// get matches.
 export async function fetchRadarTargets(
   selfUid: string,
+  selfOutpostLevel: number,
   count = 5,
 ): Promise<PlayerIndexEntry[]> {
   const ref = collection(db, 'playerIndex');
-  // No orderBy — avoids composite index requirement; simple limit + client filter.
-  const q = query(ref, limit(count + 10));
-  const snap = await getDocs(q);
-  const results: PlayerIndexEntry[] = [];
-  snap.forEach((d) => {
-    if (d.id !== selfUid) results.push(d.data() as PlayerIndexEntry);
-  });
-  return results.slice(0, count);
+
+  async function fetchBand(min: number, max: number): Promise<PlayerIndexEntry[]> {
+    const q = query(
+      ref,
+      where('outpostLevel', '>=', min),
+      where('outpostLevel', '<=', max),
+      limit(30),
+    );
+    const snap = await getDocs(q);
+    const out: PlayerIndexEntry[] = [];
+    snap.forEach((d) => {
+      if (d.id !== selfUid) out.push(d.data() as PlayerIndexEntry);
+    });
+    return out;
+  }
+
+  // Tight band: -2 / +3 levels.
+  let candidates = await fetchBand(
+    Math.max(1, selfOutpostLevel - 2),
+    selfOutpostLevel + 3,
+  );
+
+  // Widen if tight band is sparse.
+  if (candidates.length < 3) {
+    candidates = await fetchBand(
+      Math.max(1, selfOutpostLevel - 4),
+      selfOutpostLevel + 5,
+    );
+  }
+
+  // Last-ditch fallback so the radar isn't empty in dev / tiny pools.
+  if (candidates.length === 0) {
+    const q = query(ref, limit(count + 10));
+    const snap = await getDocs(q);
+    snap.forEach((d) => {
+      if (d.id !== selfUid) candidates.push(d.data() as PlayerIndexEntry);
+    });
+  }
+
+  // Shuffle then take `count` so repeat scans don't surface the same N.
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  return candidates.slice(0, count);
 }
 
 // Write a combat request (Cloud Function resolves it).

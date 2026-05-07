@@ -7,7 +7,8 @@ import {
   outpostUpgradeCost,
   outpostUpgradeDuration,
 } from '@/models/Habitat';
-import { writeHabitatState, HabitatSnapshot } from '@/services/FirestoreService';
+import { writeHabitatState, writePlayerIndexPartial, HabitatSnapshot } from '@/services/FirestoreService';
+import { auth } from '@/lib/firebase';
 
 interface HabitatState {
   habitatId: string | null;
@@ -114,6 +115,10 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
         const newOutpostLevel = activeBuildJob.targetLevel;
         set({ outpostLevel: newOutpostLevel, activeBuildJob: null, msUntilComplete: 0 });
         persist(habitatId, { outpostLevel: newOutpostLevel, activeBuildJob: null });
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          writePlayerIndexPartial(uid, { outpostLevel: newOutpostLevel }).catch(console.error);
+        }
       } else {
         const newLevels = {
           ...buildingLevels,

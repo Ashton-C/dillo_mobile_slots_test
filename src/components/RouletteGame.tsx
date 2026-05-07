@@ -18,16 +18,20 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 type BetType = 'EVEN' | 'SECTOR' | 'JACKPOT';
 type Phase = 'BET' | 'SPINNING' | 'DONE';
 
-const BET_CONFIGS: Record<BetType, { label: string; odds: string; segments: number; winPower: number; color: string; creditReward: number }> = {
-  EVEN:    { label: 'EVEN',    odds: '50%', segments: 6, winPower: 75,  color: Colors.primary,  creditReward: 150 },
-  SECTOR:  { label: 'SECTOR',  odds: '33%', segments: 4, winPower: 110, color: Colors.accent,   creditReward: 225 },
-  JACKPOT: { label: 'JACKPOT', odds: '17%', segments: 2, winPower: 145, color: Colors.credits,  creditReward: 350 },
+const BET_CONFIGS: Record<BetType, { label: string; odds: string; segments: number; winPower: number; color: string; lootHint: string }> = {
+  EVEN:    { label: 'EVEN',    odds: '42%', segments: 5, winPower: 75,  color: Colors.primary, lootHint: '5%'  },
+  SECTOR:  { label: 'SECTOR',  odds: '25%', segments: 3, winPower: 110, color: Colors.accent,  lootHint: '8%'  },
+  JACKPOT: { label: 'JACKPOT', odds: '8%',  segments: 1, winPower: 145, color: Colors.credits, lootHint: '12%' },
 };
 
-// 12 segments: EVEN×6, SECTOR×4, JACKPOT×2
-const SEGMENT_ZONES: BetType[] = [
-  'EVEN', 'EVEN', 'SECTOR', 'EVEN', 'SECTOR', 'EVEN',
-  'EVEN', 'JACKPOT', 'EVEN', 'SECTOR', 'EVEN', 'JACKPOT',
+// 12 segments: EVEN×5, SECTOR×3, JACKPOT×1, MISS×3.
+// MISS-only segments are decoration where landing is always a loss; they
+// shrink the win-zone footprint so visually the wheel matches the new odds.
+const MISS = 'MISS' as const;
+type SegmentZone = BetType | typeof MISS;
+const SEGMENT_ZONES: SegmentZone[] = [
+  'EVEN', 'SECTOR', 'EVEN', MISS, 'EVEN', 'JACKPOT',
+  'EVEN', MISS, 'SECTOR', 'EVEN', MISS, 'SECTOR',
 ];
 
 const WHEEL_SIZE   = 240;
@@ -77,8 +81,8 @@ function WheelView({
         const x = WHEEL_CENTER + Math.cos(a) * DOT_RADIUS - DOT_SIZE / 2;
         const y = WHEEL_CENTER + Math.sin(a) * DOT_RADIUS - DOT_SIZE / 2;
         const isLanded = landedIdx === i;
-        const color = BET_CONFIGS[zone].color;
-        const isHighlighted = activeBet === zone;
+        const color = zone === MISS ? Colors.textMuted : BET_CONFIGS[zone].color;
+        const isHighlighted = zone !== MISS && activeBet === zone;
         return (
           <View
             key={i}
@@ -191,7 +195,7 @@ function BetButtons({
           >
             <Text style={[betStyles.label, { color: cfg.color }]}>{cfg.label}</Text>
             <Text style={betStyles.oddsText}>{cfg.odds}</Text>
-            <Text style={[betStyles.credit, { color: cfg.color }]}>+{cfg.creditReward} CR ◈</Text>
+            <Text style={[betStyles.credit, { color: cfg.color }]}>{cfg.lootHint} LOOT</Text>
           </Pressable>
         );
       })}
@@ -342,7 +346,7 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
           )}
 
           <Text style={styles.rewardBanner}>
-            EVEN 50% → 150 CR  ·  SECTOR 33% → 225 CR  ·  JACKPOT 17% → 350 CR
+            EVEN 42%  ·  SECTOR 25%  ·  JACKPOT 8%  ·  loot scales with target wallet
           </Text>
 
           <View style={styles.wheelWrap}>
@@ -362,9 +366,9 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
               <View style={styles.powerChip}>
                 {won ? (
                   <>
-                    <Text style={styles.powerChipLabel}>WON</Text>
-                    <Text style={[styles.powerChipVal, { color: Colors.success, fontSize: Typography.sizes.md }]}>
-                      +{activeBetCfg?.creditReward ?? 0} CR ◈
+                    <Text style={styles.powerChipLabel}>POWER</Text>
+                    <Text style={[styles.powerChipVal, { color: Colors.success, fontSize: Typography.sizes.lg }]}>
+                      {activeBetCfg?.winPower ?? 0}
                     </Text>
                   </>
                 ) : (

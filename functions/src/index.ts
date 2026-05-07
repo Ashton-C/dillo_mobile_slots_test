@@ -23,6 +23,7 @@ interface UserDoc {
   level: number;
   displayName: string;
   avatarColor: string;
+  activeDrones?: { type?: string }[];
 }
 
 interface HabitatDoc {
@@ -38,10 +39,41 @@ interface HabitatDoc {
 // ---------------------------------------------------------------------------
 
 const VAULT_REDUCTION_PER_LEVEL = 0.05; // 5% credit loss reduction per VAULT level
-const VALID_POWERS = new Set([8, 75, 110, 145]);
+// Roulette: 8/75/110/145. Blackjack adds 90/130. Anything else is rejected.
+const VALID_POWERS = new Set([8, 75, 90, 110, 130, 145]);
+
+// Loot tier thresholds (matched to attackerPower bands). Used for both BREACH
+// roulette and EXTRACTION blackjack outputs.
+const LOOT_TIER = {
+  1: { pct: 0.05, floor: 100, ceil: 250 }, // power 75 / 90  (EVEN-ish)
+  2: { pct: 0.08, floor: 150, ceil: 400 }, // power 110      (SECTOR-ish)
+  3: { pct: 0.12, floor: 250, ceil: 700 }, // power 130 / 145 (JACKPOT)
+} as const;
+
+function powerToTier(power: number): 1 | 2 | 3 {
+  if (power >= 130) return 3;
+  if (power >= 100) return 2;
+  return 1;
+}
 
 function vaultReduction(vaultLevel: number): number {
   return Math.min(0.75, vaultLevel * VAULT_REDUCTION_PER_LEVEL);
+}
+
+// Anomaly raid-loot bonus: only RAID_SHADOW (+50%) and VOID_STORM (+20%)
+// touch raid math today. Read here so the bonus moves from "client UI flavor"
+// to actually-applied combat math.
+function anomalyRaidBonus(anomalyId: string | undefined): number {
+  if (anomalyId === 'RAID_SHADOW') return 0.5;
+  if (anomalyId === 'VOID_STORM')  return 0.2;
+  return 0;
+}
+
+// RAIDER drone (if currently active for the attacker) → +40% raid loot.
+// Other drones don't affect raid math.
+function attackerDroneRaidBonus(activeDrones: { type?: string }[] | undefined): number {
+  if (!activeDrones?.length) return 0;
+  return activeDrones.some((d) => d.type === 'RAIDER') ? 0.4 : 0;
 }
 
 async function getHabitatForUser(uid: string): Promise<{ id: string; data: HabitatDoc } | null> {
@@ -166,20 +198,44 @@ export const resolveCombat = functions.firestore
       }
 
       // --- Compute defender power ---
+      // Bumped from `outpostLevel * 10 + rand(0..49)` to `*11 + 25 + rand(0..40)`
+      // so even outpost-1 defenders sit at 36..76 instead of 10..59 — the
+      // EVEN-tier 75 power no longer auto-wins.
       const defenderOutpostLevel = defenderHabitat?.data.outpostLevel ?? 1;
-      const defenderPower = defenderOutpostLevel * 10 + Math.floor(Math.random() * 50);
+      const defenderPower =
+        defenderOutpostLevel * 11 + 25 + Math.floor(Math.random() * 41);
 
       const attackerWon = attackerPower > defenderPower;
 
       if (attackerWon) {
-        // --- Tiered loot based on roulette bet tier ---
-        const creditsGained   = attackerPower >= 130 ? 350 : attackerPower >= 100 ? 225 : 150;
-        const creditsLostBase = attackerPower >= 130 ? 400 : attackerPower >= 100 ? 270 : 200;
-        const reduction = vaultReduction(vaultLevel);
-        const creditsLost = Math.round(creditsLostBase * (1 - reduction));
+        // --- Wallet-percent loot, closed-loop (defender loses == attacker gains) ---
+        const tier = powerToTier(attackerPower);
+        const { pct, floor, ceil } = LOOT_TIER[tier];
 
-        const defenderNewCredits  = Math.max(0, defender.credits - creditsLost);
-        const attackerNewCredits  = attacker.credits + creditsGained;
+        // Anomaly + drone bonuses come from server-authoritative reads.
+        const [anomalySnap] = await Promise.all([
+          db.doc('anomalies/current').get(),
+        ]);
+        const anomalyId = anomalySnap.exists ? (anomalySnap.data()?.id as string | undefined) : undefined;
+        const totalRaidBonus = Math.min(
+          1.0,
+          anomalyRaidBonus(anomalyId) + attackerDroneRaidBonus(attacker.activeDrones),
+        );
+
+        const baseFromWallet = defender.credits * pct;
+        const baseClamped    = Math.max(floor, Math.min(ceil, baseFromWallet));
+        const baseBonused    = Math.floor(baseClamped * (1 + totalRaidBonus));
+
+        const reduction   = vaultReduction(vaultLevel);
+        const creditsLost = Math.floor(baseBonused * (1 - reduction));
+        // Closed loop: attacker receives exactly what defender lost. No minting.
+        // Cap the actual transfer at the defender's wallet so we never withdraw
+        // more than they had — VAULT-reduced loss already kept this realistic
+        // for whales, but a near-broke defender shouldn't pay more than they own.
+        const transferred = Math.min(creditsLost, defender.credits);
+
+        const defenderNewCredits = defender.credits - transferred;
+        const attackerNewCredits = attacker.credits + transferred;
 
         await Promise.all([
           db.doc(`users/${defenderUid}`).update({ credits: defenderNewCredits }),
@@ -189,23 +245,25 @@ export const resolveCombat = functions.firestore
             fromUid: attackerUid,
             fromDisplayName: attacker.displayName,
             attackerWon: true,
-            creditsLost,
+            creditsLost: transferred,
           }),
           writeEvent(attackerUid, {
             type: 'COMBAT_RESULT',
             fromUid: defenderUid,
             fromDisplayName: defender.displayName,
             attackerWon: true,
-            creditsGained,
+            creditsGained: transferred,
           }),
         ]);
 
         await requestRef.update({
           status: 'RESOLVED',
           outcome: 'ATTACKER_WON',
-          creditsLost,
-          creditsGained,
+          creditsLost: transferred,
+          creditsGained: transferred,
           vaultReduction: reduction,
+          anomalyBonus: anomalyRaidBonus(anomalyId),
+          droneBonus: attackerDroneRaidBonus(attacker.activeDrones),
         });
       } else {
         // Attacker lost — no credit change
