@@ -101,9 +101,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   iconLabel: {
-    fontSize: Typography.sizes.xs,
+    fontSize: 11,
     fontWeight: Typography.weights.bold,
-    letterSpacing: 1,
     color: Colors.textMuted,
   },
   iconLabelActive: {

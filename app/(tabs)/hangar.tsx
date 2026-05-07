@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
 import { soundService } from '@/services/SoundService';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
@@ -121,7 +122,6 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
 }
 
 export default function RadarScreen() {
-  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const { intrusions, extractions, subtractResources } = useGameStore();
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
@@ -192,6 +192,9 @@ export default function RadarScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
       {/* Header */}
       <LinearGradient
         colors={[Colors.danger + '22', Colors.accent + '11', 'transparent']}
@@ -316,12 +319,6 @@ export default function RadarScreen() {
         combatType={combatType}
         onClose={handleMiniGameClose}
         onResult={handleMiniGameResult}
-      />
-
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
       />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="WIRE LEGEND" accentColor={Colors.danger}>
@@ -570,5 +567,4 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: Spacing.xs,
   },
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -20,6 +20,7 @@ import { CosmeticCategoryGrid } from '@/components/CosmeticCategoryGrid';
 import { CosmeticPurchaseModal } from '@/components/CosmeticPurchaseModal';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const OUTPOST_COLORS = [
@@ -45,7 +46,6 @@ const CUSTOMIZE_CATEGORIES: { category: CosmeticCategory; label: string }[] = [
 function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
-  const insets = useSafeAreaInsets();
   const { displayName, avatarColor, avatarAccessory, outpostColor, setDisplayName, setOutpostColor } = useAuthStore();
   const activeNameplate = useCosmeticsStore((s) => s.active.NAMEPLATE);
   const activeEmblem    = useCosmeticsStore((s) => s.active.EMBLEM);
@@ -81,6 +81,9 @@ export default function PilotScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
       <ScrollView contentContainerStyle={styles.scroll}>
 
         {/* Avatar section with gradient backdrop */}
@@ -212,12 +215,6 @@ export default function PilotScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
-      />
 
       {/* Customize modal */}
       <Modal visible={customizeVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setCustomizeVisible(false)}>
@@ -644,5 +641,4 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     paddingVertical: 6,
   },
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

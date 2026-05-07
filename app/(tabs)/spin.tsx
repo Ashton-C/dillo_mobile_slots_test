@@ -17,7 +17,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
-import { useAuthStore } from '@/store/useAuthStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { BACKGROUND_TOKENS } from '@/services/CosmeticsService';
@@ -33,6 +32,7 @@ import { OnboardingModal } from '@/components/OnboardingModal';
 import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { TooltipPopover } from '@/components/TooltipPopover';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { soundService } from '@/services/SoundService';
 import { OddsModal } from '@/components/OddsModal';
@@ -94,7 +94,6 @@ export default function SpinScreen() {
     spin, setRiftTier, activateOverclock, activateSignalBoost,
   } = useGameStore();
 
-  const { displayName } = useAuthStore();
   const latestEvent = useEventStore((s) => s.events[0]);
   const generatorLevel  = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
   const barracksLevel   = useHabitatStore((s) => s.buildingLevels.BARRACKS  ?? 0);
@@ -328,6 +327,25 @@ export default function SpinScreen() {
 
       <Animated.View style={[{ flex: 1 }, shakeStyle]}>
 
+      <TopBar
+        right={
+          <>
+            <IconButton glyph="◈" onPress={() => setReelCustomizeVisible(true)} />
+            <IconButton glyph="%" onPress={() => setOddsVisible(true)} />
+            <IconButton
+              glyph={muted ? '✕' : '♪'}
+              active={!muted}
+              onPress={() => {
+                const next = !muted;
+                setMuted(next);
+                void soundService.setMuted(next);
+              }}
+            />
+            <IconButton glyph="?" onPress={() => setLegendVisible(true)} />
+          </>
+        }
+      />
+
       <LinearGradient
         colors={bgTokens.gradientColors as [string, string, string]}
         start={{ x: 0, y: 0 }}
@@ -339,8 +357,6 @@ export default function SpinScreen() {
           raids={raids}
           shields={shields}
           spinsRemaining={spinsRemaining}
-          displayName={displayName ?? undefined}
-          level={level}
           style={styles.resourceBarTransparent}
         />
       </LinearGradient>
@@ -507,21 +523,6 @@ export default function SpinScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-
-      <View style={[styles.iconButtonRow, { top: insets.top + 6 }]} pointerEvents="box-none">
-        <IconButton glyph="◈" onPress={() => setReelCustomizeVisible(true)} />
-        <IconButton glyph="%" onPress={() => setOddsVisible(true)} />
-        <IconButton
-          glyph={muted ? '✕' : '♪'}
-          active={!muted}
-          onPress={() => {
-            const next = !muted;
-            setMuted(next);
-            void soundService.setMuted(next);
-          }}
-        />
-        <IconButton glyph="?" onPress={() => setLegendVisible(true)} />
-      </View>
 
       {/* Reels customize modal */}
       <Modal visible={reelCustomizeVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setReelCustomizeVisible(false)}>
@@ -826,14 +827,6 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: Colors.accent,
     lineHeight: 56,
-  },
-
-  iconButtonRow: {
-    position: 'absolute',
-    right: Spacing.md,
-    flexDirection: 'row',
-    gap: Spacing.xs,
-    zIndex: 50,
   },
 
   riftModalBackdrop: {

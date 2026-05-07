@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Pressable, Modal, FlatList,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useGameStore } from '@/store/useGameStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { AdWatchModal } from '@/components/AdWatchModal';
 import { adsService, ADS_AVAILABLE } from '@/services/AdsService';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
@@ -167,7 +168,6 @@ function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => vo
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function StoreScreen() {
-  const insets = useSafeAreaInsets();
   const { grantResources, subtractCredits, credits } = useGameStore();
   const { buy: buyCosmetic, equip: equipCosmetic, unequip: unequipCosmetic, isOwned, getActive, load: loadCosmetics } = useCosmeticsStore();
 
@@ -296,6 +296,9 @@ export default function StoreScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
       <LinearGradient
         colors={[Colors.credits + '22', Colors.primary + '11', 'transparent']}
         start={{ x: 0, y: 0 }}
@@ -567,12 +570,6 @@ export default function StoreScreen() {
         </View>
       )}
 
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
-      />
-
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="STORE LEGEND" accentColor={Colors.credits}>
         <LegendSection label="REWARDED ADS" />
         <LegendRow left="WATCH AD" right="Free reward · cooldown locked" color={Colors.success} />
@@ -690,6 +687,4 @@ const styles = StyleSheet.create({
 
   toast:     { position: 'absolute', bottom: 80, left: Spacing.md, right: Spacing.md, backgroundColor: Colors.surfaceElevated, borderColor: Colors.success, borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, alignItems: 'center' },
   toastText: { fontSize: Typography.sizes.xs, color: Colors.success, letterSpacing: 2, fontWeight: Typography.weights.bold },
-
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

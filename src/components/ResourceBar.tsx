@@ -54,7 +54,7 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, 
 
   return (
     <View style={[styles.container, { backgroundColor: hud.backgroundColor, borderBottomColor: hud.borderColor }, style]}>
-      {(displayName || title) ? (
+      {displayName ? (
         <View style={styles.pilotRow}>
           {emblem ? (
             <View style={[styles.emblemBadge, { borderColor: suitColor + 'AA', backgroundColor: suitColor + '1A' }]}>
