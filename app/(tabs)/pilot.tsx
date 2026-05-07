@@ -36,11 +36,13 @@ const OUTPOST_COLORS = [
 
 // Pilot-related cosmetic categories shown in the Customize modal
 const CUSTOMIZE_CATEGORIES: { category: CosmeticCategory; label: string }[] = [
-  { category: 'HELMET',    label: 'HELMETS' },
-  { category: 'FRAME',     label: 'AVATAR FRAMES' },
-  { category: 'NAMEPLATE', label: 'NAMEPLATES' },
-  { category: 'EMBLEM',    label: 'EMBLEMS' },
-  { category: 'TITLE',     label: 'TITLES' },
+  { category: 'SUIT_COLOR', label: 'SUITS' },
+  { category: 'HELMET',     label: 'HELMETS' },
+  { category: 'ACCESSORY',  label: 'ACCESSORIES' },
+  { category: 'FRAME',      label: 'AVATAR FRAMES' },
+  { category: 'NAMEPLATE',  label: 'NAMEPLATES' },
+  { category: 'EMBLEM',     label: 'EMBLEMS' },
+  { category: 'TITLE',      label: 'TITLES' },
 ];
 
 function xpToNextLevel(level: number) { return 100 * level; }

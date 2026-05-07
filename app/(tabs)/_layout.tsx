@@ -10,6 +10,8 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
         style={[styles.iconLabel, focused && styles.iconLabelActive]}
         numberOfLines={1}
         allowFontScaling={false}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
       >
         {label}
       </Text>
@@ -96,14 +98,17 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     width: '100%',
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 8,
   },
   iconLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: Typography.weights.bold,
     color: Colors.textMuted,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   iconLabelActive: {
     color: Colors.primary,

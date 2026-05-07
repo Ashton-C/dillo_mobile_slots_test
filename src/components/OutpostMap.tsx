@@ -81,92 +81,129 @@ interface OutpostSpireProps {
   pulsing: boolean;
 }
 
+const SQRT3_2 = Math.sqrt(3) / 2;
+
 function OutpostSpire({ size, color, level, pulsing }: OutpostSpireProps) {
-  const sway = useSharedValue(0);
-  const lift = useSharedValue(0);
+  const sway  = useSharedValue(0);
+  const pulse = useSharedValue(0);
 
   useEffect(() => {
     sway.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1,  { duration: 2400, easing: Easing.inOut(Easing.sin) }),
         withTiming(-1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
       ),
       -1,
     );
-    lift.value = withRepeat(
+    pulse.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
       ),
       -1,
     );
   }, []);
 
   const swayStyle = useAnimatedStyle(() => ({
-    transform: [
-      { rotateZ: `${sway.value * 3}deg` },
-      { translateY: -lift.value * 2 },
-    ],
+    transform: [{ rotateZ: `${sway.value * 2}deg` }],
   }));
 
-  const tier = (widthPct: number, gradient: [string, string], translateY: number, key: string) => {
-    const w = size * widthPct;
-    const h = w * 0.52;
-    return (
-      <View
-        key={key}
-        style={[
-          styles.spireTier,
-          {
-            width: w,
-            height: h,
-            top: size / 2 - h / 2 + translateY,
-            left: size / 2 - w / 2,
-          },
-        ]}
-        pointerEvents="none"
-      >
-        <View style={[styles.spireDiamond, { width: w, height: h }]}>
-          <LinearGradient
-            colors={gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[StyleSheet.absoluteFill, { borderColor: color + 'CC', borderWidth: 1.5 }]}
-          />
-        </View>
-      </View>
-    );
-  };
+  const beaconStyle = useAnimatedStyle(() => ({
+    opacity:   0.5 + pulse.value * 0.5,
+    transform: [{ scale: 1 + pulse.value * 0.5 }],
+  }));
+
+  const baseW = size * 0.86;
+  const midW  = size * 0.62;
+  const topW  = size * 0.42;
+  const baseH = baseW * SQRT3_2;
+  const midH  = midW  * SQRT3_2;
+  const topH  = topW  * SQRT3_2;
+
+  const baseBottom = 0;
+  const midBottom  = baseH * 0.55;
+  const topBottom  = midBottom + midH * 0.55;
+  const apexBottom = topBottom + topH * 0.70;
 
   return (
     <Animated.View
       pointerEvents="none"
       style={[
         StyleSheet.absoluteFill,
-        { alignItems: 'center', justifyContent: 'center' },
+        { alignItems: 'center', justifyContent: 'flex-end' },
         swayStyle,
       ]}
     >
-      <View style={[styles.spireGlow, {
-        width: size * 1.3,
-        height: size * 1.3,
-        borderRadius: size * 0.65,
-        backgroundColor: color + (pulsing ? '33' : '18'),
-      }]} />
+      <View
+        style={[
+          styles.spireGlow,
+          {
+            width: size * 1.25,
+            height: size * 1.25,
+            borderRadius: size * 0.625,
+            bottom: -size * 0.05,
+            backgroundColor: color + (pulsing ? '3A' : '1A'),
+          },
+        ]}
+      />
 
-      {tier(0.95, [Colors.gradientStart + 'F0', Colors.gradientEnd + 'C0'], size * 0.30,  'base')}
-      {tier(0.72, [Colors.gradientEnd + 'E8', Colors.primary + 'C8'],      size * 0.06,  'mid')}
-      {tier(0.50, [Colors.primary + 'F0', Colors.gradientEnd + 'D0'],     -size * 0.16, 'top')}
+      <View style={[styles.spireTierWrap, { bottom: baseBottom }]}>
+        <View
+          style={{
+            position: 'absolute',
+            bottom: -4,
+            width: baseW * 0.78,
+            height: 5,
+            backgroundColor: color + '55',
+            borderRadius: 3,
+          }}
+        />
+        <HexFrame size={baseW} color={color} thickness={2} fillColor={color + '38'} />
+      </View>
 
-      <View style={[styles.spireApex, {
-        width: size * 0.32,
-        height: size * 0.32,
-        borderRadius: size * 0.16,
-        top: size * 0.10,
-        borderColor: color,
-        backgroundColor: color + '22',
-      }]}>
-        <Text style={[styles.spireLevel, { color }]}>{level}</Text>
+      <View style={[styles.spireTierWrap, { bottom: midBottom }]}>
+        <View
+          style={{
+            position: 'absolute',
+            bottom: -3,
+            width: midW * 0.78,
+            height: 4,
+            backgroundColor: color + '66',
+            borderRadius: 2,
+          }}
+        />
+        <HexFrame size={midW} color={color} thickness={2} fillColor={color + '55'} />
+      </View>
+
+      <View
+        style={{
+          position: 'absolute',
+          bottom: topBottom,
+          width: topW,
+          height: topH,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <HexFrame size={topW} color={color} thickness={2.5} fillColor={color + '70'} />
+        <Text style={[styles.spireLevel, { color: Colors.textPrimary }]}>{level}</Text>
+      </View>
+
+      <View style={[styles.spireTierWrap, { bottom: apexBottom }]}>
+        <View style={{ width: 1, height: 9, backgroundColor: color }} />
+        <Animated.View
+          style={[
+            {
+              position: 'absolute',
+              bottom: 7,
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: color,
+            },
+            beaconStyle,
+          ]}
+        />
       </View>
     </Animated.View>
   );
@@ -395,9 +432,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   nodeLabel: {
-    fontSize: Typography.sizes.md,
+    fontSize: 15,
     letterSpacing: 1.5,
     marginTop: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: Colors.background + 'E6',
+    borderRadius: 6,
+    overflow: 'hidden',
     fontWeight: Typography.weights.bold,
   },
   buildTimer: {
@@ -418,20 +460,12 @@ const styles = StyleSheet.create({
   spireGlow: {
     position: 'absolute',
   },
-  spireTier: {
+  spireTierWrap: {
     position: 'absolute',
-  },
-  spireDiamond: {
-    transform: [{ rotateZ: '45deg' }, { scaleY: 0.55 }],
-    overflow: 'hidden',
-  },
-  spireApex: {
-    position: 'absolute',
-    borderWidth: 1.5,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   spireLevel: {
+    position: 'absolute',
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.bold,
     letterSpacing: 1,

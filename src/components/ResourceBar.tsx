@@ -89,7 +89,7 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, 
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: Spacing.md,
-    paddingTop: 32,
+    paddingTop: 4,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,

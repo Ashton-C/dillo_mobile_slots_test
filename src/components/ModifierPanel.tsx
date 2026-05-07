@@ -196,18 +196,19 @@ export function ModifierPanel() {
 const styles = StyleSheet.create({
   panel: {
     marginHorizontal: Spacing.md,
-    marginTop: Spacing.sm,
-    padding: Spacing.sm,
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
     backgroundColor: Colors.surfaceElevated,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    gap: 6,
+    gap: 2,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: 0,
   },
   panelTitle: {
     fontSize: Typography.sizes.xs,

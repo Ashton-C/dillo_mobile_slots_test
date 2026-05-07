@@ -13,6 +13,7 @@ import Animated, {
 import { BUTTON_SKIN_TOKENS } from '@/services/CosmeticsService';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { soundService } from '@/services/SoundService';
+import { HexFrame } from '@/components/HexFrame';
 import { Colors, Typography, BorderRadius } from '@/constants/theme';
 
 interface Props {
@@ -24,6 +25,8 @@ interface Props {
 export function SpinButton({ onPress, disabled, isSpinning }: Props) {
   const activeSkinId = useCosmeticsStore((s) => s.active['SPIN_BUTTON'] ?? 'btn_default');
   const skin = BUTTON_SKIN_TOKENS[activeSkinId] ?? BUTTON_SKIN_TOKENS.btn_default;
+  const isHexShape = activeSkinId === 'btn_hexagon';
+  const fillColor = (disabled || isSpinning) ? skin.dimColor : skin.color;
 
   const scale = useSharedValue(1);
   const pulseScale = useSharedValue(1);
@@ -71,17 +74,41 @@ export function SpinButton({ onPress, disabled, isSpinning }: Props) {
       <Animated.View style={[styles.glowRing, { backgroundColor: skin.glowColor + '55' }, pulseStyle]} />
       {/* Button */}
       <Animated.View style={[styles.buttonContainer, buttonStyle]}>
-        <Pressable
-          onPress={handlePress}
-          disabled={disabled || isSpinning}
-          style={[styles.button, { backgroundColor: skin.color, shadowColor: skin.glowColor }, (disabled || isSpinning) && { backgroundColor: skin.dimColor }]}
-        >
-          {isSpinning ? (
-            <ActivityIndicator color={Colors.textPrimary} size="small" />
-          ) : (
-            <Text style={styles.label}>SPIN</Text>
-          )}
-        </Pressable>
+        {isHexShape ? (
+          <Pressable
+            onPress={handlePress}
+            disabled={disabled || isSpinning}
+            style={styles.hexHit}
+          >
+            <View style={styles.hexFillLayer} pointerEvents="none">
+              <HexFrame
+                size={140}
+                color={skin.glowColor}
+                thickness={3}
+                fillColor={fillColor}
+              />
+            </View>
+            <View style={styles.hexLabelLayer} pointerEvents="none">
+              {isSpinning ? (
+                <ActivityIndicator color={Colors.textPrimary} size="small" />
+              ) : (
+                <Text style={styles.label}>SPIN</Text>
+              )}
+            </View>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={handlePress}
+            disabled={disabled || isSpinning}
+            style={[styles.button, { backgroundColor: skin.color, shadowColor: skin.glowColor }, (disabled || isSpinning) && { backgroundColor: skin.dimColor }]}
+          >
+            {isSpinning ? (
+              <ActivityIndicator color={Colors.textPrimary} size="small" />
+            ) : (
+              <Text style={styles.label}>SPIN</Text>
+            )}
+          </Pressable>
+        )}
       </Animated.View>
     </View>
   );
@@ -126,5 +153,25 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
     letterSpacing: 4,
+  },
+  hexHit: {
+    width: 140,
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hexFillLayer: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hexLabelLayer: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
