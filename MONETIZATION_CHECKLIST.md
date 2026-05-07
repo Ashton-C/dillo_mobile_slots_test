@@ -23,18 +23,32 @@ for the server-only ones) for cloud builds.
 
 ## 2. RevenueCat
 
+RevenueCat hands you several different keys — they're **not interchangeable**:
+
+| Key style | Where it lives | Used for |
+|---|---|---|
+| `appl_…` | `.env.local` → `REVENUECAT_PUBLIC_KEY_IOS` | iOS client SDK |
+| `goog_…` | `.env.local` → `REVENUECAT_PUBLIC_KEY_ANDROID` | Android client SDK |
+| `sk_…` or `test_…` | Firebase Functions secret `REVENUECAT_SECRET_KEY` | Server-side REST calls (currently unused, kept for future use) |
+
+If you accidentally paste a `sk_…` / `test_…` key into `REVENUECAT_PUBLIC_KEY_*`, the SDK will refuse to configure and you'll be stuck in stub mode. The reverse (a public key in the secret slot) leaks nothing but won't authenticate server calls. **Always copy from "Public app-specific API keys" → the platform row.**
+
 - [ ] Sign up at revenuecat.com, create project "Reelwright".
 - [ ] Add **iOS app** with bundle id `com.reelwright.app`.
 - [ ] Add **Android app** with package `com.reelwright.app`.
-- [ ] Copy iOS public SDK key → `.env.local`: `REVENUECAT_PUBLIC_KEY_IOS`
-- [ ] Copy Android public SDK key → `.env.local`: `REVENUECAT_PUBLIC_KEY_ANDROID`
-- [ ] Copy the **secret API key** (server side) AND a self-generated webhook
-      auth token, then store both as Firebase Functions secrets:
+- [ ] Copy iOS public SDK key (`appl_…`) → `.env.local`: `REVENUECAT_PUBLIC_KEY_IOS`
+- [ ] Copy Android public SDK key (`goog_…`) → `.env.local`: `REVENUECAT_PUBLIC_KEY_ANDROID`
+- [ ] Copy the **secret API key** (`sk_…` / `test_…`) → Firebase Functions secret:
   ```
   firebase functions:secrets:set REVENUECAT_SECRET_KEY
-  # generate any random string; you'll paste this in step 7 below
+  ```
+- [ ] Generate your own webhook auth token (any random string — `openssl rand -hex 32`
+      is what I used) → Firebase Functions secret AND the RC webhook config:
+  ```
   firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH
   ```
+  Same value goes into the RC dashboard webhook's Authorization header
+  (prefixed with `Bearer `) in step 7.
 
 ## 3. App Store Connect — IAP products
 
@@ -130,6 +144,44 @@ Connect / Play Console; the client will pick it up on next launch.
 - [ ] App Store Review Notes: include sandbox tester credentials and test plan ("Tap STORE → POCKET → confirm IAP → expect 1,000 credits added").
 - [ ] Privacy nutrition labels: declare ads + analytics + IAP per iOS.
 - [ ] Google Play Data Safety: same.
+
+## 11. RevenueCat prebuilt UI (Customer Center + Paywall)
+
+The app pulls in `react-native-purchases-ui` for two prebuilt screens.
+
+**Customer Center.** Replaces the old hand-rolled "RESTORE PURCHASES" button.
+The Store screen now ships a "MANAGE PURCHASES" button that calls
+`iapService.presentCustomerCenter()` — handles restore, refund requests, manage
+subscriptions, and the missing-purchase flow Apple requires. Falls back to
+plain `restore()` when the UI module isn't loaded (Expo Go).
+
+- [ ] In RC dashboard → Customer Center → enable for the project.
+- [ ] Customize the Customer Center theme (logo, support email, FAQ entries) — RC's defaults are fine but a quick branding pass costs nothing.
+- [ ] On a TestFlight / Internal Testing build: tap MANAGE PURCHASES, verify
+      the native sheet appears with your sandbox purchases listed and a
+      working "Request a refund" entry on iOS.
+
+**Paywall.** Hooked up via `iapService.presentPaywall({ offeringId })` and
+`iapService.presentPaywallIfNeeded(entitlementId)`. **Not currently triggered
+anywhere in the app** because Reelwright is consumables-only and RC's paywall
+UI is optimised for subscription upsells. When you add a "Reelwright Pro"
+tier (battle pass, ad-free toggle, perma-2x credits, etc.), wire it like:
+
+```ts
+// somewhere reachable from a "Go Pro" CTA:
+const result = await iapService.presentPaywallIfNeeded('pro');
+if (result === 'PURCHASED' || result === 'RESTORED') {
+  // entitlement is now active — read via iapService.hasActiveEntitlement('pro')
+}
+```
+
+The `customerInfo` listener (`iapService.onCustomerInfo`) will fire as soon
+as the entitlement state changes, so any feature gate that subscribes to it
+unlocks immediately — no manual refresh.
+
+- [ ] (Deferred) Decide on the subscription product / entitlement name.
+- [ ] (Deferred) Configure the Paywall template in RC → Paywalls → Editor.
+- [ ] (Deferred) Wire the trigger CTA.
 
 ## Open scope for later
 

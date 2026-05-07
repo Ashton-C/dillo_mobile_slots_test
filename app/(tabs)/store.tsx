@@ -267,10 +267,17 @@ export default function StoreScreen() {
     showToast(`Purchased: ${pack.label} — ${formatRewards(pack.rewards)}`);
   }
 
-  async function handleRestore() {
+  async function handleManagePurchases() {
+    // Customer Center is RC's prebuilt UI for restore + refund + manage subs.
+    // It's the modern Apple-approved equivalent of a hand-rolled Restore
+    // button — fall back to plain restore() when the UI package isn't loaded
+    // (Expo Go or pre-`npm install` builds).
+    const cc = await iapService.presentCustomerCenter();
+    if (cc.shown) return;
+
     const r = await iapService.restore();
     if (r.stubbed) {
-      showToast('Restore requires a production build');
+      showToast('Customer Center requires a production build');
       return;
     }
     showToast(
@@ -443,8 +450,8 @@ export default function StoreScreen() {
         <Text style={styles.sectionHeader}>RESOURCES</Text>
         {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
 
-        <Pressable onPress={handleRestore} style={styles.restoreBtn}>
-          <Text style={styles.restoreBtnText}>RESTORE PURCHASES</Text>
+        <Pressable onPress={handleManagePurchases} style={styles.restoreBtn}>
+          <Text style={styles.restoreBtnText}>MANAGE PURCHASES</Text>
         </Pressable>
 
         <Text style={styles.footnote}>

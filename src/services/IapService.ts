@@ -5,22 +5,6 @@ import { Platform } from 'react-native';
 // react-native-purchases ships a native module. Mirrors AdsService — lazy-require
 // so the rest of the app can boot without it and we can ship a stubbed dev flow.
 
-type PurchasesModule = {
-  configure: (config: { apiKey: string; appUserID?: string | null }) => void;
-  logIn:  (uid: string) => Promise<unknown>;
-  logOut: () => Promise<unknown>;
-  getOfferings: () => Promise<{ current?: { availablePackages: PurchasesPackage[] } | null }>;
-  getProducts: (ids: string[]) => Promise<PurchasesProduct[]>;
-  purchaseProduct: (productId: string) => Promise<{
-    customerInfo: unknown;
-    productIdentifier: string;
-    transactionIdentifier?: string;
-  }>;
-  restorePurchases: () => Promise<{ activeSubscriptions: string[]; allPurchasedProductIdentifiers?: string[] }>;
-  setLogLevel: (level: string) => void;
-  LOG_LEVEL: { DEBUG: string; INFO: string; WARN: string; ERROR: string; VERBOSE: string };
-};
-
 interface PurchasesPackage {
   identifier: string;
   product: PurchasesProduct;
@@ -34,7 +18,63 @@ interface PurchasesProduct {
   description: string;
 }
 
+interface PurchasesEntitlementInfo {
+  identifier: string;
+  isActive: boolean;
+  willRenew: boolean;
+  productIdentifier: string;
+  expirationDate: string | null;
+}
+
+export interface CustomerInfo {
+  originalAppUserId: string;
+  activeSubscriptions: string[];
+  allPurchasedProductIdentifiers: string[];
+  entitlements: { active: Record<string, PurchasesEntitlementInfo> };
+}
+
+type PurchasesModule = {
+  configure: (config: { apiKey: string; appUserID?: string | null }) => void;
+  logIn:  (uid: string) => Promise<unknown>;
+  logOut: () => Promise<unknown>;
+  getOfferings: () => Promise<{ current?: { availablePackages: PurchasesPackage[] } | null }>;
+  getProducts: (ids: string[]) => Promise<PurchasesProduct[]>;
+  purchaseProduct: (productId: string) => Promise<{
+    customerInfo: CustomerInfo;
+    productIdentifier: string;
+    transactionIdentifier?: string;
+  }>;
+  restorePurchases: () => Promise<CustomerInfo>;
+  getCustomerInfo: () => Promise<CustomerInfo>;
+  addCustomerInfoUpdateListener: (cb: (info: CustomerInfo) => void) => void;
+  removeCustomerInfoUpdateListener: (cb: (info: CustomerInfo) => void) => void;
+  setLogLevel: (level: string) => void;
+  LOG_LEVEL: { DEBUG: string; INFO: string; WARN: string; ERROR: string; VERBOSE: string };
+};
+
+type PurchasesUiModule = {
+  // Returns one of: PURCHASED / RESTORED / CANCELLED / ERROR / NOT_PRESENTED
+  presentPaywall: (opts?: {
+    offering?: { identifier: string };
+    displayCloseButton?: boolean;
+  }) => Promise<string>;
+  presentPaywallIfNeeded: (opts: {
+    requiredEntitlementIdentifier: string;
+    offering?: { identifier: string };
+    displayCloseButton?: boolean;
+  }) => Promise<string>;
+  presentCustomerCenter: () => Promise<void>;
+  PAYWALL_RESULT: {
+    NOT_PRESENTED: string;
+    ERROR: string;
+    CANCELLED: string;
+    PURCHASED: string;
+    RESTORED: string;
+  };
+};
+
 let Purchases: PurchasesModule | null = null;
+let PurchasesUi: PurchasesUiModule | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -46,7 +86,16 @@ try {
   // succeeded (with __DEV__-only credit/spin grants applied client-side).
 }
 
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('react-native-purchases-ui');
+  PurchasesUi = (mod.default ?? mod) as PurchasesUiModule;
+} catch {
+  // Optional — only needed for the prebuilt Paywall + Customer Center UI.
+}
+
 export const IAP_AVAILABLE = Purchases !== null;
+export const IAP_UI_AVAILABLE = PurchasesUi !== null;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 // Keys come from app.json -> extra.revenueCat. Until they're populated we
@@ -68,6 +117,15 @@ function getPublicKey(): string {
 
 let initialized = false;
 let initializedUid: string | null = null;
+let cachedCustomerInfo: CustomerInfo | null = null;
+const customerInfoSubscribers = new Set<(info: CustomerInfo) => void>();
+
+function notifySubscribers(info: CustomerInfo) {
+  cachedCustomerInfo = info;
+  for (const cb of customerInfoSubscribers) {
+    try { cb(info); } catch (e) { console.error('[iap] customer-info subscriber threw', e); }
+  }
+}
 
 async function init(uid: string): Promise<void> {
   if (!IAP_AVAILABLE || !Purchases) return;
@@ -80,8 +138,13 @@ async function init(uid: string): Promise<void> {
   if (!initialized) {
     Purchases.configure({ apiKey: key, appUserID: uid });
     if (__DEV__) Purchases.setLogLevel(Purchases.LOG_LEVEL.WARN);
+    Purchases.addCustomerInfoUpdateListener(notifySubscribers);
     initialized = true;
     initializedUid = uid;
+    // Prime the cache so consumers don't have to wait for the first event.
+    void Purchases.getCustomerInfo()
+      .then((info) => { cachedCustomerInfo = info; })
+      .catch((e) => console.error('[iap] initial getCustomerInfo failed', e));
     return;
   }
   // UID changed mid-session (sign-in/out flow) — switch the RC user.
@@ -90,6 +153,33 @@ async function init(uid: string): Promise<void> {
     catch (e) { console.error('[iap] logIn failed', e); }
     initializedUid = uid;
   }
+}
+
+// Subscribe to live CustomerInfo updates. RC fires this whenever a purchase
+// resolves, the entitlement set changes, or the app foregrounds and refreshes
+// the cached info from the backend. Returns the unsubscribe function and
+// invokes the callback synchronously with the cached value when available.
+function onCustomerInfo(cb: (info: CustomerInfo) => void): () => void {
+  customerInfoSubscribers.add(cb);
+  if (cachedCustomerInfo) cb(cachedCustomerInfo);
+  return () => { customerInfoSubscribers.delete(cb); };
+}
+
+async function getCustomerInfo(): Promise<CustomerInfo | null> {
+  if (!IAP_AVAILABLE || !Purchases || !initialized) return null;
+  if (cachedCustomerInfo) return cachedCustomerInfo;
+  try {
+    const info = await Purchases.getCustomerInfo();
+    cachedCustomerInfo = info;
+    return info;
+  } catch (e) {
+    console.error('[iap] getCustomerInfo failed', e);
+    return null;
+  }
+}
+
+function hasActiveEntitlement(entitlementId: string): boolean {
+  return !!cachedCustomerInfo?.entitlements?.active?.[entitlementId];
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -161,19 +251,92 @@ async function getLocalizedPrice(productId: string): Promise<string | null> {
   }
 }
 
-// Batch version for the store screen — fewer round trips than calling
-// getLocalizedPrice in a loop. Returns a sparse map (productId → priceString)
-// for whatever resolved; callers should fall back to baked-in prices for
-// missing entries. Empty object in stub mode.
+// Batch version for the store screen. Tries Offerings first (the modern,
+// dashboard-configurable RC pattern) and falls back to direct getProducts so
+// a missing or unconfigured Offering doesn't blank out prices. Returns a
+// sparse map (productId → priceString); callers should fall back to baked-in
+// prices for missing entries. Empty object in stub mode.
 async function getPrices(ids: string[]): Promise<Record<string, string>> {
   if (!IAP_AVAILABLE || !Purchases || !initialized || ids.length === 0) return {};
+  const out: Record<string, string> = {};
   try {
-    const products = await Purchases.getProducts(ids);
-    const out: Record<string, string> = {};
-    for (const p of products) out[p.identifier] = p.priceString;
-    return out;
+    const offerings = await Purchases.getOfferings();
+    const packages = offerings.current?.availablePackages ?? [];
+    for (const pkg of packages) {
+      out[pkg.product.identifier] = pkg.product.priceString;
+    }
   } catch {
-    return {};
+    // Offerings unavailable — fall through to getProducts.
+  }
+  const missing = ids.filter((id) => !(id in out));
+  if (missing.length === 0) return out;
+  try {
+    const products = await Purchases.getProducts(missing);
+    for (const p of products) out[p.identifier] = p.priceString;
+  } catch {
+    // Leave the gaps — callers use baked-in fallback.
+  }
+  return out;
+}
+
+// Present the prebuilt RC Paywall UI. Resolves to the result string —
+// 'PURCHASED', 'RESTORED', 'CANCELLED', 'ERROR', or 'NOT_PRESENTED'. The
+// purchase event still flows through addCustomerInfoUpdateListener and the
+// server webhook, so the only thing the call site needs to do is decide
+// what to show on success vs. cancel.
+async function presentPaywall(opts?: {
+  offeringId?: string;
+  displayCloseButton?: boolean;
+}): Promise<string> {
+  if (!IAP_UI_AVAILABLE || !PurchasesUi) {
+    if (__DEV__) console.log('[iap stub] presentPaywall', opts);
+    return 'NOT_PRESENTED';
+  }
+  try {
+    return await PurchasesUi.presentPaywall({
+      offering: opts?.offeringId ? { identifier: opts.offeringId } : undefined,
+      displayCloseButton: opts?.displayCloseButton ?? true,
+    });
+  } catch (e) {
+    console.error('[iap] presentPaywall failed', e);
+    return 'ERROR';
+  }
+}
+
+// Variant that no-ops when the user already holds an entitlement. Useful for
+// gating a feature ("Reelwright Pro") behind a one-tap upsell without
+// re-prompting players who already paid.
+async function presentPaywallIfNeeded(entitlementId: string, offeringId?: string): Promise<string> {
+  if (!IAP_UI_AVAILABLE || !PurchasesUi) {
+    if (__DEV__) console.log('[iap stub] presentPaywallIfNeeded', entitlementId);
+    return 'NOT_PRESENTED';
+  }
+  try {
+    return await PurchasesUi.presentPaywallIfNeeded({
+      requiredEntitlementIdentifier: entitlementId,
+      offering: offeringId ? { identifier: offeringId } : undefined,
+      displayCloseButton: true,
+    });
+  } catch (e) {
+    console.error('[iap] presentPaywallIfNeeded failed', e);
+    return 'ERROR';
+  }
+}
+
+// Apple-mandated equivalent of "Restore Purchases" plus refund / manage-subs
+// flow. Replaces our hand-rolled RESTORE button. Falls back to plain restore()
+// when the UI package isn't installed.
+async function presentCustomerCenter(): Promise<{ shown: boolean }> {
+  if (!IAP_UI_AVAILABLE || !PurchasesUi) {
+    if (__DEV__) console.log('[iap stub] presentCustomerCenter');
+    return { shown: false };
+  }
+  try {
+    await PurchasesUi.presentCustomerCenter();
+    return { shown: true };
+  } catch (e) {
+    console.error('[iap] presentCustomerCenter failed', e);
+    return { shown: false };
   }
 }
 
@@ -183,4 +346,10 @@ export const iapService = {
   restore,
   getLocalizedPrice,
   getPrices,
+  getCustomerInfo,
+  onCustomerInfo,
+  hasActiveEntitlement,
+  presentPaywall,
+  presentPaywallIfNeeded,
+  presentCustomerCenter,
 };
