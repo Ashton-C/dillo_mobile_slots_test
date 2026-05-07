@@ -1,13 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { writeCombatRequest, PlayerIndexEntry } from '@/services/FirestoreService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  writeCombatRequest,
+  subscribeToCombatRequest,
+  PlayerIndexEntry,
+  CombatRequestResolution,
+} from '@/services/FirestoreService';
+import { CombatResolutionChip } from '@/components/CombatResolutionChip';
 import { auth } from '@/lib/firebase';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 type Phase = 'DEAL' | 'PLAYER' | 'DEALER' | 'DONE';
+
+const BJ_RULES_KEY = '@bj_rules_seen';
 
 interface Props {
   visible: boolean;
@@ -90,9 +99,30 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
   const [dealer, setDealer] = useState<Card[]>([]);
   const [outcome, setOutcome] = useState<string>('');
   const [won, setWon] = useState(false);
+  const [resolution, setResolution] = useState<CombatRequestResolution | null>(null);
+  const [sentPower, setSentPower] = useState(8);
+  const [showRulesHint, setShowRulesHint] = useState(false);
+  const requestUnsubRef = useRef<(() => void) | null>(null);
+
+  // Show the rules hint exactly once per install on the first time the
+  // mini-game is opened.
+  useEffect(() => {
+    AsyncStorage.getItem(BJ_RULES_KEY).then((seen) => {
+      if (!seen) setShowRulesHint(true);
+    });
+  }, []);
+
+  function dismissRulesHint() {
+    setShowRulesHint(false);
+    AsyncStorage.setItem(BJ_RULES_KEY, '1').catch(console.error);
+  }
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      requestUnsubRef.current?.();
+      requestUnsubRef.current = null;
+      return;
+    }
     const d = buildShuffledDeck();
     const pHand = [d.pop()!, d.pop()!];
     const dHand = [d.pop()!, d.pop()!];
@@ -102,12 +132,18 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
     setPhase('PLAYER');
     setOutcome('');
     setWon(false);
+    setResolution(null);
+    setSentPower(8);
 
     // Auto-resolve a natural blackjack on the deal.
     if (isBlackjack(pHand) || isBlackjack(dHand)) {
       setTimeout(() => resolve(pHand, dHand), 500);
     }
   }, [visible]);
+
+  useEffect(() => () => {
+    requestUnsubRef.current?.();
+  }, []);
 
   function hit() {
     if (phase !== 'PLAYER') return;
@@ -142,6 +178,7 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
   function resolve(p: Card[], d: Card[]) {
     const { power, outcome: outcomeText } = blackjackPower(p, d);
     const didWin = power > 8;
+    setSentPower(power);
 
     const uid = auth.currentUser?.uid;
     if (uid && target) {
@@ -150,6 +187,15 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
         defenderUid: target.uid,
         type: combatType,
         attackerPower: power,
+      }).then((requestId) => {
+        requestUnsubRef.current?.();
+        requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {
+          setResolution(r);
+          if (r.status === 'RESOLVED') {
+            requestUnsubRef.current?.();
+            requestUnsubRef.current = null;
+          }
+        });
       }).catch(console.error);
     }
 
@@ -181,6 +227,22 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
           </LinearGradient>
 
           <Text style={styles.subtitle}>BLACKJACK · STAND ON 17 · DEALER HITS SOFT 16</Text>
+
+          {showRulesHint ? (
+            <Pressable onPress={dismissRulesHint} style={styles.hintCard}>
+              <Text style={styles.hintTitle}>HOW BLACKJACK COMBAT WORKS</Text>
+              <Text style={styles.hintBody}>
+                Beat the dealer without busting. Higher hand → more power → bigger loot.
+              </Text>
+              <Text style={styles.hintBody}>
+                · 17–19 → 5% of target wallet{'\n'}
+                · 20 → 8% of target wallet{'\n'}
+                · 21 → 12% of target wallet{'\n'}
+                · BLACKJACK (21 in 2) → 12% + max power
+              </Text>
+              <Text style={styles.hintDismiss}>TAP TO DISMISS</Text>
+            </Pressable>
+          ) : null}
 
           {/* Dealer row */}
           <View style={styles.handBlock}>
@@ -218,9 +280,12 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
           </View>
 
           {phase === 'DONE' && (
-            <Text style={[styles.outcomeText, { color: won ? Colors.success : Colors.danger }]}>
-              {outcome} {won ? '— EXTRACTION SUCCESSFUL' : '— EXTRACTION REPELLED'}
-            </Text>
+            <>
+              <Text style={[styles.outcomeText, { color: won ? Colors.success : Colors.danger }]}>
+                {outcome} {won ? '— EXTRACTION SUCCESSFUL' : '— EXTRACTION REPELLED'}
+              </Text>
+              <CombatResolutionChip won={won} power={sentPower} resolution={resolution} />
+            </>
           )}
 
           {/* Action buttons */}
@@ -312,6 +377,34 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textAlign: 'center',
     marginBottom: Spacing.sm,
+  },
+  hintCard: {
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.accent + '88',
+    backgroundColor: Colors.accent + '11',
+    gap: 4,
+  },
+  hintTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.accent,
+    letterSpacing: 2,
+  },
+  hintBody: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  hintDismiss: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    textAlign: 'right',
+    marginTop: 2,
   },
   handBlock: {
     paddingHorizontal: Spacing.md,

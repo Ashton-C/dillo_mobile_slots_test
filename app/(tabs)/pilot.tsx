@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -62,6 +63,10 @@ export default function PilotScreen() {
           totalSpins, totalCreditsEarned, totalJackpots,
           totalBreachesAttempted, totalExtractionsAttempted, totalRaidsSuffered } = useGameStore();
   const events = useEventStore((s) => s.events);
+  const markPilotSeen = useEventStore((s) => s.markPilotSeen);
+
+  // Clear the unread-event dot when the player lands on the PILOT tab.
+  useFocusEffect(useCallback(() => { markPilotSeen(); }, [markPilotSeen]));
 
   const [editVisible, setEditVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
@@ -299,6 +304,8 @@ function StatCard({ label, value, color }: { label: string; value: string; color
 }
 
 function logMeta(event: GameEvent): { icon: string; summary: string; color: string } {
+  const lost   = (event.creditsLost   ?? 0).toLocaleString();
+  const gained = (event.creditsGained ?? 0).toLocaleString();
   switch (event.type) {
     case 'ATTACK_INCOMING':
       return { icon: '⚠', summary: `Breach attempt by ${event.fromDisplayName}`, color: Colors.danger };
@@ -306,15 +313,15 @@ function logMeta(event: GameEvent): { icon: string; summary: string; color: stri
       return { icon: '⚠', summary: `Extraction beam from ${event.fromDisplayName}`, color: Colors.accent };
     case 'ATTACK_RESOLVED':
       return event.attackerWon
-        ? { icon: '✗', summary: `Breached by ${event.fromDisplayName} — lost ${event.creditsLost ?? 0} CR`, color: Colors.danger }
+        ? { icon: '✗', summary: `Breached by ${event.fromDisplayName} — lost ${lost} CR`, color: Colors.danger }
         : { icon: '◉', summary: `Breach by ${event.fromDisplayName} was repelled`, color: Colors.shield };
     case 'RAID_RESOLVED':
       return event.attackerWon
-        ? { icon: '✗', summary: `${event.fromDisplayName} siphoned ${event.creditsLost ?? 0} CR`, color: Colors.accent }
+        ? { icon: '✗', summary: `${event.fromDisplayName} siphoned ${lost} CR`, color: Colors.accent }
         : { icon: '◉', summary: `Extraction blocked — VAULT held`, color: Colors.shield };
     case 'COMBAT_RESULT':
       return event.attackerWon
-        ? { icon: '⚔', summary: `Raid on ${event.fromDisplayName} succeeded +${event.creditsGained ?? 0} CR`, color: Colors.success }
+        ? { icon: '⚔', summary: `Raid on ${event.fromDisplayName} succeeded · +${gained} CR`, color: Colors.success }
         : { icon: '✗', summary: `Raid on ${event.fromDisplayName} failed`, color: Colors.textMuted };
     default:
       return { icon: '·', summary: 'Transmission received', color: Colors.textMuted };
@@ -328,13 +335,19 @@ function CombatLogRow({ event }: { event: GameEvent }) {
     : age < 3_600_000 ? `${Math.floor(age / 60_000)}m ago`
     : age < 86_400_000 ? `${Math.floor(age / 3_600_000)}h ago`
     : `${Math.floor(age / 86_400_000)}d ago`;
+  // Highlight events that landed in the last minute so the player can spot
+  // fresh combat at a glance when they open the PILOT tab.
+  const isFresh = age < 60_000;
 
   return (
-    <View style={styles.logRow}>
+    <View style={[styles.logRow, isFresh && { borderLeftWidth: 2, borderLeftColor: color, paddingLeft: 6 }]}>
       <View style={[styles.logDot, { backgroundColor: color }]} />
       <View style={styles.logContent}>
         <Text style={[styles.logIcon, { color }]}>{icon}  <Text style={styles.logSummary}>{summary}</Text></Text>
-        <Text style={styles.logAge}>{ageLabel}</Text>
+        <Text style={styles.logAge}>
+          {ageLabel}
+          {isFresh ? <Text style={{ color: Colors.success }}>  · NEW</Text> : null}
+        </Text>
       </View>
     </View>
   );

@@ -189,6 +189,34 @@ export async function writeCombatRequest(data: {
   return doc_.id;
 }
 
+export interface CombatRequestResolution {
+  status: 'PENDING' | 'PROCESSING' | 'RESOLVED' | 'ERROR';
+  outcome?: 'ATTACKER_WON' | 'DEFENDER_WON' | 'BLOCKED_BY_TURRET';
+  creditsGained?: number;
+  creditsLost?: number;
+  vaultReduction?: number;
+  anomalyBonus?: number;
+  droneBonus?: number;
+  error?: string;
+}
+
+// Subscribe to a single combatRequest doc so the launching mini-game can
+// surface the actual server-resolved loot to the player.
+export function subscribeToCombatRequest(
+  requestId: string,
+  onUpdate: (r: CombatRequestResolution) => void,
+): Unsubscribe {
+  const ref = doc(db, 'combatRequests', requestId);
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) return;
+      onUpdate(snap.data() as CombatRequestResolution);
+    },
+    (err) => console.error('subscribeToCombatRequest error:', err),
+  );
+}
+
 // Subscribe to the player's incoming events subcollection.
 export function subscribeToEvents(
   uid: string,

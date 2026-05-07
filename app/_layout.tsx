@@ -39,8 +39,28 @@ export default function RootLayout() {
       tickSpinRefill();
     }, 1_000);
     const generatorInterval = setInterval(tickGeneratorIncome, 30_000);
+    // Track foreground/background transitions so we can flush on suspend AND
+    // immediately re-tick on resume — `setInterval` doesn't run while the app
+    // is backgrounded, so a build that should have completed while away
+    // would otherwise show the wrong remaining time until the next interval
+    // fires.
+    let lastActiveAt = Date.now();
     const appStateSub = AppState.addEventListener('change', (state) => {
-      if (state === 'background' || state === 'inactive') flushPendingPersist();
+      if (state === 'background' || state === 'inactive') {
+        flushPendingPersist();
+        lastActiveAt = Date.now();
+      } else if (state === 'active') {
+        const awayMs = Date.now() - lastActiveAt;
+        // Only catch up if we were actually away for >2s (filters out the
+        // momentary inactive→active flicker on iOS notification permission
+        // sheets, etc).
+        if (awayMs > 2_000) {
+          tickHabitat();
+          tickSpinRefill();
+          tickGeneratorIncome();
+          tickAnomaly();
+        }
+      }
     });
 
     return () => {

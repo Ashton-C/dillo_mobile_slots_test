@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -11,7 +11,13 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { writeCombatRequest, PlayerIndexEntry } from '@/services/FirestoreService';
+import {
+  writeCombatRequest,
+  subscribeToCombatRequest,
+  PlayerIndexEntry,
+  CombatRequestResolution,
+} from '@/services/FirestoreService';
+import { CombatResolutionChip } from '@/components/CombatResolutionChip';
 import { auth } from '@/lib/firebase';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -245,12 +251,16 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
   const [landedIdx, setLandedIdx] = useState<number | null>(null);
   const [won, setWon] = useState(false);
   const [resultText, setResultText] = useState('');
+  const [resolution, setResolution] = useState<CombatRequestResolution | null>(null);
+  const requestUnsubRef = useRef<(() => void) | null>(null);
 
   const ballAngle = useSharedValue(-Math.PI / 2);
 
   useEffect(() => {
     if (!visible) {
       cancelAnimation(ballAngle);
+      requestUnsubRef.current?.();
+      requestUnsubRef.current = null;
       return;
     }
     setPhase('BET');
@@ -258,8 +268,13 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
     setLandedIdx(null);
     setWon(false);
     setResultText('');
+    setResolution(null);
     ballAngle.value = -Math.PI / 2;
   }, [visible]);
+
+  useEffect(() => () => {
+    requestUnsubRef.current?.();
+  }, []);
 
   function startSpin() {
     if (!activeBet) return;
@@ -299,6 +314,15 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
         defenderUid: target.uid,
         type: combatType,
         attackerPower: power,
+      }).then((requestId) => {
+        requestUnsubRef.current?.();
+        requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {
+          setResolution(r);
+          if (r.status === 'RESOLVED') {
+            requestUnsubRef.current?.();
+            requestUnsubRef.current = null;
+          }
+        });
       }).catch(console.error);
     }
 
@@ -362,28 +386,11 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
           )}
 
           {phase === 'DONE' && (
-            <View style={styles.powerRow}>
-              <View style={styles.powerChip}>
-                {won ? (
-                  <>
-                    <Text style={styles.powerChipLabel}>POWER</Text>
-                    <Text style={[styles.powerChipVal, { color: Colors.success, fontSize: Typography.sizes.lg }]}>
-                      {activeBetCfg?.winPower ?? 0}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.powerChipLabel}>YOUR POWER</Text>
-                    <Text style={[styles.powerChipVal, { color: Colors.danger }]}>8</Text>
-                  </>
-                )}
-              </View>
-              <Text style={styles.dot}>·</Text>
-              <View style={styles.powerChip}>
-                <Text style={styles.powerChipLabel}>DEFENDER</Text>
-                <Text style={styles.powerChipVal}>SERVER</Text>
-              </View>
-            </View>
+            <CombatResolutionChip
+              won={won}
+              power={won ? (activeBetCfg?.winPower ?? 8) : 8}
+              resolution={resolution}
+            />
           )}
 
           {phase === 'BET' && (

@@ -7,14 +7,20 @@ interface EventState {
   events: GameEvent[];
   activeEvent: GameEvent | null;
   ownerUid: string | null;
+  // Wall-clock cutoff for the PILOT tab "unread" dot. Anything with a
+  // `timestamp` greater than this is considered new since last visit.
+  pilotLastSeenAt: number;
   subscribe: (uid: string) => () => void;
   dismissActive: () => void;
+  markPilotSeen: () => void;
+  unreadPilotCount: () => number;
 }
 
 export const useEventStore = create<EventState>((set, get) => ({
   events: [],
   activeEvent: null,
   ownerUid: null,
+  pilotLastSeenAt: 0,
 
   subscribe(uid) {
     set({ ownerUid: uid });
@@ -51,5 +57,14 @@ export const useEventStore = create<EventState>((set, get) => ({
     }
     const remaining = events.filter((e) => e.id !== activeEvent?.id && !e.read);
     set({ activeEvent: remaining[0] ?? null });
+  },
+
+  markPilotSeen() {
+    set({ pilotLastSeenAt: Date.now() });
+  },
+
+  unreadPilotCount() {
+    const { events, pilotLastSeenAt } = get();
+    return events.filter((e) => e.timestamp > pilotLastSeenAt).length;
   },
 }));

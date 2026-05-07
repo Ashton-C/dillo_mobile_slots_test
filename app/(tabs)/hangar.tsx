@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -135,11 +135,13 @@ export default function RadarScreen() {
   const [miniGameVisible, setMiniGameVisible] = useState(false);
   const [scanCount, setScanCount] = useState(0);
   const [legendVisible, setLegendVisible] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   async function scan() {
     if (!user) return;
     void soundService.play('radarScan');
     setLoading(true);
+    setScanError(null);
     try {
       const [found, activeDebugUids] = await Promise.all([
         fetchRadarTargets(user.uid, outpostLevel, 5),
@@ -159,6 +161,7 @@ export default function RadarScreen() {
       }
     } catch (e) {
       console.error('Radar scan failed:', e);
+      setScanError('Scan failed — pull down or tap SCAN to retry.');
     } finally {
       setLoading(false);
     }
@@ -232,7 +235,22 @@ export default function RadarScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={scan}
+            tintColor={Colors.accent}
+            colors={[Colors.accent]}
+          />
+        }
+      >
+        {scanError ? (
+          <Pressable onPress={scan} style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>⚠  {scanError}</Text>
+          </Pressable>
+        ) : null}
         {/* Sector map */}
         <SectorMap
           targets={targets}
@@ -439,6 +457,20 @@ const styles = StyleSheet.create({
   list: {
     padding: Spacing.md,
     gap: Spacing.sm,
+  },
+  errorBanner: {
+    backgroundColor: Colors.danger + '22',
+    borderColor: Colors.danger,
+    borderWidth: 1,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  errorBannerText: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.danger,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
   },
   sectionHeader: {
     fontSize: Typography.sizes.xs,

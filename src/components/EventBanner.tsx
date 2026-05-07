@@ -13,6 +13,8 @@ import { GameEvent } from '@/services/FirestoreService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 function eventLabel(event: GameEvent): { title: string; body: string; color: string } {
+  const lost   = (event.creditsLost   ?? 0).toLocaleString();
+  const gained = (event.creditsGained ?? 0).toLocaleString();
   switch (event.type) {
     case 'ATTACK_INCOMING':
       return { title: '⚠ INTRUSION DETECTED', body: `${event.fromDisplayName} is breaching your perimeter`, color: Colors.danger };
@@ -20,15 +22,15 @@ function eventLabel(event: GameEvent): { title: string; body: string; color: str
       return { title: '⚠ EXTRACTION BEAM', body: `${event.fromDisplayName} is siphoning your credits`, color: Colors.accent };
     case 'ATTACK_RESOLVED':
       return event.attackerWon
-        ? { title: '⚔ BREACH SUCCEEDED', body: `Lost ${event.creditsLost ?? 0} CR to ${event.fromDisplayName}`, color: Colors.danger }
+        ? { title: '⚔ BREACH SUCCEEDED', body: `Lost ${lost} CR to ${event.fromDisplayName}`, color: Colors.danger }
         : { title: '◉ BREACH REPELLED', body: `${event.fromDisplayName}'s intrusion was blocked`, color: Colors.shield };
     case 'RAID_RESOLVED':
       return event.attackerWon
-        ? { title: '⛏ EXTRACTION COMPLETE', body: `${event.fromDisplayName} siphoned ${event.creditsLost ?? 0} CR`, color: Colors.accent }
+        ? { title: '⛏ EXTRACTION COMPLETE', body: `${event.fromDisplayName} siphoned ${lost} CR`, color: Colors.accent }
         : { title: '◉ EXTRACTION BLOCKED', body: `VAULT held — no credits lost`, color: Colors.shield };
     case 'COMBAT_RESULT':
       return event.attackerWon
-        ? { title: '⚔ RAID SUCCESSFUL', body: `Seized ${event.creditsGained ?? 0} CR from ${event.fromDisplayName}`, color: Colors.success }
+        ? { title: '⚔ RAID SUCCESSFUL', body: `Seized ${gained} CR from ${event.fromDisplayName}`, color: Colors.success }
         : { title: '✗ RAID FAILED', body: `${event.fromDisplayName} repelled the attack`, color: Colors.textMuted };
     default:
       return { title: 'SIGNAL', body: 'Incoming transmission', color: Colors.primary };
