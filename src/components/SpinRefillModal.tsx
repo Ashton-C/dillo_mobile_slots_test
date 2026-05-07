@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useGameStore } from '@/store/useGameStore';
 import { adsService } from '@/services/AdsService';
 import { iapService } from '@/services/IapService';
+import { useIapPrices } from '@/hooks/useIapPrices';
 import { PACKS, AD_REWARDS, getAdReadyAt, markAdClaimed } from '@/services/StoreService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -31,6 +32,8 @@ export function SpinRefillModal({ visible, onClose }: Props) {
   const [adReadyAt, setAdReadyAt] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState<'ad' | 'iap' | null>(null);
+  const livePrices = useIapPrices([REFILL_PACK.id]);
+  const refillPrice = livePrices[REFILL_PACK.id] ?? REFILL_PACK.price;
 
   useEffect(() => {
     if (!visible) return;
@@ -119,7 +122,7 @@ export function SpinRefillModal({ visible, onClose }: Props) {
               ) : (
                 <>
                   <Text style={[styles.actionLabel, { color: Colors.credits }]}>
-                    {REFILL_PACK.price}  ·  REFILL
+                    {refillPrice}  ·  REFILL
                   </Text>
                   <Text style={styles.actionSub}>Instant top-up to max spins</Text>
                 </>

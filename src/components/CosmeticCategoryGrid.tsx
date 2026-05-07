@@ -7,8 +7,10 @@ import {
   CosmeticItem,
 } from '@/services/CosmeticsService';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
+import { useIapPrices } from '@/hooks/useIapPrices';
 import { hapticActivateBuff } from '@/constants/haptics';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
+import { useMemo } from 'react';
 
 interface Props {
   label: string;
@@ -26,6 +28,8 @@ export function CosmeticCategoryGrid({ label, category, onLockedPress, onEquippe
   const getActive     = useCosmeticsStore((s) => s.getActive);
   const items         = COSMETICS_CATALOG.filter((c) => c.category === category);
   const activeId      = getActive(category);
+  const iapIds        = useMemo(() => items.filter((i) => !!i.iapPrice).map((i) => i.id), [items]);
+  const livePrices    = useIapPrices(iapIds);
   if (items.length === 0) return null;
 
   return (
@@ -59,7 +63,7 @@ export function CosmeticCategoryGrid({ label, category, onLockedPress, onEquippe
               </View>
               <Text style={[styles.name, !owned && { color: Colors.textMuted }]} numberOfLines={1}>{item.name}</Text>
               <Text style={[styles.badge, owned ? styles.badgeOwned : styles.badgeLocked]}>
-                {active ? 'ACTIVE' : owned ? 'OWNED' : item.creditCost > 0 ? `${item.creditCost} CR` : (item.iapPrice ?? 'IAP')}
+                {active ? 'ACTIVE' : owned ? 'OWNED' : item.creditCost > 0 ? `${item.creditCost} CR` : (livePrices[item.id] ?? item.iapPrice ?? 'IAP')}
               </Text>
             </Pressable>
           );

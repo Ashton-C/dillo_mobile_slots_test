@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Pressable, Modal, FlatList,
 } from 'react-native';
@@ -12,6 +12,7 @@ import { TopBar } from '@/components/TopBar';
 import { AdWatchModal } from '@/components/AdWatchModal';
 import { adsService, ADS_AVAILABLE } from '@/services/AdsService';
 import { iapService } from '@/services/IapService';
+import { useIapPrices } from '@/hooks/useIapPrices';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
 import { hapticBuildComplete, hapticActivateBuff } from '@/constants/haptics';
 import {
@@ -102,11 +103,13 @@ function CosmeticCard({
   owned,
   active,
   onPress,
+  livePrice,
 }: {
   item: CosmeticItem;
   owned: boolean;
   active: boolean;
   onPress: (item: CosmeticItem) => void;
+  livePrice?: string;
 }) {
   const accent = item.previewColor ?? Colors.primary;
 
@@ -125,7 +128,7 @@ function CosmeticCard({
   } else {
     chipExtraStyle = { borderColor: Colors.credits + '88' };
     chipTextColor = Colors.credits;
-    chipLabel = item.iapPrice ?? '';
+    chipLabel = livePrice ?? item.iapPrice ?? '';
   }
 
   return (
@@ -148,7 +151,7 @@ function CosmeticCard({
 
 // ─── PackRow ──────────────────────────────────────────────────────────────────
 
-function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => void }) {
+function PackRow({ pack, onBuy, livePrice }: { pack: StorePack; onBuy: (p: StorePack) => void; livePrice?: string }) {
   return (
     <Pressable onPress={() => onBuy(pack)} style={[styles.packCard, pack.featured && styles.packCardFeatured]}>
       <View style={styles.packLeft}>
@@ -157,7 +160,7 @@ function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => vo
         <Text style={styles.packDesc}>{pack.description}</Text>
       </View>
       <View style={styles.packBuyCol}>
-        <Text style={styles.packPrice}>{pack.price}</Text>
+        <Text style={styles.packPrice}>{livePrice ?? pack.price}</Text>
         <View style={[styles.buyChip, pack.featured && { borderColor: Colors.primary }]}>
           <Text style={[styles.buyChipText, pack.featured && { color: Colors.primary }]}>BUY</Text>
         </View>
@@ -181,6 +184,17 @@ export default function StoreScreen() {
   const [cosmeticDetail, setCosmeticDetail] = useState<CosmeticItem | null>(null);
   const [toast, setToast]         = useState<string | null>(null);
   const [legendVisible, setLegendVisible] = useState(false);
+
+  // Live RevenueCat prices for everything that has a baked-in iapPrice or PACKS price.
+  // Falls back to the catalog string when RC isn't configured (Expo Go / no keys).
+  const iapIds = useMemo(() => {
+    const packIds = PACKS.map((p) => p.id);
+    const cosmeticIds = COSMETICS_CATALOG
+      .filter((c) => !!c.iapPrice)
+      .map((c) => c.id);
+    return [...packIds, ...cosmeticIds];
+  }, []);
+  const livePrices = useIapPrices(iapIds);
 
   const detailAccent   = cosmeticDetail?.previewColor ?? Colors.primary;
   const detailIsOwned  = cosmeticDetail ? isOwned(cosmeticDetail.id) : false;
@@ -387,6 +401,7 @@ export default function StoreScreen() {
                   owned={isOwned(item.id)}
                   active={getActive(item.category) === item.id}
                   onPress={setCosmeticDetail}
+                  livePrice={livePrices[item.id]}
                 />
               )}
             />
@@ -409,6 +424,7 @@ export default function StoreScreen() {
                   owned={isOwned(item.id)}
                   active={getActive(item.category) === item.id}
                   onPress={setCosmeticDetail}
+                  livePrice={livePrices[item.id]}
                 />
               )}
             />
@@ -417,15 +433,15 @@ export default function StoreScreen() {
 
         {/* 4. Credit packs */}
         <Text style={styles.sectionHeader}>CREDIT PACKS</Text>
-        {credPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+        {credPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
 
         {/* 5. Instant spin refill */}
         <Text style={styles.sectionHeader}>INSTANT SPIN REFILL</Text>
-        {spinPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+        {spinPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
 
         {/* 6. Resource packs */}
         <Text style={styles.sectionHeader}>RESOURCES</Text>
-        {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+        {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
 
         <Pressable onPress={handleRestore} style={styles.restoreBtn}>
           <Text style={styles.restoreBtnText}>RESTORE PURCHASES</Text>
@@ -508,8 +524,8 @@ export default function StoreScreen() {
               <Text style={styles.confirmTitle}>UNLOCK COSMETIC</Text>
               <Text style={styles.confirmLabel}>{pendingCosmetic.name}</Text>
               <Text style={styles.confirmDesc}>{pendingCosmetic.description}</Text>
-              <Text style={styles.confirmPrice}>{pendingCosmetic.iapPrice}</Text>
-              <Text style={styles.confirmDisclaimer}>Simulated · no real charge</Text>
+              <Text style={styles.confirmPrice}>{livePrices[pendingCosmetic.id] ?? pendingCosmetic.iapPrice}</Text>
+              <Text style={styles.confirmDisclaimer}>RevenueCat · receipt validated server-side</Text>
               <View style={styles.confirmRow}>
                 <Pressable onPress={() => setPendingCosmetic(null)} style={styles.confirmCancel}>
                   <Text style={styles.confirmCancelText}>CANCEL</Text>
@@ -582,7 +598,7 @@ export default function StoreScreen() {
                       style={[styles.detailBuyBtn, { backgroundColor: Colors.accent }]}
                       onPress={() => { setCosmeticDetail(null); handleCosmeticBuy(cosmeticDetail); }}
                     >
-                      <Text style={styles.detailBuyText}>UNLOCK — {cosmeticDetail.iapPrice}</Text>
+                      <Text style={styles.detailBuyText}>UNLOCK — {livePrices[cosmeticDetail.id] ?? cosmeticDetail.iapPrice}</Text>
                     </Pressable>
                   )}
                 </View>

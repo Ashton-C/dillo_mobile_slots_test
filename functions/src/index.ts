@@ -394,3 +394,249 @@ export const seedAnomaly = functions.pubsub
 
     functions.logger.info(`seedAnomaly: ${previousId ?? '(none)'} -> ${id}`);
   });
+
+// ---------------------------------------------------------------------------
+// revenueCatWebhook — server-side authority for IAP grants
+//
+// RevenueCat POSTs purchase events to this endpoint after validating the
+// receipt with Apple/Google. The client never grants paid resources directly
+// in production — it just kicks off the purchase and trusts this webhook to
+// land the rewards in the user's Firestore doc.
+//
+// Configure the URL in RevenueCat → Project Settings → Integrations → Webhooks.
+// The Authorization header must equal the REVENUECAT_WEBHOOK_AUTH secret
+// (set with `firebase functions:secrets:set`); requests with the wrong header
+// are rejected with 401.
+//
+// MUST stay in sync with src/services/StoreService.ts PACKS table and
+// src/services/CosmeticsService.ts BUNDLE_GRANTS table. The shapes are
+// duplicated below — annotate any change you make in *both* places.
+// ---------------------------------------------------------------------------
+
+interface PackReward {
+  credits?: number;
+  fuel?: number;
+  boost?: number;
+  shields?: number;
+  spinRefill?: boolean;
+}
+
+// Mirrors src/services/StoreService.ts PACKS — only id → rewards.
+const PACK_REWARDS: Record<string, PackReward> = {
+  cr_pocket:  { credits: 1_000 },
+  cr_hoard:   { credits: 5_000 },
+  cr_vault:   { credits: 25_000 },
+  cr_forge:   { credits: 100_000 },
+  sp_refill:  { spinRefill: true },
+  rs_fuel5:   { fuel: 5 },
+  rs_boost5:  { boost: 5 },
+  rs_shield5: { shields: 5 },
+  bd_starter: { spinRefill: true, credits: 2_500, fuel: 3 },
+  bd_war:     { fuel: 5, boost: 5, shields: 5 },
+};
+
+// Mirrors src/services/CosmeticsService.ts BUNDLE_GRANTS — cosmetic-bundle SKUs
+// that grant multiple cosmetic IDs plus optional bonus credits.
+const COSMETIC_BUNDLE_GRANTS: Record<string, { ids: string[]; bonusCredits?: number }> = {
+  bundle_pilot:   { ids: ['sym_retro', 'suit_outlaw'],          bonusCredits: 2000 },
+  bundle_cmdr:    { ids: ['theme_deep_reef', 'hud_tactical', 'emblem_ace'] },
+  bundle_founder: { ids: ['emblem_chromatic', 'suit_riftwalker', 'bg_void_rift', 'title_sovereign'] },
+};
+
+// Single-cosmetic SKUs — every cosmetic that has an iapPrice in
+// COSMETICS_CATALOG. Server-only authority over ownership; client merges via
+// users/{uid}.ownedCosmetics on subscribe.
+const COSMETIC_PRODUCT_IDS = new Set<string>([
+  'theme_blood_moon', 'theme_vault',
+  'sym_squad',
+  'suit_nebula',     // (deleted from catalog but kept here as defensive no-op
+  'suit_sovereign',  //  in case a stray purchase still lands)
+  'emblem_chromatic',
+  'title_sovereign', 'title_void_adm',
+  'btn_gold',
+  'bg_void_rift', 'bg_submerged',
+  'hud_quantum',
+  'helmet_sovereign',
+  'frame_sovereign',
+  'nameplate_sovereign',
+  'acc_sash_sovereign',
+]);
+
+// Build-skip is intentionally NOT in the webhook map. It's applied client-side
+// after a successful iapService.purchase(); the worst-case abuse is a free
+// build skip, which is low-stakes enough to skip server validation.
+
+const MAX_FUEL_CAP    = 50;
+const MAX_BOOST_CAP   = 50;
+const MAX_SHIELDS_CAP = 50;
+const MAX_SPINS_CAP   = 50;
+
+function applyPackToUserData(
+  user: admin.firestore.DocumentData,
+  reward: PackReward,
+): Partial<admin.firestore.DocumentData> {
+  const next: admin.firestore.DocumentData = {};
+  if (reward.credits)    next.credits = (user.credits ?? 0) + reward.credits;
+  if (reward.fuel)       next.attacks = Math.min(MAX_FUEL_CAP,    (user.attacks ?? 0) + reward.fuel);
+  if (reward.boost)      next.raids   = Math.min(MAX_BOOST_CAP,   (user.raids   ?? 0) + reward.boost);
+  if (reward.shields)    next.shields = Math.min(MAX_SHIELDS_CAP, (user.shields ?? 0) + reward.shields);
+  if (reward.spinRefill) {
+    next.spinsRemaining  = MAX_SPINS_CAP;
+    next.spinRefillStart = 0;
+  }
+  return next;
+}
+
+interface RcEvent {
+  type?: string;          // INITIAL_PURCHASE, NON_RENEWING_PURCHASE, RENEWAL, …
+  app_user_id?: string;
+  product_id?: string;
+  transaction_id?: string;
+  original_transaction_id?: string;
+}
+
+// Event types that GRANT rewards. CANCELLATION/REFUND/EXPIRATION should NOT
+// roll back grants here — that's a separate flow (see MONETIZATION_CHECKLIST.md
+// "Refund handling"). Keep this list narrow on purpose.
+const GRANT_EVENT_TYPES = new Set([
+  'INITIAL_PURCHASE',
+  'NON_RENEWING_PURCHASE',
+  'RENEWAL',
+  'PRODUCT_CHANGE',
+  'UNCANCELLATION',
+]);
+
+export const revenueCatWebhook = functions
+  .runWith({ secrets: ['REVENUECAT_WEBHOOK_AUTH'] })
+  .https.onRequest(async (req, res) => {
+    // Reject anything that isn't a POST so accidental browser visits don't
+    // trip the auth path.
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed');
+      return;
+    }
+
+    const expectedAuth = process.env.REVENUECAT_WEBHOOK_AUTH ?? '';
+    const got = req.header('Authorization') ?? '';
+    if (!expectedAuth || got !== `Bearer ${expectedAuth}`) {
+      functions.logger.warn('revenueCatWebhook: bad auth');
+      res.status(401).send('Unauthorized');
+      return;
+    }
+
+    const event: RcEvent | undefined = req.body?.event;
+    if (!event?.type || !event?.app_user_id || !event?.product_id) {
+      functions.logger.warn('revenueCatWebhook: missing fields', { event });
+      // Return 200 so RC doesn't retry; we have nothing to do here.
+      res.status(200).send('ignored');
+      return;
+    }
+
+    if (!GRANT_EVENT_TYPES.has(event.type)) {
+      functions.logger.info(`revenueCatWebhook: skip non-grant event ${event.type}`);
+      res.status(200).send('skipped');
+      return;
+    }
+
+    const txnId = event.transaction_id ?? event.original_transaction_id;
+    if (!txnId) {
+      functions.logger.warn('revenueCatWebhook: missing transaction_id');
+      res.status(200).send('ignored');
+      return;
+    }
+
+    const uid       = event.app_user_id;
+    const productId = event.product_id;
+    const txnRef    = db.doc(`iapTransactions/${txnId}`);
+    const userRef   = db.doc(`users/${uid}`);
+
+    try {
+      // Idempotency: a failed `create` here means the event was already
+      // applied. RC retries on non-2xx so we want one-and-only-once delivery.
+      const grant = await db.runTransaction(async (tx) => {
+        const existing = await tx.get(txnRef);
+        if (existing.exists) {
+          return { applied: false, reason: 'duplicate' as const };
+        }
+
+        const userSnap = await tx.get(userRef);
+        if (!userSnap.exists) {
+          // RC sometimes fires before the client finishes provisioning the
+          // user doc on first sign-in. Tell RC to retry — it'll back off.
+          throw new Error('user-doc-missing');
+        }
+        const user = userSnap.data() as admin.firestore.DocumentData;
+
+        // Resolve reward payload --------------------------------------------
+        const packReward: PackReward = { ...(PACK_REWARDS[productId] ?? {}) };
+        const cosmeticIdsToGrant: string[] = [];
+
+        const bundle = COSMETIC_BUNDLE_GRANTS[productId];
+        if (bundle) {
+          if (bundle.bonusCredits) {
+            packReward.credits = (packReward.credits ?? 0) + bundle.bonusCredits;
+          }
+          cosmeticIdsToGrant.push(...bundle.ids);
+        }
+
+        if (COSMETIC_PRODUCT_IDS.has(productId)) {
+          cosmeticIdsToGrant.push(productId);
+        }
+
+        const haveResourceGrant = Object.keys(packReward).length > 0;
+        const haveCosmeticGrant = cosmeticIdsToGrant.length > 0;
+        if (!haveResourceGrant && !haveCosmeticGrant) {
+          functions.logger.warn(`revenueCatWebhook: unknown product ${productId}`);
+          return { applied: false, reason: 'unknown-product' as const };
+        }
+
+        // Apply ---------------------------------------------------------------
+        const update: admin.firestore.DocumentData = haveResourceGrant
+          ? applyPackToUserData(user, packReward)
+          : {};
+        if (haveCosmeticGrant) {
+          update.ownedCosmetics = admin.firestore.FieldValue.arrayUnion(...cosmeticIdsToGrant);
+        }
+        update.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        tx.update(userRef, update);
+
+        // Permanent record so we can deduplicate retries and audit later.
+        tx.set(txnRef, {
+          uid,
+          productId,
+          transactionId: txnId,
+          eventType: event.type,
+          appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+          packReward: haveResourceGrant ? packReward : null,
+          cosmeticGrants: cosmeticIdsToGrant,
+        });
+
+        return { applied: true, reason: 'ok' as const, packReward, cosmeticIdsToGrant };
+      });
+
+      if (grant.applied) {
+        // Drop a small event so the client can banner "Purchase delivered".
+        await db.collection(`users/${uid}/events`).add({
+          type: 'COMBAT_RESULT', // re-uses the existing toast UI for now
+          fromUid: 'iap',
+          fromDisplayName: 'STORE',
+          attackerWon: true,
+          creditsGained: grant.packReward?.credits ?? 0,
+          timestamp: Date.now(),
+          read: false,
+        });
+        functions.logger.info(`revenueCatWebhook: applied ${productId} for ${uid}`);
+      } else {
+        functions.logger.info(`revenueCatWebhook: ${grant.reason} ${productId} for ${uid}`);
+      }
+
+      res.status(200).send('ok');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // user-doc-missing → 503 so RC retries with backoff. Other errors get
+      // 500 so we see them in logs and RC also retries.
+      const status = msg === 'user-doc-missing' ? 503 : 500;
+      functions.logger.error('revenueCatWebhook: failure', { uid, productId, txnId, err: msg });
+      res.status(status).send(msg);
+    }
+  });

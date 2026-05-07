@@ -7,12 +7,18 @@ Step-by-step gate from "client scaffolding shipped" to "ready to push EAS produc
 - [ ] Run `npm install` (or `bun install` / `pnpm install`) — `react-native-purchases`, `expo-tracking-transparency`, and `expo-build-properties` were pinned in `package.json` but not actually installed in the sandbox where the scaffolding was written.
 - [ ] Run `npx expo prebuild --clean` after adjusting plugins — required since this project moved off the managed-only flow when AdMob was added.
 
+All third-party keys flow through environment variables — `app.config.js`
+reads them at config-eval time and injects them into `extra` / plugin args.
+**Nothing sensitive lives in `app.json`.** Copy `.env.example` to `.env.local`
+for dev, and add the same vars as EAS Environment Variables (or Secrets,
+for the server-only ones) for cloud builds.
+
 ## 1. AdMob
 
-- [ ] Create AdMob iOS app, copy **App ID** → `app.json -> plugins[react-native-google-mobile-ads].iosAppId`
-- [ ] Create AdMob Android app, copy **App ID** → `app.json -> plugins[react-native-google-mobile-ads].androidAppId`
-- [ ] Create one **Rewarded** unit per platform → `app.json -> extra.admob.rewardedIos / rewardedAndroid`
-- [ ] Create one **Interstitial** unit per platform → `app.json -> extra.admob.interstitialIos / interstitialAndroid`
+- [ ] Create AdMob iOS app, copy **App ID** → `.env.local`: `ADMOB_IOS_APP_ID`
+- [ ] Create AdMob Android app, copy **App ID** → `.env.local`: `ADMOB_ANDROID_APP_ID`
+- [ ] Create one **Rewarded** unit per platform → `.env.local`: `ADMOB_REWARDED_IOS` / `ADMOB_REWARDED_ANDROID`
+- [ ] Create one **Interstitial** unit per platform → `.env.local`: `ADMOB_INTERSTITIAL_IOS` / `ADMOB_INTERSTITIAL_ANDROID`
 - [ ] Confirm: `__DEV__` builds will still use `TestIds` even with real keys present (see `AdsService.ts` lines 47-63).
 
 ## 2. RevenueCat
@@ -20,11 +26,14 @@ Step-by-step gate from "client scaffolding shipped" to "ready to push EAS produc
 - [ ] Sign up at revenuecat.com, create project "Reelwright".
 - [ ] Add **iOS app** with bundle id `com.reelwright.app`.
 - [ ] Add **Android app** with package `com.reelwright.app`.
-- [ ] Copy iOS public SDK key → `app.json -> extra.revenueCat.publicKeyIos`.
-- [ ] Copy Android public SDK key → `app.json -> extra.revenueCat.publicKeyAndroid`.
-- [ ] Copy the **secret API key** (server side) and store as a Firebase Functions secret:
+- [ ] Copy iOS public SDK key → `.env.local`: `REVENUECAT_PUBLIC_KEY_IOS`
+- [ ] Copy Android public SDK key → `.env.local`: `REVENUECAT_PUBLIC_KEY_ANDROID`
+- [ ] Copy the **secret API key** (server side) AND a self-generated webhook
+      auth token, then store both as Firebase Functions secrets:
   ```
   firebase functions:secrets:set REVENUECAT_SECRET_KEY
+  # generate any random string; you'll paste this in step 7 below
+  firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH
   ```
 
 ## 3. App Store Connect — IAP products
@@ -58,17 +67,37 @@ Mirror the iOS list above as **In-app products → Managed products → Consumab
 - [ ] Inside RevenueCat → Products: import each product ID created above (one entry per platform pair).
 - [ ] Group them into a single Offering called `default` so `Purchases.getOfferings()` returns them.
 
-## 7. Cloud Function: receipt-validation webhook (server-side authority for credits/spins/resources)
+## 7. Cloud Function: receipt-validation webhook (server-side authority for credits/spins/resources/cosmetics)
 
-The client only grants rewards in **stub mode** (Expo Go / no RC keys). In production the webhook is the source of truth for `cr_*` / `sp_*` / `rs_*` / `bd_*` purchases.
+The client only grants paid rewards in **stub mode** (Expo Go / no RC keys).
+In production the webhook (`revenueCatWebhook` in `functions/src/index.ts`)
+is the source of truth for `cr_*` / `sp_*` / `rs_*` / `bd_*` purchases AND
+for cosmetic IAPs and `bundle_*` cosmetic-bundle SKUs (which expand via
+`COSMETIC_BUNDLE_GRANTS` into multiple `ownedCosmetics` entries plus optional
+bonus credits).
 
-- [ ] Add `revenueCatWebhook` HTTPS function to `functions/src/index.ts`. Stub planned but not yet committed — ping if you want me to write it next.
-- [ ] Webhook reads `event.product_id`, looks up `PackReward` from a server-side copy of `PACKS`, applies to `users/{appUserID}` via `runTransaction`.
-- [ ] Idempotency: track `transactionId` in a `iapTransactions/{id}` doc; reject duplicates.
-- [ ] `firebase deploy --only functions` after secret is set.
-- [ ] In RevenueCat → Project Settings → Integrations → Webhooks, point the URL at the deployed function. Test with the "Send test event" button.
+- [x] `revenueCatWebhook` HTTPS function with `iapTransactions/{id}` idempotency,
+      bundle expansion, and cosmetic `arrayUnion` grants on `users/{uid}.ownedCosmetics`.
+      Already committed — see `functions/src/index.ts`.
+- [ ] `firebase deploy --only functions` after both secrets (`REVENUECAT_SECRET_KEY`,
+      `REVENUECAT_WEBHOOK_AUTH`) are set.
+- [ ] In RevenueCat → Project Settings → Integrations → Webhooks:
+  - URL: the HTTPS trigger URL printed by `firebase deploy`
+  - Authorization header: `Bearer <REVENUECAT_WEBHOOK_AUTH>`
+  - Send a test event from the dashboard, watch the function logs to confirm
+    you see `revenueCatWebhook: applied <product_id> for <uid>`.
 
-`reelwright_skip_build` is intentionally **not** routed through the webhook — it's a low-stakes purchase applied client-side after `iapService.purchase()` resolves successfully. If you want it server-validated too, add it to the webhook map.
+`reelwright_skip_build` is intentionally **not** routed through the webhook —
+it's a low-stakes purchase applied client-side after `iapService.purchase()`
+resolves successfully. The worst-case abuse is a free build skip, which we're
+willing to live with for now.
+
+**Pricing surface.** All store-screen prices, cosmetic chip prices, and the
+SpinRefillModal price use the live localized priceString from RC at runtime
+(`useIapPrices` hook). The hardcoded prices in `StoreService.PACKS[].price`
+and `COSMETICS_CATALOG[].iapPrice` are fallbacks only — RC values override
+when configured. No need to edit either when you change a price in App Store
+Connect / Play Console; the client will pick it up on next launch.
 
 ## 8. EAS build
 

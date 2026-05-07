@@ -2,6 +2,8 @@ import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { CosmeticItem } from '@/services/CosmeticsService';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
+import { iapService } from '@/services/IapService';
+import { useIapPrices } from '@/hooks/useIapPrices';
 import { hapticBuildComplete } from '@/constants/haptics';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -16,8 +18,9 @@ interface Props {
 export function CosmeticPurchaseModal({ item, onDismiss, onResult }: Props) {
   const buyCosmetic   = useCosmeticsStore((s) => s.buy);
   const equipCosmetic = useCosmeticsStore((s) => s.equip);
+  const livePrices    = useIapPrices(item ? [item.id] : []);
 
-  function confirm() {
+  async function confirm() {
     if (!item) return;
     if (item.creditCost > 0) {
       const result = buyCosmetic(item.id);
@@ -28,16 +31,25 @@ export function CosmeticPurchaseModal({ item, onDismiss, onResult }: Props) {
       } else if (result === 'insufficient_credits') {
         onResult?.(`Need ${item.creditCost.toLocaleString()} CR — keep spinning!`);
       }
-    } else {
-      // Simulated IAP — grant directly until real payments wire up
-      const next = new Set(useCosmeticsStore.getState().owned);
-      next.add(item.id);
-      useCosmeticsStore.setState({ owned: next });
-      equipCosmetic(item.id);
-      hapticBuildComplete();
-      onResult?.(`Unlocked: ${item.name}`);
+      onDismiss();
+      return;
     }
+    // IAP path — receipt validation + ownership grant happens server-side via
+    // the RevenueCat webhook. Locally we optimistic-grant on success so the
+    // tile flips to OWNED immediately; the webhook's arrayUnion is idempotent
+    // so the eventual Firestore sync is a no-op.
     onDismiss();
+    const r = await iapService.purchase(item.id);
+    if (!r.ok) {
+      if (r.error && r.error !== 'cancelled') onResult?.(`Purchase failed — ${r.error}`);
+      return;
+    }
+    const next = new Set(useCosmeticsStore.getState().owned);
+    next.add(item.id);
+    useCosmeticsStore.setState({ owned: next });
+    equipCosmetic(item.id);
+    hapticBuildComplete();
+    onResult?.(`Unlocked: ${item.name}`);
   }
 
   return (
@@ -52,9 +64,13 @@ export function CosmeticPurchaseModal({ item, onDismiss, onResult }: Props) {
               <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
             </View>
             <Text style={styles.price}>
-              {item.creditCost > 0 ? `${item.creditCost.toLocaleString()} CR` : (item.iapPrice ?? '—')}
+              {item.creditCost > 0
+                ? `${item.creditCost.toLocaleString()} CR`
+                : (livePrices[item.id] ?? item.iapPrice ?? '—')}
             </Text>
-            {item.creditCost < 0 && <Text style={styles.simulated}>Simulated · no real charge</Text>}
+            {item.creditCost < 0 && (
+              <Text style={styles.simulated}>RevenueCat · receipt validated server-side</Text>
+            )}
             <View style={styles.actions}>
               <Pressable onPress={onDismiss} style={[styles.btn, styles.btnCancel]}>
                 <Text style={styles.btnCancelText}>CANCEL</Text>

@@ -16,6 +16,7 @@ import { subscribeToUser, subscribeToHabitat, ensureHabitatForUser, writePlayerI
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
+import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 
 interface AuthState {
   user: User | null;
@@ -59,6 +60,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
           userUnsub = subscribeToUser(firebaseUser.uid, (snapshot) => {
             useGameStore.getState().syncFromFirestore(snapshot);
+            if (snapshot.ownedCosmetics?.length) {
+              useCosmeticsStore.getState().syncOwnedFromRemote(snapshot.ownedCosmetics);
+            }
           });
 
           const habitatId = await ensureHabitatForUser(firebaseUser.uid);

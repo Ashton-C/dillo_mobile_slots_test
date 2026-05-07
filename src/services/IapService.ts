@@ -161,9 +161,26 @@ async function getLocalizedPrice(productId: string): Promise<string | null> {
   }
 }
 
+// Batch version for the store screen — fewer round trips than calling
+// getLocalizedPrice in a loop. Returns a sparse map (productId → priceString)
+// for whatever resolved; callers should fall back to baked-in prices for
+// missing entries. Empty object in stub mode.
+async function getPrices(ids: string[]): Promise<Record<string, string>> {
+  if (!IAP_AVAILABLE || !Purchases || !initialized || ids.length === 0) return {};
+  try {
+    const products = await Purchases.getProducts(ids);
+    const out: Record<string, string> = {};
+    for (const p of products) out[p.identifier] = p.priceString;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export const iapService = {
   init,
   purchase,
   restore,
   getLocalizedPrice,
+  getPrices,
 };

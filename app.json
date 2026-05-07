@@ -38,14 +38,6 @@
       "expo-font",
       "expo-tracking-transparency",
       [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "REPLACE_WITH_ADMOB_ANDROID_APP_ID",
-          "iosAppId": "REPLACE_WITH_ADMOB_IOS_APP_ID",
-          "userTrackingPermission": "We use this to show you ads relevant to your interests, which keeps the game free."
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "ios": {
@@ -61,18 +53,6 @@
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "admob": {
-        "rewardedIos": "REPLACE_WITH_ADMOB_REWARDED_IOS_UNIT_ID",
-        "rewardedAndroid": "REPLACE_WITH_ADMOB_REWARDED_ANDROID_UNIT_ID",
-        "interstitialIos": "REPLACE_WITH_ADMOB_INTERSTITIAL_IOS_UNIT_ID",
-        "interstitialAndroid": "REPLACE_WITH_ADMOB_INTERSTITIAL_ANDROID_UNIT_ID"
-      },
-      "revenueCat": {
-        "publicKeyIos": "REPLACE_WITH_REVENUECAT_IOS_PUBLIC_KEY",
-        "publicKeyAndroid": "REPLACE_WITH_REVENUECAT_ANDROID_PUBLIC_KEY"
-      }
     }
   }
 }

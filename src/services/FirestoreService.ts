@@ -35,6 +35,9 @@ export interface UserResourceSnapshot {
   spinRefillStart: number; // unix ms, 0 when at max spins
   xp: number;
   level: number;
+  // IAP-granted cosmetic IDs from the RevenueCat webhook. Server-authoritative
+  // ownership; the client merges these into useCosmeticsStore on subscribe.
+  ownedCosmetics?: string[];
 }
 
 export interface PlayerIndexEntry {
@@ -89,6 +92,7 @@ export function subscribeToUser(
         spinRefillStart: d.spinRefillStart ?? 0,
         xp:              d.xp              ?? 0,
         level:           d.level           ?? 1,
+        ownedCosmetics:  Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
       });
     },
     (err) => console.error('subscribeToUser error:', err),
