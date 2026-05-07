@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, Pressable, Image, ImageSourcePropType } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
+  Easing,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -69,6 +70,104 @@ function PulseRing({ color, size }: PulseRingProps) {
   return (
     <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }, style]}>
       <HexFrame size={size} color={color} thickness={2} />
+    </Animated.View>
+  );
+}
+
+interface OutpostSpireProps {
+  size: number;
+  color: string;
+  level: number;
+  pulsing: boolean;
+}
+
+function OutpostSpire({ size, color, level, pulsing }: OutpostSpireProps) {
+  const sway = useSharedValue(0);
+  const lift = useSharedValue(0);
+
+  useEffect(() => {
+    sway.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+    );
+    lift.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+    );
+  }, []);
+
+  const swayStyle = useAnimatedStyle(() => ({
+    transform: [
+      { rotateZ: `${sway.value * 3}deg` },
+      { translateY: -lift.value * 2 },
+    ],
+  }));
+
+  const tier = (widthPct: number, gradient: [string, string], translateY: number, key: string) => {
+    const w = size * widthPct;
+    const h = w * 0.52;
+    return (
+      <View
+        key={key}
+        style={[
+          styles.spireTier,
+          {
+            width: w,
+            height: h,
+            top: size / 2 - h / 2 + translateY,
+            left: size / 2 - w / 2,
+          },
+        ]}
+        pointerEvents="none"
+      >
+        <View style={[styles.spireDiamond, { width: w, height: h }]}>
+          <LinearGradient
+            colors={gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[StyleSheet.absoluteFill, { borderColor: color + 'CC', borderWidth: 1.5 }]}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFill,
+        { alignItems: 'center', justifyContent: 'center' },
+        swayStyle,
+      ]}
+    >
+      <View style={[styles.spireGlow, {
+        width: size * 1.3,
+        height: size * 1.3,
+        borderRadius: size * 0.65,
+        backgroundColor: color + (pulsing ? '33' : '18'),
+      }]} />
+
+      {tier(0.95, [Colors.gradientStart + 'F0', Colors.gradientEnd + 'C0'], size * 0.30,  'base')}
+      {tier(0.72, [Colors.gradientEnd + 'E8', Colors.primary + 'C8'],      size * 0.06,  'mid')}
+      {tier(0.50, [Colors.primary + 'F0', Colors.gradientEnd + 'D0'],     -size * 0.16, 'top')}
+
+      <View style={[styles.spireApex, {
+        width: size * 0.32,
+        height: size * 0.32,
+        borderRadius: size * 0.16,
+        top: size * 0.10,
+        borderColor: color,
+        backgroundColor: color + '22',
+      }]}>
+        <Text style={[styles.spireLevel, { color }]}>{level}</Text>
+      </View>
     </Animated.View>
   );
 }
@@ -202,12 +301,6 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
                   onPress={() => onTapBuilding(type)}
                   hitSlop={6}
                 >
-                  <HexFrame
-                    size={NODE_SIZE}
-                    color={color + (isUnbuilt ? '55' : 'CC')}
-                    thickness={1.5}
-                    fillColor={color + (isUnbuilt ? '0A' : '1E')}
-                  />
                   {isBuilding && <PulseRing color={color} size={NODE_SIZE} />}
                   {isGated && <View style={styles.lockIndicator}><Text style={styles.lockText}>▲</Text></View>}
                   <Image
@@ -244,15 +337,12 @@ export function OutpostMapInteractive({ onTapBuilding, onTapOutpost }: OutpostMa
                   onPress={onTapOutpost}
                   hitSlop={6}
                 >
-                  <HexFrame
+                  <OutpostSpire
                     size={OUTPOST_SIZE}
-                    color={outpostColor + 'CC'}
-                    thickness={2}
-                    fillColor={outpostColor + '22'}
+                    color={outpostColor}
+                    level={outpostLevel}
+                    pulsing={isUpgrading}
                   />
-                  {isUpgrading && <PulseRing color={outpostColor} size={OUTPOST_SIZE} />}
-                  <Text style={styles.nodeOutpostGlyph}>◎</Text>
-                  <Text style={[styles.nodeLevelOverlay, { color: outpostColor, bottom: 4 }]}>{outpostLevel}</Text>
                 </Pressable>
                 <Text style={[styles.nodeLabel, { color: outpostColor + 'CC' }]}>OUTPOST</Text>
                 {isUpgrading && <Text style={[styles.buildTimer, { color: outpostColor }]}>{formatTimer(msUntilComplete)}</Text>}
@@ -286,10 +376,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'visible',
   },
-  nodeOutpostGlyph: {
-    fontSize: Typography.sizes.xl,
-    color: Colors.textSecondary,
-  },
   nodeImageOverflow: {
     position: 'absolute',
   },
@@ -298,26 +384,26 @@ const styles = StyleSheet.create({
   },
   nodeLevelOverlay: {
     position: 'absolute',
-    bottom: -4,
-    fontSize: 11,
+    bottom: -8,
+    fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.bold,
     letterSpacing: 1,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 1,
     backgroundColor: Colors.background + 'EE',
     borderRadius: 8,
     overflow: 'hidden',
   },
   nodeLabel: {
-    fontSize: 8,
+    fontSize: Typography.sizes.md,
     letterSpacing: 1.5,
-    marginTop: 3,
+    marginTop: 8,
     fontWeight: Typography.weights.bold,
   },
   buildTimer: {
-    fontSize: 8,
+    fontSize: Typography.sizes.sm,
     letterSpacing: 0.5,
-    marginTop: 1,
+    marginTop: 2,
     fontWeight: Typography.weights.bold,
   },
   lockIndicator: {
@@ -326,7 +412,28 @@ const styles = StyleSheet.create({
     right: 2,
   },
   lockText: {
-    fontSize: 8,
+    fontSize: Typography.sizes.sm,
     color: Colors.danger,
+  },
+  spireGlow: {
+    position: 'absolute',
+  },
+  spireTier: {
+    position: 'absolute',
+  },
+  spireDiamond: {
+    transform: [{ rotateZ: '45deg' }, { scaleY: 0.55 }],
+    overflow: 'hidden',
+  },
+  spireApex: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spireLevel: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
   },
 });
