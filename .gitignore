@@ -150,3 +150,6 @@ expo-env.d.ts
 # Expo CNG — generated native projects; EAS Build runs prebuild fresh each time
 /android
 /ios
+
+# Cloud Functions TypeScript build output
+functions/lib/
