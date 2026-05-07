@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react';
-import { View, LogBox, AppState } from 'react-native';
+import { View, LogBox, AppState, Platform } from 'react-native';
+
+// Lazy-required so Expo Go and pre-`npm install` builds don't crash.
+async function requestAttIfNeeded() {
+  if (Platform.OS !== 'ios') return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const att = require('expo-tracking-transparency');
+    if (att?.requestTrackingPermissionsAsync) {
+      await att.requestTrackingPermissionsAsync();
+    }
+  } catch {
+    // Module not installed yet — fine in dev / Expo Go.
+  }
+}
 
 LogBox.ignoreLogs(['It looks like you might be using shared value']);
 import { Stack } from 'expo-router';
@@ -18,6 +32,7 @@ import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarousel';
 import { soundService } from '@/services/SoundService';
 import { adsService } from '@/services/AdsService';
+import { iapService } from '@/services/IapService';
 
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
@@ -84,6 +99,16 @@ export default function RootLayout() {
     if (!user?.uid) return;
     const unsub = subscribeToEvents(user.uid);
     return unsub;
+  }, [user?.uid]);
+
+  // Configure RevenueCat with the Firebase UID once we have it. Requesting
+  // App Tracking Transparency on iOS is best done shortly after launch and
+  // before the first ad request — call it here, lazily, so it doesn't block
+  // anything else.
+  useEffect(() => {
+    if (!user?.uid) return;
+    void iapService.init(user.uid);
+    void requestAttIfNeeded();
   }, [user?.uid]);
 
   return (

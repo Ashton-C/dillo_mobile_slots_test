@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { View, Text, StyleSheet, Pressable, Dimensions, Modal, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -29,12 +30,14 @@ import { JackpotBurst } from '@/components/JackpotBurst';
 import { LedgerDrawer } from '@/components/LedgerDrawer';
 import { ConfettiEmitter } from '@/components/ConfettiEmitter';
 import { OnboardingModal } from '@/components/OnboardingModal';
+import { SpinRefillModal } from '@/components/SpinRefillModal';
 import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { TooltipPopover } from '@/components/TooltipPopover';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { soundService } from '@/services/SoundService';
+import { adsService } from '@/services/AdsService';
 import { OddsModal } from '@/components/OddsModal';
 import { CosmeticCategoryGrid } from '@/components/CosmeticCategoryGrid';
 import { CosmeticPurchaseModal } from '@/components/CosmeticPurchaseModal';
@@ -117,6 +120,26 @@ export default function SpinScreen() {
   const [muted, setMuted]                     = useState(() => soundService.getMuted());
   const [tooltipVisible, setTooltipVisible]   = useState(false);
   const [reelCustomizeVisible, setReelCustomizeVisible] = useState(false);
+  const [refillModalVisible, setRefillModalVisible] = useState(false);
+  const prevSpinsRef = useRef(spinsRemaining);
+  useEffect(() => {
+    // Auto-open the refill prompt the moment the player consumes their last
+    // spin. We only fire on the 1→0 transition so the modal doesn't keep
+    // re-opening if the user already dismissed it while still empty.
+    if (prevSpinsRef.current > 0 && spinsRemaining === 0) {
+      setRefillModalVisible(true);
+    }
+    prevSpinsRef.current = spinsRemaining;
+  }, [spinsRemaining]);
+
+  // Frequency-capped interstitial when leaving the spin screen. Returning a
+  // cleanup function from useFocusEffect lets us run it on blur. The 4-minute
+  // global cooldown in AdsService prevents spam from rapid tab-switching.
+  useFocusEffect(useCallback(() => {
+    return () => {
+      void adsService.maybeShowInterstitial('spin-blur');
+    };
+  }, []));
   const [pendingPurchase, setPendingPurchase] = useState<CosmeticItem | null>(null);
   const [customizeToast, setCustomizeToast]   = useState<string | null>(null);
   const [tooltipText, setTooltipText]         = useState('');
@@ -304,6 +327,10 @@ export default function SpinScreen() {
       <BuildCompleteBanner />
       <ConfettiEmitter active={confettiActive} />
       <OnboardingModal onDone={() => {}} />
+      <SpinRefillModal
+        visible={refillModalVisible}
+        onClose={() => setRefillModalVisible(false)}
+      />
 
       <Animated.View pointerEvents="none" style={[styles.scannerBeam, beamStyle]} />
 
@@ -468,9 +495,18 @@ export default function SpinScreen() {
             <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
           </View>
 
-          <Text style={[styles.spinsLabel, spinsLow && styles.spinsLabelLow]}>
-            {spinsRemaining} / {spinCap} spins
-          </Text>
+          <Pressable
+            onPress={spinsRemaining === 0 ? () => setRefillModalVisible(true) : undefined}
+            hitSlop={8}
+          >
+            <Text style={[
+              styles.spinsLabel,
+              spinsLow && styles.spinsLabelLow,
+              spinsRemaining === 0 && { textDecorationLine: 'underline' },
+            ]}>
+              {spinsRemaining} / {spinCap} spins{spinsRemaining === 0 ? '  ·  refill?' : ''}
+            </Text>
+          </Pressable>
           {spinsRemaining < spinCap && msUntilNextSpin > 0 && (
             <View style={styles.refillRow}>
               <Text style={[styles.refillNext, spinsLow && styles.refillNextLow]}>

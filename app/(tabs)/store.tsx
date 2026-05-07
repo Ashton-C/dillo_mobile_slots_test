@@ -11,6 +11,7 @@ import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
 import { AdWatchModal } from '@/components/AdWatchModal';
 import { adsService, ADS_AVAILABLE } from '@/services/AdsService';
+import { iapService } from '@/services/IapService';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
 import { hapticBuildComplete, hapticActivateBuff } from '@/constants/haptics';
 import {
@@ -233,12 +234,36 @@ export default function StoreScreen() {
   // ── IAP pack handlers ──
   function handlePurchase(pack: StorePack) { setPendingPack(pack); }
 
-  function confirmPurchase() {
+  async function confirmPurchase() {
     if (!pendingPack) return;
-    grantResources(pendingPack.rewards);
-    hapticBuildComplete();
-    showToast(`Purchased: ${pendingPack.label} — ${formatRewards(pendingPack.rewards)}`);
+    const pack = pendingPack;
     setPendingPack(null);
+    const r = await iapService.purchase(pack.id);
+    if (!r.ok) {
+      if (r.error && r.error !== 'cancelled') {
+        showToast(`Purchase failed — ${r.error}`);
+      }
+      return;
+    }
+    // Stub mode (Expo Go / no RC keys) — apply rewards client-side so the
+    // dev flow still works. Real receipts are validated + granted server-side
+    // by the RevenueCat webhook (see MONETIZATION_CHECKLIST.md).
+    if (r.stubbed) grantResources(pack.rewards);
+    hapticBuildComplete();
+    showToast(`Purchased: ${pack.label} — ${formatRewards(pack.rewards)}`);
+  }
+
+  async function handleRestore() {
+    const r = await iapService.restore();
+    if (r.stubbed) {
+      showToast('Restore requires a production build');
+      return;
+    }
+    showToast(
+      r.restoredProductIds.length > 0
+        ? `Restored ${r.restoredProductIds.length} purchase${r.restoredProductIds.length === 1 ? '' : 's'}`
+        : 'No previous purchases found',
+    );
   }
 
   // ── Cosmetic handlers ──
@@ -402,9 +427,13 @@ export default function StoreScreen() {
         <Text style={styles.sectionHeader}>RESOURCES</Text>
         {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
 
+        <Pressable onPress={handleRestore} style={styles.restoreBtn}>
+          <Text style={styles.restoreBtnText}>RESTORE PURCHASES</Text>
+        </Pressable>
+
         <Text style={styles.footnote}>
-          CR purchases are earned in-game. Items marked with a price are simulated IAP during
-          development — no real charge occurs. Real payment integration ships at launch.
+          CR purchases are earned in-game. IAP receipts are validated server-side via RevenueCat
+          before credits are granted. In dev / Expo Go the flow is stubbed — no real charge occurs.
         </Text>
       </ScrollView>
 
@@ -648,6 +677,21 @@ const styles = StyleSheet.create({
   cosActionText:   { fontSize: 9, fontWeight: Typography.weights.bold, color: Colors.textSecondary, letterSpacing: 2 },
 
   footnote: { fontSize: 10, color: Colors.textMuted, lineHeight: 16, marginTop: Spacing.md, fontStyle: 'italic' },
+  restoreBtn: {
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.sm,
+  },
+  restoreBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
+    color: Colors.textSecondary,
+  },
 
   confirmOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
   confirmPanel:      { width: '100%', maxWidth: 320, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, gap: 4 },

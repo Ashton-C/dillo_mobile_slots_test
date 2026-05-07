@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
 import { soundService } from '@/services/SoundService';
+import { adsService } from '@/services/AdsService';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
@@ -192,6 +193,12 @@ export default function RadarScreen() {
   function handleMiniGameClose() {
     setMiniGameVisible(false);
     setSelectedTarget(null);
+    // Post-combat interstitial — frequency-capped to once every 4 minutes
+    // globally so a fast raid streak doesn't bombard players. Only fires
+    // after EXTRACTIONs to leave the snappier INTRUSION flow ad-free.
+    if (combatType === 'EXTRACTION') {
+      void adsService.maybeShowInterstitial('post-extraction');
+    }
   }
 
   return (

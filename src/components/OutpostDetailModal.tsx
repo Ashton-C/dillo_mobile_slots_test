@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { hapticBuildStart } from '@/constants/haptics';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { outpostUpgradeCost, outpostUpgradeDuration } from '@/models/Habitat';
+import { SkipBuildModal } from '@/components/SkipBuildModal';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 function formatTimer(ms: number): string {
@@ -23,6 +25,7 @@ interface Props {
 export function OutpostDetailModal({ visible, onClose }: Props) {
   const { credits, subtractCredits } = useGameStore();
   const { outpostLevel, activeBuildJob, msUntilComplete, upgradeOutpost } = useHabitatStore();
+  const [skipVisible, setSkipVisible] = useState(false);
 
   const cost         = outpostUpgradeCost(outpostLevel);
   const duration     = outpostUpgradeDuration(outpostLevel + 1);
@@ -68,11 +71,17 @@ export function OutpostDetailModal({ visible, onClose }: Props) {
               <Text style={styles.upgradeBtnTextMuted}>OUTPOST MAXED</Text>
             </View>
           ) : isUpgrading ? (
-            <View style={[styles.upgradeBtn, { borderColor: Colors.accent, borderWidth: 1, backgroundColor: Colors.surfaceElevated }]}>
+            <Pressable
+              onPress={() => setSkipVisible(true)}
+              style={[styles.upgradeBtn, { borderColor: Colors.accent, borderWidth: 1, backgroundColor: Colors.surfaceElevated }]}
+            >
               <Text style={[styles.upgradeBtnText, { color: Colors.accent }]}>
                 UPGRADING  {formatTimer(msUntilComplete)}
               </Text>
-            </View>
+              <Text style={{ fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 1, marginTop: 2 }}>
+                ⚡  TAP TO FINISH NOW
+              </Text>
+            </Pressable>
           ) : (
             <Pressable
               onPress={() => { hapticBuildStart(); upgradeOutpost(subtractCredits); onClose(); }}
@@ -86,6 +95,7 @@ export function OutpostDetailModal({ visible, onClose }: Props) {
           )}
         </Pressable>
       </Pressable>
+      <SkipBuildModal visible={skipVisible} onClose={() => setSkipVisible(false)} />
     </Modal>
   );
 }

@@ -21,6 +21,9 @@ interface HabitatState {
   setHabitatId: (id: string) => void;
   startBuild: (type: BuildingType, subtractCredits: (n: number) => boolean) => boolean;
   upgradeOutpost: (subtractCredits: (n: number) => boolean) => boolean;
+  // Reduces the active build's remaining time. `'instant'` completes the
+  // build on the next tick. Used by SkipBuildModal (CR / rewarded-ad / IAP).
+  applyBuildSkip: (skip: number | 'instant') => void;
   tick: () => void;
   syncFromFirestore: (data: HabitatSnapshot) => void;
   clearCompletedBuilding: () => void;
@@ -102,6 +105,18 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
     set({ activeBuildJob: job, msUntilComplete: duration });
     persist(habitatId, { activeBuildJob: job });
     return true;
+  },
+
+  applyBuildSkip(skip) {
+    const { activeBuildJob, habitatId } = get();
+    if (!activeBuildJob) return;
+    const newCompletesAt =
+      skip === 'instant'
+        ? Date.now()
+        : Math.max(Date.now(), activeBuildJob.completesAt - skip);
+    const job: ActiveBuildJob = { ...activeBuildJob, completesAt: newCompletesAt };
+    set({ activeBuildJob: job, msUntilComplete: Math.max(0, newCompletesAt - Date.now()) });
+    persist(habitatId, { activeBuildJob: job });
   },
 
   tick() {

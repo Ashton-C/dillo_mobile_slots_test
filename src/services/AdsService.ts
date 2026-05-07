@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Module load (graceful fallback when running in Expo Go) ───────────────────
 // react-native-google-mobile-ads ships a native module. Expo Go can't load it,
@@ -148,8 +149,35 @@ async function showInterstitialAd(): Promise<{ shown: boolean }> {
   });
 }
 
+// ── Interstitial frequency cap ────────────────────────────────────────────────
+// Don't show more than one interstitial within MIN_INTERSTITIAL_GAP_MS,
+// regardless of how many trigger points fire. Persisted across app launches
+// so a kill-and-relaunch can't bypass it.
+
+const INTERSTITIAL_LAST_KEY = '@interstitial_last_at';
+const MIN_INTERSTITIAL_GAP_MS = 4 * 60_000; // every 4 minutes max
+
+async function maybeShowInterstitial(reason: string): Promise<{ shown: boolean }> {
+  try {
+    const raw = await AsyncStorage.getItem(INTERSTITIAL_LAST_KEY);
+    const last = raw ? parseInt(raw, 10) : 0;
+    if (Date.now() - last < MIN_INTERSTITIAL_GAP_MS) {
+      if (__DEV__) console.log(`[ads] skipping interstitial (${reason}) — within cooldown`);
+      return { shown: false };
+    }
+    const r = await showInterstitialAd();
+    if (r.shown) {
+      await AsyncStorage.setItem(INTERSTITIAL_LAST_KEY, String(Date.now()));
+    }
+    return r;
+  } catch {
+    return { shown: false };
+  }
+}
+
 export const adsService = {
   init,
   showRewardedAd,
   showInterstitialAd,
+  maybeShowInterstitial,
 };

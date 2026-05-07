@@ -13,6 +13,7 @@ import { useEffect } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { DroneMarketplace } from '@/components/DroneMarketplace';
+import { SkipBuildModal } from '@/components/SkipBuildModal';
 import { useState } from 'react';
 import { hapticBuildStart } from '@/constants/haptics';
 import { soundService } from '@/services/SoundService';
@@ -116,6 +117,7 @@ export function BuildingDetailModal({ type, onClose }: Props) {
   const { credits, subtractCredits } = useGameStore();
   const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete, completedBuilding, startBuild } = useHabitatStore();
   const [contractsVisible, setContractsVisible] = useState(false);
+  const [skipVisible, setSkipVisible] = useState(false);
 
   // All Reanimated hooks must be called unconditionally before any early return
   const iconOpacity  = useSharedValue(1);
@@ -260,6 +262,12 @@ export function BuildingDetailModal({ type, onClose }: Props) {
             </Pressable>
           </View>
 
+          {isBuilding && (
+            <Pressable onPress={() => setSkipVisible(true)} style={styles.contractsBtn}>
+              <Text style={[styles.contractsBtnText, { color: Colors.accent }]}>⚡  FINISH NOW</Text>
+            </Pressable>
+          )}
+
           {type === 'HANGAR' && level > 0 && (
             <Pressable onPress={() => setContractsVisible(true)} style={styles.contractsBtn}>
               <Text style={styles.contractsBtnText}>▲  DRONE CONTRACTS</Text>
@@ -269,6 +277,7 @@ export function BuildingDetailModal({ type, onClose }: Props) {
       </Pressable>
 
       <DroneMarketplace visible={contractsVisible} onClose={() => setContractsVisible(false)} />
+      <SkipBuildModal visible={skipVisible} onClose={() => setSkipVisible(false)} />
     </Modal>
   );
 }

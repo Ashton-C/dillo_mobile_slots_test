@@ -47,7 +47,7 @@ export const PACKS: StorePack[] = [
 ];
 
 export const AD_REWARDS: AdReward[] = [
-  { id: 'ad_spins',  label: '+5 SPINS',           rewardLabel: '+5 spins',     cooldownMs:  5 * 60_000, reward: { spinRefill: true } },
+  { id: 'ad_spins',  label: 'REFILL SPINS',       rewardLabel: 'spin tank refilled', cooldownMs:  5 * 60_000, reward: { spinRefill: true } },
   { id: 'ad_credits',label: '+500 CR',            rewardLabel: '+500 credits', cooldownMs: 15 * 60_000, reward: { credits: 500 } },
   { id: 'ad_fuel',   label: '+1 FUEL',            rewardLabel: '+1 fuel cell', cooldownMs: 10 * 60_000, reward: { fuel: 1 } },
   { id: 'ad_boost',  label: '+1 SIGNAL BOOSTER',  rewardLabel: '+1 boost',     cooldownMs: 10 * 60_000, reward: { boost: 1 } },
