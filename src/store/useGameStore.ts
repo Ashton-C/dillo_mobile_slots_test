@@ -119,9 +119,31 @@ const INITIAL_RESOURCES: Resources = {
 const XP_PER_SPIN = 5;
 const XP_PER_LEVEL = (level: number) => 100 * level;
 
-function persistResources(data: Partial<Resources>) {
+// Idle-tick writes (generator income, spin refill) coalesce locally and flush
+// to Firestore at most once per PERSIST_COALESCE_MS. Any user-driven persist
+// flushes the pending buffer immediately.
+const PERSIST_COALESCE_MS = 5 * 60_000;
+let pendingPersist: Partial<Resources> = {};
+let lastPersistAt = Date.now();
+
+export function flushPendingPersist() {
+  if (Object.keys(pendingPersist).length === 0) return;
   const uid = auth.currentUser?.uid;
-  if (uid) writeUserResources(uid, data).catch(console.error);
+  if (uid) writeUserResources(uid, pendingPersist).catch(console.error);
+  pendingPersist = {};
+  lastPersistAt = Date.now();
+}
+
+function persistResources(data: Partial<Resources>) {
+  pendingPersist = { ...pendingPersist, ...data };
+  flushPendingPersist();
+}
+
+function persistResourcesCoalesced(data: Partial<Resources>) {
+  pendingPersist = { ...pendingPersist, ...data };
+  if (Date.now() - lastPersistAt >= PERSIST_COALESCE_MS) {
+    flushPendingPersist();
+  }
 }
 
 function deriveOutcomeType(multi: MultiSpinResult): SpinOutcomeType {
@@ -292,7 +314,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (newSpins >= spinCap) {
         const update = { spinsRemaining: newSpins, spinRefillStart: 0 };
         set({ ...update, msUntilNextSpin: 0, msUntilFull: 0 });
-        persistResources(update);
+        persistResourcesCoalesced(update);
       } else {
         const msInCycle = now - newRefillStart;
         const msUntilNextSpin = SPIN_REFILL_MS - msInCycle;
@@ -300,7 +322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
         const update = { spinsRemaining: newSpins, spinRefillStart: newRefillStart };
         set({ ...update, msUntilNextSpin, msUntilFull });
-        persistResources(update);
+        persistResourcesCoalesced(update);
       }
     } else {
       const msUntilNextSpin = SPIN_REFILL_MS - (elapsed % SPIN_REFILL_MS);
@@ -346,7 +368,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const income = genLevel * 20;
     const next = { credits: get().credits + income };
     set(next);
-    persistResources(next);
+    persistResourcesCoalesced(next);
   },
 
   setRiftTier(tier) {

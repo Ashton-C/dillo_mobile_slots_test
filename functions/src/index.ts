@@ -233,24 +233,28 @@ export const resolveCombat = functions.firestore
   });
 
 // ---------------------------------------------------------------------------
-// refillSpins — scheduled every 5 minutes
+// refillSpins — scheduled every 15 minutes
 // Tops up spins for any player who is below max and has an active refill timer.
-// This handles offline users — the client timer only runs when the app is open.
+// Skips users updated within the last 15 min — the client coalesces idle writes
+// and persists on user-driven actions, so a recent updatedAt means the client
+// already accounted for refill.
 // ---------------------------------------------------------------------------
 
 const MAX_SPINS = 50;
 const SPIN_REFILL_MS = 5 * 60_000;
+const REFILL_SCAN_INTERVAL_MS = 15 * 60_000;
 
 export const refillSpins = functions.pubsub
-  .schedule('every 5 minutes')
+  .schedule('every 15 minutes')
   .onRun(async () => {
     const now = Date.now();
+    const cutoff = admin.firestore.Timestamp.fromMillis(now - REFILL_SCAN_INTERVAL_MS);
     const usersRef = db.collection('users');
 
-    // Only query users actively refilling (spinRefillStart > 0, spins < max)
     const snap = await usersRef
       .where('spinsRemaining', '<', MAX_SPINS)
       .where('spinRefillStart', '>', 0)
+      .where('updatedAt', '<', cutoff)
       .get();
 
     if (snap.empty) return;
@@ -283,4 +287,52 @@ export const refillSpins = functions.pubsub
 
     await batch.commit();
     functions.logger.info(`refillSpins: updated ${updateCount} users`);
+  });
+
+// ---------------------------------------------------------------------------
+// seedAnomaly — scheduled every 4 hours
+// Server is the only writer for anomalies/current. Picks a new anomaly
+// (excluding the previously active one) and writes it. Clients only read.
+// ---------------------------------------------------------------------------
+
+type AnomalyId =
+  | 'SOLAR_SURGE'
+  | 'VOID_STORM'
+  | 'CREDIT_BLOOM'
+  | 'SHIELD_PULSE'
+  | 'RAID_SHADOW'
+  | 'CALM';
+
+const ANOMALY_IDS: AnomalyId[] = [
+  'SOLAR_SURGE',
+  'VOID_STORM',
+  'CREDIT_BLOOM',
+  'SHIELD_PULSE',
+  'RAID_SHADOW',
+  'CALM',
+];
+const ANOMALY_DURATION_MS = 4 * 60 * 60 * 1000;
+
+export const seedAnomaly = functions.pubsub
+  .schedule('every 4 hours')
+  .onRun(async () => {
+    const ref = db.doc('anomalies/current');
+    const existing = await ref.get();
+    const previousId = existing.exists ? (existing.data()?.id as AnomalyId | undefined) ?? null : null;
+
+    // CALM is half-weighted vs the others.
+    const pool: AnomalyId[] = ANOMALY_IDS.flatMap((id) => {
+      if (id === previousId) return [];
+      return id === 'CALM' ? [id] : [id, id];
+    });
+    const id = pool[Math.floor(Math.random() * pool.length)];
+    const now = Date.now();
+
+    await ref.set({
+      id,
+      startedAt: now,
+      endsAt: now + ANOMALY_DURATION_MS,
+    });
+
+    functions.logger.info(`seedAnomaly: ${previousId ?? '(none)'} -> ${id}`);
   });

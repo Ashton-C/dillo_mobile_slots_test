@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, LogBox } from 'react-native';
+import { View, LogBox, AppState } from 'react-native';
 
 LogBox.ignoreLogs(['It looks like you might be using shared value']);
 import { Stack } from 'expo-router';
@@ -10,7 +10,7 @@ import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
-import { useGameStore } from '@/store/useGameStore';
+import { useGameStore, flushPendingPersist } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 import { EventBanner } from '@/components/EventBanner';
@@ -39,12 +39,16 @@ export default function RootLayout() {
       tickSpinRefill();
     }, 1_000);
     const generatorInterval = setInterval(tickGeneratorIncome, 30_000);
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') flushPendingPersist();
+    });
 
     return () => {
       unsubAuth();
       clearInterval(anomalyInterval);
       clearInterval(secondInterval);
       clearInterval(generatorInterval);
+      appStateSub.remove();
     };
   }, []);
 

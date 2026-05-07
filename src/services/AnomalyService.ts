@@ -1,8 +1,6 @@
 import {
   doc,
   onSnapshot,
-  setDoc,
-  serverTimestamp,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -107,8 +105,6 @@ export const ANOMALIES: Record<AnomalyId, AnomalyDefinition> = {
   },
 };
 
-const ANOMALY_IDS = Object.keys(ANOMALIES) as AnomalyId[];
-const ANOMALY_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
 const ANOMALIES_DOC = 'anomalies/current';
 
 export interface ActiveAnomaly {
@@ -125,21 +121,12 @@ export class AnomalyService {
   subscribe(onUpdate: (anomaly: ActiveAnomaly, def: AnomalyDefinition) => void): Unsubscribe {
     const ref = doc(db, ANOMALIES_DOC);
 
-    return onSnapshot(ref, async (snap) => {
-      const now = Date.now();
-
-      if (!snap.exists() || snap.data().endsAt < now) {
-        // Seed a new anomaly — first connected client wins, others get it via onSnapshot.
-        // Exclude the just-expired one so we don't roll the same anomaly twice in a row.
-        const previousId = snap.exists() ? (snap.data() as ActiveAnomaly).id : null;
-        const next = this.generateAnomaly(now, previousId);
-        await setDoc(ref, next).catch(() => {
-          // Another client may have written first — harmless, onSnapshot will fire again
-        });
-        return;
-      }
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
 
       const data = snap.data() as ActiveAnomaly;
+      if (data.endsAt < Date.now()) return;
+
       this.currentAnomaly = data;
       onUpdate(data, ANOMALIES[data.id]);
     });
@@ -167,18 +154,6 @@ export class AnomalyService {
   msUntilNextAnomaly(): number {
     if (!this.currentAnomaly) return 0;
     return Math.max(0, this.currentAnomaly.endsAt - Date.now());
-  }
-
-  private generateAnomaly(now: number, excludeId: AnomalyId | null = null): ActiveAnomaly {
-    // Pick a random anomaly, weighted so CALM is half as likely as the others.
-    // The previously active anomaly is excluded so the same one never repeats
-    // back-to-back.
-    const pool: AnomalyId[] = ANOMALY_IDS.flatMap((id) => {
-      if (id === excludeId) return [];
-      return id === 'CALM' ? [id] : [id, id];
-    });
-    const id = pool[Math.floor(Math.random() * pool.length)];
-    return { id, startedAt: now, endsAt: now + ANOMALY_DURATION_MS };
   }
 }
 
