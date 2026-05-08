@@ -415,6 +415,8 @@ export const seedAnomaly = functions.pubsub
 
 interface PackReward {
   credits?: number;
+  // Stardust (✦): build-skip premium currency. Additive, no cap.
+  stardust?: number;
   fuel?: number;
   boost?: number;
   shields?: number;
@@ -422,17 +424,28 @@ interface PackReward {
 }
 
 // Mirrors src/services/StoreService.ts PACKS — only id → rewards.
+// MUST stay in sync; drift = a successful purchase that pays nothing.
 const PACK_REWARDS: Record<string, PackReward> = {
+  // Credit packs
   cr_pocket:  { credits: 1_000 },
   cr_hoard:   { credits: 5_000 },
   cr_vault:   { credits: 25_000 },
   cr_forge:   { credits: 100_000 },
+  // Spin refill
   sp_refill:  { spinRefill: true },
+  // Resource packs
   rs_fuel5:   { fuel: 5 },
   rs_boost5:  { boost: 5 },
   rs_shield5: { shields: 5 },
+  // Resource bundles (no cosmetic grants — those go via COSMETIC_BUNDLE_GRANTS)
   bd_starter: { spinRefill: true, credits: 2_500, fuel: 3 },
   bd_war:     { fuel: 5, boost: 5, shields: 5 },
+  // Stardust ladder (premium build-skip currency)
+  sd_starter: { stardust: 100   },
+  sd_handful: { stardust: 600   },
+  sd_jar:     { stardust: 1_500 },
+  sd_chest:   { stardust: 4_000 },
+  sd_hoard:   { stardust: 10_000 },
 };
 
 // Mirrors src/services/CosmeticsService.ts BUNDLE_GRANTS — cosmetic-bundle SKUs
@@ -476,10 +489,11 @@ function applyPackToUserData(
   reward: PackReward,
 ): Partial<admin.firestore.DocumentData> {
   const next: admin.firestore.DocumentData = {};
-  if (reward.credits)    next.credits = (user.credits ?? 0) + reward.credits;
-  if (reward.fuel)       next.attacks = Math.min(MAX_FUEL_CAP,    (user.attacks ?? 0) + reward.fuel);
-  if (reward.boost)      next.raids   = Math.min(MAX_BOOST_CAP,   (user.raids   ?? 0) + reward.boost);
-  if (reward.shields)    next.shields = Math.min(MAX_SHIELDS_CAP, (user.shields ?? 0) + reward.shields);
+  if (reward.credits)    next.credits  = (user.credits  ?? 0) + reward.credits;
+  if (reward.stardust)   next.stardust = (user.stardust ?? 0) + reward.stardust;
+  if (reward.fuel)       next.attacks  = Math.min(MAX_FUEL_CAP,    (user.attacks ?? 0) + reward.fuel);
+  if (reward.boost)      next.raids    = Math.min(MAX_BOOST_CAP,   (user.raids   ?? 0) + reward.boost);
+  if (reward.shields)    next.shields  = Math.min(MAX_SHIELDS_CAP, (user.shields ?? 0) + reward.shields);
   if (reward.spinRefill) {
     next.spinsRemaining  = MAX_SPINS_CAP;
     next.spinRefillStart = 0;

@@ -12,6 +12,7 @@ import {
 } from '@/services/FirestoreService';
 import { CombatResolutionChip } from '@/components/CombatResolutionChip';
 import { auth } from '@/lib/firebase';
+import { useGameStore } from '@/store/useGameStore';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 type Phase = 'DEAL' | 'PLAYER' | 'DEALER' | 'DONE';
@@ -179,6 +180,11 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
     const { power, outcome: outcomeText } = blackjackPower(p, d);
     const didWin = power > 8;
     setSentPower(power);
+
+    // Stardust skill drip: every blackjack-extraction win earns +1 ✦.
+    // Local-only — the server doesn't need to authority this since it's
+    // not paid-content. Mirrors the jackpot drip in useGameStore.spin().
+    if (didWin) useGameStore.getState().addStardust(1);
 
     const uid = auth.currentUser?.uid;
     if (uid && target) {

@@ -26,6 +26,9 @@ export interface HabitatSnapshot {
 
 export interface UserResourceSnapshot {
   credits: number;
+  // Premium build-skip currency. Defaults to 0 if the user doc predates
+  // the field (legacy users) — treated as zero on read.
+  stardust: number;
   attacks: number;
   raids: number;
   shields: number;
@@ -83,6 +86,7 @@ export function subscribeToUser(
       const d = snap.data();
       onUpdate({
         credits:         d.credits         ?? 0,
+        stardust:        d.stardust        ?? 0,
         attacks:         d.attacks         ?? 0,
         raids:           d.raids           ?? 0,
         shields:         d.shields         ?? 0,

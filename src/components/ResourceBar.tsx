@@ -30,6 +30,10 @@ function CreditPill({ credits }: { credits: number }) {
 
 interface Props {
   credits: number;
+  // Premium build-skip currency (✦). Defaults to 0 if omitted; the pill
+  // still renders so the player can see they have none and tap into the
+  // store, mirroring how shields/boost behave.
+  stardust?: number;
   attacks: number;
   raids: number;
   shields: number;
@@ -39,7 +43,7 @@ interface Props {
   style?: ViewStyle;
 }
 
-export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, displayName, level, style }: Props) {
+export function ResourceBar({ credits, stardust = 0, attacks, raids, shields, spinsRemaining, displayName, level, style }: Props) {
   const activeHudId    = useCosmeticsStore((s) => s.active['HUD_SKIN']   ?? 'hud_default');
   const activeEmblemId = useCosmeticsStore((s) => s.active['EMBLEM']     ?? 'emblem_none');
   const activeTitleId  = useCosmeticsStore((s) => s.active['TITLE']      ?? 'title_none');
@@ -77,6 +81,7 @@ export function ResourceBar({ credits, attacks, raids, shields, spinsRemaining, 
       ) : null}
       <View style={styles.pillsRow}>
         <CreditPill credits={credits} />
+        <ResourcePill label="✦ DUST" value={stardust}       color={Colors.warning} />
         <ResourcePill label="FUEL"    value={attacks}        color={Colors.attack}  />
         <ResourcePill label="BOOST"   value={raids}          color={Colors.raid}    />
         <ResourcePill label="SHIELDS" value={shields}        color={Colors.shield}  />

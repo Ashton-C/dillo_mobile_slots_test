@@ -90,7 +90,7 @@ function formatPayout(result: SpinResult): string {
 
 export default function SpinScreen() {
   const {
-    credits, attacks, raids, shields, intrusions, extractions, spinsRemaining,
+    credits, stardust, attacks, raids, shields, intrusions, extractions, spinsRemaining,
     isSpinning, lastResult, reelWindow, activeWinLines, riftTier, level,
     msUntilNextSpin, msUntilFull,
     overclockActive, signalBoostActive,
@@ -380,6 +380,7 @@ export default function SpinScreen() {
       >
         <ResourceBar
           credits={credits}
+          stardust={stardust}
           attacks={attacks}
           raids={raids}
           shields={shields}

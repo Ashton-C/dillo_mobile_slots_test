@@ -335,6 +335,7 @@ export default function StoreScreen() {
     items: COSMETICS_CATALOG.filter((c) => c.category === cat),
   })).filter((g) => g.items.length > 0);
 
+  const stardustPacks = PACKS.filter((p) => p.category === 'STARDUST');
   const credPacks     = PACKS.filter((p) => p.category === 'CREDITS');
   const spinPacks     = PACKS.filter((p) => p.category === 'SPINS');
   const resourcePacks = PACKS.filter((p) => p.category === 'RESOURCE');
@@ -439,6 +440,9 @@ export default function StoreScreen() {
         ))}
 
         {/* 4. Credit packs */}
+        <Text style={styles.sectionHeader}>✦ STARDUST</Text>
+        {stardustPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
+
         <Text style={styles.sectionHeader}>CREDIT PACKS</Text>
         {credPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
 

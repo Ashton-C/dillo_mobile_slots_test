@@ -134,6 +134,13 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
         if (uid) {
           writePlayerIndexPartial(uid, { outpostLevel: newOutpostLevel }).catch(console.error);
         }
+        // Outpost level-ups grant +10 ✦ stardust as a milestone reward.
+        // Lazy require avoids the useHabitatStore ↔ useGameStore static
+        // circular import (useGameStore.tickSpinRefill already pulls
+        // habitat for the spin cap).
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { useGameStore } = require('@/store/useGameStore') as typeof import('@/store/useGameStore');
+        useGameStore.getState().addStardust(10);
       } else {
         const newLevels = {
           ...buildingLevels,

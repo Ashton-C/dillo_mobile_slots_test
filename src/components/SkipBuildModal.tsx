@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View, Text, Modal, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { adsService } from '@/services/AdsService';
-import { iapService } from '@/services/IapService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 interface Props {
@@ -13,11 +13,11 @@ interface Props {
   onClose: () => void;
 }
 
-// Cost & ad reduction tunables
-const CR_PER_MINUTE = 5;       // skip cost per remaining minute
-const AD_SKIP_MS    = 30 * 60_000; // ad watch shaves 30 min off
-const SKIP_PRODUCT_ID = 'reelwright_skip_build';
-const SKIP_PRICE_FALLBACK = '$0.99';
+// Tunables
+const CR_PER_MINUTE         = 5;       // CR cost per remaining minute
+const STARDUST_PER_MIN      = 1;       // ✦ cost per remaining minute (buildings)
+const OUTPOST_STARDUST_MULT = 2;       // outpost upgrades cost 2× per minute
+const AD_SKIP_MS            = 30 * 60_000;
 
 function formatRemaining(ms: number): string {
   if (ms <= 0) return 'now';
@@ -30,33 +30,31 @@ function formatRemaining(ms: number): string {
 }
 
 export function SkipBuildModal({ visible, onClose }: Props) {
-  const credits = useGameStore((s) => s.credits);
+  const router = useRouter();
+  const credits          = useGameStore((s) => s.credits);
+  const stardust         = useGameStore((s) => s.stardust);
   const subtractResources = useGameStore((s) => s.subtractResources);
-  const grantResources    = useGameStore((s) => s.grantResources);
-  const activeBuildJob = useHabitatStore((s) => s.activeBuildJob);
-  const msUntilComplete = useHabitatStore((s) => s.msUntilComplete);
-  const applyBuildSkip = useHabitatStore((s) => s.applyBuildSkip);
+  const subtractStardust  = useGameStore((s) => s.subtractStardust);
+  const activeBuildJob   = useHabitatStore((s) => s.activeBuildJob);
+  const msUntilComplete  = useHabitatStore((s) => s.msUntilComplete);
+  const applyBuildSkip   = useHabitatStore((s) => s.applyBuildSkip);
 
-  const [busy, setBusy] = useState<'cr' | 'ad' | 'iap' | null>(null);
-  const [iapPrice, setIapPrice] = useState(SKIP_PRICE_FALLBACK);
+  const [busy, setBusy] = useState<'cr' | 'ad' | 'dust' | null>(null);
 
-  useEffect(() => {
-    if (!visible) return;
-    void iapService.getLocalizedPrice(SKIP_PRODUCT_ID).then((p) => {
-      if (p) setIapPrice(p);
-    });
-  }, [visible]);
-
-  const minutesLeft = Math.ceil(msUntilComplete / 60_000);
-  const skipCost    = Math.max(CR_PER_MINUTE, minutesLeft * CR_PER_MINUTE);
-  const canAffordCr = credits >= skipCost;
+  const minutesLeft   = Math.max(1, Math.ceil(msUntilComplete / 60_000));
+  const isOutpost     = activeBuildJob?.isOutpost === true;
+  const dustPerMin    = STARDUST_PER_MIN * (isOutpost ? OUTPOST_STARDUST_MULT : 1);
+  const dustCost      = minutesLeft * dustPerMin;
+  const crCost        = Math.max(CR_PER_MINUTE, minutesLeft * CR_PER_MINUTE);
+  const canAffordCr   = credits  >= crCost;
+  const canAffordDust = stardust >= dustCost;
 
   async function handleSpendCr() {
     if (!canAffordCr || busy) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setBusy('cr');
     try {
-      const ok = subtractResources({ credits: skipCost });
+      const ok = subtractResources({ credits: crCost });
       if (ok) {
         applyBuildSkip('instant');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -83,25 +81,25 @@ export function SkipBuildModal({ visible, onClose }: Props) {
     }
   }
 
-  async function handleBuySkip() {
+  function handleSpendStardust() {
     if (busy) return;
+    if (!canAffordDust) {
+      // Send the user to the Store screen — they'll land in the STARDUST
+      // section (it's the first section in store.tsx now) and can pick a
+      // pack. We close the modal so the route transition is unimpeded.
+      Haptics.selectionAsync().catch(() => {});
+      onClose();
+      router.push('/(tabs)/store');
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setBusy('iap');
+    setBusy('dust');
     try {
-      const r = await iapService.purchase(SKIP_PRODUCT_ID);
-      if (r.ok) {
-        // Build-skip is a low-stakes purchase — applying client-side after a
-        // successful purchase event is acceptable even with the webhook in
-        // production. (Credit/spin packs go through the webhook for real
-        // grant authority.)
+      const ok = subtractStardust(dustCost);
+      if (ok) {
         applyBuildSkip('instant');
-        // Purely cosmetic: a tiny CR refund prevents "I just spent $0.99 to
-        // skip a 1-min build" buyer's remorse if they slip.
-        if (r.stubbed && minutesLeft <= 2) grantResources({ credits: 0 });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         onClose();
-      } else if (r.error && r.error !== 'cancelled') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       }
     } finally {
       setBusy(null);
@@ -116,10 +114,41 @@ export function SkipBuildModal({ visible, onClose }: Props) {
         <View style={styles.panel}>
           <LinearGradient colors={[Colors.accent + '33', 'transparent']} style={styles.headerGrad}>
             <Text style={styles.title}>FINISH BUILD NOW</Text>
-            <Text style={styles.subtitle}>{formatRemaining(msUntilComplete)} remaining</Text>
+            <Text style={styles.subtitle}>{formatRemaining(msUntilComplete)} remaining{isOutpost ? '  ·  outpost upgrade' : ''}</Text>
           </LinearGradient>
 
           <View style={styles.actions}>
+            {/* Stardust — primary action; replaces the old flat-IAP option */}
+            <Pressable
+              onPress={handleSpendStardust}
+              disabled={busy !== null}
+              style={[styles.action, { borderColor: canAffordDust ? Colors.warning : Colors.border }]}
+            >
+              {busy === 'dust' ? (
+                <ActivityIndicator color={Colors.warning} />
+              ) : canAffordDust ? (
+                <>
+                  <Text style={[styles.actionLabel, { color: Colors.warning }]}>
+                    ✦ {dustCost.toLocaleString()}  ·  INSTANT
+                  </Text>
+                  <Text style={styles.actionSub}>
+                    Skip remaining {formatRemaining(msUntilComplete)}
+                    {isOutpost ? ' (outpost rate)' : ''}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.actionLabel, { color: Colors.warning }]}>
+                    BUY STARDUST  ▸
+                  </Text>
+                  <Text style={styles.actionSub}>
+                    Need {(dustCost - stardust).toLocaleString()} more ✦ to skip
+                  </Text>
+                </>
+              )}
+            </Pressable>
+
+            {/* Credits — alternative payment for whales who hoard CR */}
             <Pressable
               onPress={handleSpendCr}
               disabled={!canAffordCr || busy !== null}
@@ -130,17 +159,18 @@ export function SkipBuildModal({ visible, onClose }: Props) {
               ) : (
                 <>
                   <Text style={[styles.actionLabel, { color: canAffordCr ? Colors.credits : Colors.textMuted }]}>
-                    {skipCost.toLocaleString()} CR  ·  INSTANT
+                    {crCost.toLocaleString()} CR
                   </Text>
                   <Text style={styles.actionSub}>
                     {canAffordCr
-                      ? `Skip remaining ${formatRemaining(msUntilComplete)}`
-                      : `Need ${(skipCost - credits).toLocaleString()} more CR`}
+                      ? `Skip with credits instead`
+                      : `Need ${(crCost - credits).toLocaleString()} more CR`}
                   </Text>
                 </>
               )}
             </Pressable>
 
+            {/* Rewarded ad — F2P drip, shaves 30 min */}
             <Pressable
               onPress={handleWatchAd}
               disabled={busy !== null}
@@ -152,21 +182,6 @@ export function SkipBuildModal({ visible, onClose }: Props) {
                 <>
                   <Text style={[styles.actionLabel, { color: Colors.success }]}>▶  WATCH AD</Text>
                   <Text style={styles.actionSub}>Skip 30 minutes off the timer</Text>
-                </>
-              )}
-            </Pressable>
-
-            <Pressable
-              onPress={handleBuySkip}
-              disabled={busy !== null}
-              style={[styles.action, { borderColor: Colors.accent }]}
-            >
-              {busy === 'iap' ? (
-                <ActivityIndicator color={Colors.accent} />
-              ) : (
-                <>
-                  <Text style={[styles.actionLabel, { color: Colors.accent }]}>{iapPrice}  ·  INSTANT</Text>
-                  <Text style={styles.actionSub}>Skip the entire timer</Text>
                 </>
               )}
             </Pressable>

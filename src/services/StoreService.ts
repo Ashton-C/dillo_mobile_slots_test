@@ -2,6 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface PackReward {
   credits?: number;
+  // Stardust (✦) — the premium soft currency for build skips. Granted as
+  // an additive number; no cap.
+  stardust?: number;
   fuel?: number;
   boost?: number;
   shields?: number;
@@ -10,7 +13,7 @@ export interface PackReward {
 
 export interface StorePack {
   id: string;
-  category: 'CREDITS' | 'BUNDLE' | 'RESOURCE' | 'SPINS';
+  category: 'CREDITS' | 'BUNDLE' | 'RESOURCE' | 'SPINS' | 'STARDUST';
   label: string;
   description: string;
   price: string;
@@ -27,6 +30,13 @@ export interface AdReward {
 }
 
 export const PACKS: StorePack[] = [
+  // Stardust (premium build-skip currency). 5-tier ladder; bonuses scale.
+  { id: 'sd_starter', category: 'STARDUST', label: 'STARDUST STARTER', description: '100 ✦ stardust',                       price: '$0.99',  rewards: { stardust: 100   } },
+  { id: 'sd_handful', category: 'STARDUST', label: 'STARDUST HANDFUL', description: '600 ✦ stardust  ·  +20% bonus',        price: '$4.99',  rewards: { stardust: 600   } },
+  { id: 'sd_jar',     category: 'STARDUST', label: 'STARDUST JAR',     description: '1,500 ✦ stardust  ·  +50% bonus',      price: '$9.99',  rewards: { stardust: 1_500 } },
+  { id: 'sd_chest',   category: 'STARDUST', label: 'STARDUST CHEST',   description: '4,000 ✦ stardust  ·  +60% bonus',      price: '$24.99', rewards: { stardust: 4_000 }, featured: true },
+  { id: 'sd_hoard',   category: 'STARDUST', label: 'STARDUST HOARD',   description: '10,000 ✦ stardust  ·  +100% bonus',    price: '$49.99', rewards: { stardust: 10_000 } },
+
   // Credits
   { id: 'cr_pocket',  category: 'CREDITS', label: 'POCKET',     description: '1,000 credits',   price: '$0.99',  rewards: { credits: 1_000 } },
   { id: 'cr_hoard',   category: 'CREDITS', label: 'HOARD',      description: '5,000 credits',   price: '$4.99',  rewards: { credits: 5_000 } },
