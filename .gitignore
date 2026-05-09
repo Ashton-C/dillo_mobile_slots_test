@@ -150,3 +150,11 @@ expo-env.d.ts
 # Expo CNG — generated native projects; EAS Build runs prebuild fresh each time
 /android
 /ios
+
+# Cloud Functions TypeScript build output
+functions/lib/
+
+# Google Play Developer Identity (ADI) verification — account-tied token,
+# read by plugins/with-adi-registration.js during prebuild and copied
+# into android/app/src/main/assets/ for the verification APK only.
+/adi-registration.properties

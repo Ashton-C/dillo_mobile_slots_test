@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hapticCombatLaunch, hapticCombatWin, hapticCombatLoss } from '@/constants/haptics';
 import { soundService } from '@/services/SoundService';
+import { adsService } from '@/services/AdsService';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
 import { fetchRadarTargets, PlayerIndexEntry } from '@/services/FirestoreService';
 import { DEBUG_PLAYERS, loadActiveDebugUids } from '@/constants/debugPlayers';
 import { RouletteGame } from '@/components/RouletteGame';
+import { BlackjackMiniGame } from '@/components/BlackjackMiniGame';
 import { SectorMap } from '@/components/SectorMap';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -121,7 +124,6 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
 }
 
 export default function RadarScreen() {
-  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const { intrusions, extractions, subtractResources } = useGameStore();
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
@@ -134,14 +136,16 @@ export default function RadarScreen() {
   const [miniGameVisible, setMiniGameVisible] = useState(false);
   const [scanCount, setScanCount] = useState(0);
   const [legendVisible, setLegendVisible] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   async function scan() {
     if (!user) return;
     void soundService.play('radarScan');
     setLoading(true);
+    setScanError(null);
     try {
       const [found, activeDebugUids] = await Promise.all([
-        fetchRadarTargets(user.uid, 5),
+        fetchRadarTargets(user.uid, outpostLevel, 5),
         loadActiveDebugUids(),
       ]);
       const debugEntries = DEBUG_PLAYERS.filter((p) => activeDebugUids.includes(p.uid));
@@ -158,6 +162,7 @@ export default function RadarScreen() {
       }
     } catch (e) {
       console.error('Radar scan failed:', e);
+      setScanError('Scan failed — pull down or tap SCAN to retry.');
     } finally {
       setLoading(false);
     }
@@ -188,10 +193,19 @@ export default function RadarScreen() {
   function handleMiniGameClose() {
     setMiniGameVisible(false);
     setSelectedTarget(null);
+    // Post-combat interstitial — frequency-capped to once every 4 minutes
+    // globally so a fast raid streak doesn't bombard players. Only fires
+    // after EXTRACTIONs to leave the snappier INTRUSION flow ad-free.
+    if (combatType === 'EXTRACTION') {
+      void adsService.maybeShowInterstitial('post-extraction');
+    }
   }
 
   return (
     <SafeAreaView style={styles.root}>
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
       {/* Header */}
       <LinearGradient
         colors={[Colors.danger + '22', Colors.accent + '11', 'transparent']}
@@ -228,7 +242,22 @@ export default function RadarScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={scan}
+            tintColor={Colors.accent}
+            colors={[Colors.accent]}
+          />
+        }
+      >
+        {scanError ? (
+          <Pressable onPress={scan} style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>⚠  {scanError}</Text>
+          </Pressable>
+        ) : null}
         {/* Sector map */}
         <SectorMap
           targets={targets}
@@ -310,42 +339,56 @@ export default function RadarScreen() {
         </Text>
       </ScrollView>
 
-      <RouletteGame
-        visible={miniGameVisible}
-        target={selectedTarget}
-        combatType={combatType}
-        onClose={handleMiniGameClose}
-        onResult={handleMiniGameResult}
-      />
-
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
-      />
+      {combatType === 'EXTRACTION' ? (
+        <BlackjackMiniGame
+          visible={miniGameVisible}
+          target={selectedTarget}
+          combatType={combatType}
+          onClose={handleMiniGameClose}
+          onResult={handleMiniGameResult}
+        />
+      ) : (
+        <RouletteGame
+          visible={miniGameVisible}
+          target={selectedTarget}
+          combatType={combatType}
+          onClose={handleMiniGameClose}
+          onResult={handleMiniGameResult}
+        />
+      )}
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="WIRE LEGEND" accentColor={Colors.danger}>
         <LegendSection label="COMBAT ACTIONS" />
-        <LegendRow left="INTRUSION" right="Spend 1 Breach token" color={Colors.danger} />
-        <LegendRow left="" right="Winner steals credits from loser" />
-        <LegendRow left="EXTRACTION" right="Spend 1 Beam token" color={Colors.accent} />
-        <LegendRow left="" right="Higher loot — harder to win" />
-        <LegendSection label="BET TIERS" />
-        <LegendRow left="EVEN" right="50% · Power 75 · Loot 150 CR" color={Colors.primary} />
-        <LegendRow left="SECTOR" right="33% · Power 110 · Loot 225 CR" color={Colors.accent} />
-        <LegendRow left="JACKPOT" right="17% · Power 145 · Loot 350 CR" color={Colors.credits} />
+        <LegendRow left="INTRUSION" right="Spend 1 Breach · Roulette wheel" color={Colors.danger} />
+        <LegendRow left="EXTRACTION" right="Spend 1 Beam · Blackjack hand" color={Colors.accent} />
+        <LegendRow left="" right="Winner takes credits from loser — closed loop" />
+        <LegendSection label="ROULETTE TIERS (BREACH)" />
+        <LegendRow left="EVEN" right="42% · Power 75" color={Colors.primary} />
+        <LegendRow left="SECTOR" right="25% · Power 110" color={Colors.accent} />
+        <LegendRow left="JACKPOT" right="8%  · Power 145" color={Colors.credits} />
         <LegendRow left="MISS" right="Power 8 · Lose your bet resource" />
+        <LegendSection label="BLACKJACK TIERS (BEAM)" />
+        <LegendRow left="17–19" right="Power 90"  color={Colors.primary} />
+        <LegendRow left="20"    right="Power 110" color={Colors.accent} />
+        <LegendRow left="21"    right="Power 130" color={Colors.credits} />
+        <LegendRow left="BLACKJACK" right="Power 145 (21 in 2 cards)" color={Colors.credits} />
+        <LegendSection label="LOOT" />
+        <LegendRow left="EVEN tier"   right="5% of target wallet · 100–250 CR cap"  color={Colors.primary} />
+        <LegendRow left="SECTOR tier" right="8% of target wallet · 150–400 CR cap"  color={Colors.accent} />
+        <LegendRow left="JACKPOT"     right="12% of target wallet · 250–700 CR cap" color={Colors.credits} />
+        <LegendRow left="ANOMALY" right="RAID_SHADOW +50% · VOID_STORM +20%" />
+        <LegendRow left="RAIDER drone" right="+40% on next raid launch" />
         <LegendSection label="DEFENDER POWER" />
-        <LegendRow left="THEIR" right="Homestead × 10 + rand(0–49)" color={Colors.danger} />
+        <LegendRow left="FORMULA" right="Homestead × 11 + 25 + rand(0–40)" color={Colors.danger} />
         <LegendRow left="OUTCOME" right="Attacker power must exceed defender" />
         <LegendSection label="THREAT RATING" />
-        <LegendRow left="WEAK   — your homestead leads by 2+" color={Colors.success} />
-        <LegendRow left="EVEN   — within 1 homestead level" color={Colors.warning} />
-        <LegendRow left="STRONG — their homestead leads" color={Colors.danger} />
+        <LegendRow left="WEAK"   right="Their homestead lower than yours" color={Colors.success} />
+        <LegendRow left="EVEN"   right="Within 1 homestead level"        color={Colors.warning} />
+        <LegendRow left="STRONG" right="Their homestead leads"            color={Colors.danger} />
         <LegendSection label="PASSIVE DEFENSES" />
-        <LegendRow left="VAULT" right="Absorbs % of credits lost" />
+        <LegendRow left="VAULT"  right="Reduces credits lost (5% / level, max 75%)" />
         <LegendRow left="TURRET" right="Auto-blocks N attacks/day" />
-        <LegendNote text="Combat is resolved server-side. Local POWER preview is the math the server uses; results land in your LEDGER." />
+        <LegendNote text="Combat is resolved server-side. RADAR shows opponents within ±2..+3 of your homestead." />
       </LegendCard>
     </SafeAreaView>
   );
@@ -421,6 +464,20 @@ const styles = StyleSheet.create({
   list: {
     padding: Spacing.md,
     gap: Spacing.sm,
+  },
+  errorBanner: {
+    backgroundColor: Colors.danger + '22',
+    borderColor: Colors.danger,
+    borderWidth: 1,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  errorBannerText: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.danger,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 1,
   },
   sectionHeader: {
     fontSize: Typography.sizes.xs,
@@ -570,5 +627,4 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: Spacing.xs,
   },
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

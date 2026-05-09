@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions, Modal } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { View, Text, StyleSheet, Pressable, Dimensions, Modal, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,7 +18,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
-import { useAuthStore } from '@/store/useAuthStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { BACKGROUND_TOKENS } from '@/services/CosmeticsService';
@@ -30,12 +30,18 @@ import { JackpotBurst } from '@/components/JackpotBurst';
 import { LedgerDrawer } from '@/components/LedgerDrawer';
 import { ConfettiEmitter } from '@/components/ConfettiEmitter';
 import { OnboardingModal } from '@/components/OnboardingModal';
+import { SpinRefillModal } from '@/components/SpinRefillModal';
 import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { TooltipPopover } from '@/components/TooltipPopover';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { useShakeAnimation } from '@/hooks/useShakeAnimation';
 import { soundService } from '@/services/SoundService';
+import { adsService } from '@/services/AdsService';
 import { OddsModal } from '@/components/OddsModal';
+import { CosmeticCategoryGrid } from '@/components/CosmeticCategoryGrid';
+import { CosmeticPurchaseModal } from '@/components/CosmeticPurchaseModal';
+import { CosmeticItem } from '@/services/CosmeticsService';
 import { useDroneStore } from '@/store/useDroneStore';
 import { anomalyService } from '@/services/AnomalyService';
 import { getMaxSpins } from '@/models/Habitat';
@@ -84,14 +90,13 @@ function formatPayout(result: SpinResult): string {
 
 export default function SpinScreen() {
   const {
-    credits, attacks, raids, shields, intrusions, extractions, spinsRemaining,
+    credits, stardust, attacks, raids, shields, intrusions, extractions, spinsRemaining,
     isSpinning, lastResult, reelWindow, activeWinLines, riftTier, level,
     msUntilNextSpin, msUntilFull,
     overclockActive, signalBoostActive,
     spin, setRiftTier, activateOverclock, activateSignalBoost,
   } = useGameStore();
 
-  const { displayName } = useAuthStore();
   const latestEvent = useEventStore((s) => s.events[0]);
   const generatorLevel  = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
   const barracksLevel   = useHabitatStore((s) => s.buildingLevels.BARRACKS  ?? 0);
@@ -114,6 +119,29 @@ export default function SpinScreen() {
   const [riftModalVisible, setRiftModalVisible] = useState(false);
   const [muted, setMuted]                     = useState(() => soundService.getMuted());
   const [tooltipVisible, setTooltipVisible]   = useState(false);
+  const [reelCustomizeVisible, setReelCustomizeVisible] = useState(false);
+  const [refillModalVisible, setRefillModalVisible] = useState(false);
+  const prevSpinsRef = useRef(spinsRemaining);
+  useEffect(() => {
+    // Auto-open the refill prompt the moment the player consumes their last
+    // spin. We only fire on the 1→0 transition so the modal doesn't keep
+    // re-opening if the user already dismissed it while still empty.
+    if (prevSpinsRef.current > 0 && spinsRemaining === 0) {
+      setRefillModalVisible(true);
+    }
+    prevSpinsRef.current = spinsRemaining;
+  }, [spinsRemaining]);
+
+  // Frequency-capped interstitial when leaving the spin screen. Returning a
+  // cleanup function from useFocusEffect lets us run it on blur. The 4-minute
+  // global cooldown in AdsService prevents spam from rapid tab-switching.
+  useFocusEffect(useCallback(() => {
+    return () => {
+      void adsService.maybeShowInterstitial('spin-blur');
+    };
+  }, []));
+  const [pendingPurchase, setPendingPurchase] = useState<CosmeticItem | null>(null);
+  const [customizeToast, setCustomizeToast]   = useState<string | null>(null);
   const [tooltipText, setTooltipText]         = useState('');
 
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -299,6 +327,10 @@ export default function SpinScreen() {
       <BuildCompleteBanner />
       <ConfettiEmitter active={confettiActive} />
       <OnboardingModal onDone={() => {}} />
+      <SpinRefillModal
+        visible={refillModalVisible}
+        onClose={() => setRefillModalVisible(false)}
+      />
 
       <Animated.View pointerEvents="none" style={[styles.scannerBeam, beamStyle]} />
 
@@ -322,6 +354,25 @@ export default function SpinScreen() {
 
       <Animated.View style={[{ flex: 1 }, shakeStyle]}>
 
+      <TopBar
+        right={
+          <>
+            <IconButton glyph="◈" onPress={() => setReelCustomizeVisible(true)} />
+            <IconButton glyph="%" onPress={() => setOddsVisible(true)} />
+            <IconButton
+              glyph={muted ? '✕' : '♪'}
+              active={!muted}
+              onPress={() => {
+                const next = !muted;
+                setMuted(next);
+                void soundService.setMuted(next);
+              }}
+            />
+            <IconButton glyph="?" onPress={() => setLegendVisible(true)} />
+          </>
+        }
+      />
+
       <LinearGradient
         colors={bgTokens.gradientColors as [string, string, string]}
         start={{ x: 0, y: 0 }}
@@ -329,11 +380,11 @@ export default function SpinScreen() {
       >
         <ResourceBar
           credits={credits}
+          stardust={stardust}
           attacks={attacks}
           raids={raids}
           shields={shields}
           spinsRemaining={spinsRemaining}
-          displayName={displayName ?? undefined}
           style={styles.resourceBarTransparent}
         />
       </LinearGradient>
@@ -445,9 +496,18 @@ export default function SpinScreen() {
             <SpinButton onPress={spin} disabled={!canSpin} isSpinning={isSpinning} />
           </View>
 
-          <Text style={[styles.spinsLabel, spinsLow && styles.spinsLabelLow]}>
-            {spinsRemaining} / {spinCap} spins
-          </Text>
+          <Pressable
+            onPress={spinsRemaining === 0 ? () => setRefillModalVisible(true) : undefined}
+            hitSlop={8}
+          >
+            <Text style={[
+              styles.spinsLabel,
+              spinsLow && styles.spinsLabelLow,
+              spinsRemaining === 0 && { textDecorationLine: 'underline' },
+            ]}>
+              {spinsRemaining} / {spinCap} spins{spinsRemaining === 0 ? '  ·  refill?' : ''}
+            </Text>
+          </Pressable>
           {spinsRemaining < spinCap && msUntilNextSpin > 0 && (
             <View style={styles.refillRow}>
               <Text style={[styles.refillNext, spinsLow && styles.refillNextLow]}>
@@ -501,19 +561,56 @@ export default function SpinScreen() {
         </Pressable>
       </Modal>
 
-      <View style={[styles.iconButtonRow, { top: insets.top + 6 }]} pointerEvents="box-none">
-        <IconButton glyph="%" onPress={() => setOddsVisible(true)} />
-        <IconButton
-          glyph={muted ? '✕' : '♪'}
-          active={!muted}
-          onPress={() => {
-            const next = !muted;
-            setMuted(next);
-            void soundService.setMuted(next);
-          }}
-        />
-        <IconButton glyph="?" onPress={() => setLegendVisible(true)} />
-      </View>
+      {/* Reels customize modal */}
+      <Modal visible={reelCustomizeVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setReelCustomizeVisible(false)}>
+        <View style={styles.reelCustomizeOverlay}>
+          <View style={styles.reelCustomizeCard}>
+            <Text style={styles.reelCustomizeTitle}>CUSTOMIZE REELS</Text>
+            <ScrollView contentContainerStyle={{ gap: Spacing.sm }} showsVerticalScrollIndicator={false}>
+              <CosmeticCategoryGrid
+                label="SYMBOL PACKS"
+                category="SYMBOL_PACK"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="REEL THEMES"
+                category="REEL_THEME"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="HUD SKINS"
+                category="HUD_SKIN"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="SPIN BUTTONS"
+                category="SPIN_BUTTON"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+              <CosmeticCategoryGrid
+                label="BACKGROUNDS"
+                category="BACKGROUND"
+                onLockedPress={setPendingPurchase}
+                onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
+              />
+            </ScrollView>
+            {customizeToast && <Text style={styles.reelCustomizeToast}>{customizeToast}</Text>}
+            <Pressable onPress={() => setReelCustomizeVisible(false)} style={styles.reelCustomizeBack}>
+              <Text style={styles.reelCustomizeBackText}>BACK</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <CosmeticPurchaseModal
+        item={pendingPurchase}
+        onDismiss={() => setPendingPurchase(null)}
+        onResult={(msg) => { setCustomizeToast(msg); setTimeout(() => setCustomizeToast(null), 2200); }}
+      />
 
       <OddsModal
         visible={oddsVisible}
@@ -769,14 +866,6 @@ const styles = StyleSheet.create({
     lineHeight: 56,
   },
 
-  iconButtonRow: {
-    position: 'absolute',
-    right: Spacing.md,
-    flexDirection: 'row',
-    gap: Spacing.xs,
-    zIndex: 50,
-  },
-
   riftModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
@@ -798,5 +887,52 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: Spacing.md,
+  },
+
+  reelCustomizeOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  reelCustomizeCard: {
+    width: '92%',
+    maxHeight: '85%',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  reelCustomizeTitle: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.textPrimary,
+    letterSpacing: 4,
+    textAlign: 'center',
+    fontWeight: Typography.weights.bold,
+    marginBottom: Spacing.sm,
+  },
+  reelCustomizeToast: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.success,
+    letterSpacing: 2,
+    textAlign: 'center',
+    fontWeight: Typography.weights.bold,
+    paddingVertical: 6,
+  },
+  reelCustomizeBack: {
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  reelCustomizeBackText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.background,
+    letterSpacing: 4,
   },
 });

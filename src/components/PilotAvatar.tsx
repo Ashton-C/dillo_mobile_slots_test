@@ -94,14 +94,26 @@ export function PilotAvatar({
         {resolvedHelmet && (
           <Image
             source={resolvedHelmet}
-            style={{ position: 'absolute', top: 0, left: 0, width: s, height: s }}
+            style={{
+              position: 'absolute',
+              top: -s * 0.02,
+              left: s * 0.08,
+              width: s * 0.84,
+              height: s * 0.60,
+            }}
             resizeMode="contain"
           />
         )}
         {resolvedAccessory && (
           <Image
             source={resolvedAccessory}
-            style={{ position: 'absolute', top: 0, left: 0, width: s, height: s }}
+            style={{
+              position: 'absolute',
+              top: s * 0.54,
+              left: (s - s * 0.36) / 2,
+              width: s * 0.36,
+              height: s * 0.36,
+            }}
             resizeMode="contain"
           />
         )}

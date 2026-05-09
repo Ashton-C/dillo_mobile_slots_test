@@ -133,14 +133,6 @@ export const BUTTON_SKIN_TOKENS: Record<string, ButtonSkinTokens> = {
 export const SUIT_COLOR_MAP: Record<string, string> = {
   suit_default: Colors.primary,
   suit_void:    Colors.accent,
-  suit_neon:    '#FF2D78',
-  suit_acid:    Colors.success,
-  suit_ice:     Colors.shield,
-  suit_crimson: '#CC2244',
-  suit_phantom: '#8888BB',
-  suit_solar:   '#FFB800',
-  suit_emerald: '#22AA66',
-  suit_nebula:  Colors.gradientMid,
 };
 
 // ─── Image Asset Maps ─────────────────────────────────────────────────────────
@@ -179,6 +171,24 @@ export const NAMEPLATE_IMAGE_MAP: Record<string, ImageSourcePropType | undefined
   nameplate_ranger:     require('../../assets/cosmetics/nameplates/ranger.png'),
   nameplate_riftwalker: require('../../assets/cosmetics/nameplates/riftwalker.png'),
   nameplate_sovereign:  require('../../assets/cosmetics/nameplates/sovereign.png'),
+};
+
+// React-rendered nameplate styling tokens. Lets us draw a banner without
+// depending on the static PNG. Each preset defines the gradient, border and
+// inner accent of the chip displayed behind the pilot's name.
+export interface NameplateStyle {
+  gradient: readonly [string, string];
+  borderColor: string;
+  accentColor: string;
+  textColor: string;
+}
+
+export const NAMEPLATE_STYLES: Record<string, NameplateStyle> = {
+  nameplate_none:       { gradient: ['#1A1A2E',   '#1A1A2E'],   borderColor: Colors.border,        accentColor: Colors.textMuted,    textColor: Colors.textPrimary },
+  nameplate_standard:   { gradient: ['#22223A',   '#161628'],   borderColor: Colors.textSecondary, accentColor: Colors.textSecondary, textColor: Colors.textPrimary },
+  nameplate_ranger:     { gradient: ['#0E2A14',   '#06140A'],   borderColor: Colors.success,       accentColor: Colors.success,      textColor: Colors.textPrimary },
+  nameplate_riftwalker: { gradient: ['#1A0A2E',   '#0A0420'],   borderColor: Colors.accent,        accentColor: Colors.accent,       textColor: Colors.textPrimary },
+  nameplate_sovereign:  { gradient: ['#3A2A02',   '#1A1200'],   borderColor: Colors.credits,       accentColor: Colors.credits,      textColor: Colors.credits     },
 };
 
 export const ACCESSORY_IMAGE_MAP: Record<string, ImageSourcePropType | undefined> = {
@@ -302,16 +312,6 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { id: 'sym_circuit',  category: 'SYMBOL_PACK', name: 'PIXEL DRIFTER', description: '8-bit pixel-art slot icons',         creditCost: 1200, previewColor: Colors.success },
   { id: 'sym_squad',    category: 'SYMBOL_PACK', name: 'TACTICAL SQUAD', description: 'Tactical squad icon set',            creditCost: -1,   iapPrice: '$1.99', previewColor: Colors.primary, featured: true },
 
-  // Suit Colors
-  { id: 'suit_crimson', category: 'SUIT_COLOR', name: 'CRIMSON CORE', description: 'Deep red pilot suit',          creditCost: 500,  previewColor: '#CC2244' },
-  { id: 'suit_phantom', category: 'SUIT_COLOR', name: 'PHANTOM',      description: 'Silver-mist ghost tone',       creditCost: 500,  previewColor: '#8888BB' },
-  { id: 'suit_solar',   category: 'SUIT_COLOR', name: 'SOLAR BURST',  description: 'Bright gold chassis',         creditCost: 500,  previewColor: '#FFB800' },
-  { id: 'suit_emerald', category: 'SUIT_COLOR', name: 'EMERALD',      description: 'Rich forest green',           creditCost: 750,  previewColor: '#22AA66' },
-  { id: 'suit_nebula',  category: 'SUIT_COLOR', name: 'NEBULA',       description: 'Shifting gradient finish',    creditCost: -1,   iapPrice: '$0.99', previewColor: Colors.gradientMid, featured: true },
-  { id: 'suit_neon',    category: 'SUIT_COLOR', name: 'NEON PINK',    description: 'Hot pink neon suit',          creditCost: 500,  previewColor: '#FF2D78' },
-  { id: 'suit_acid',    category: 'SUIT_COLOR', name: 'ACID',         description: 'Toxic lime green',            creditCost: 500,  previewColor: Colors.success },
-  { id: 'suit_ice',     category: 'SUIT_COLOR', name: 'ICE',          description: 'Arctic cyan frost',           creditCost: 500,  previewColor: Colors.shield },
-
   // Emblems
   { id: 'emblem_ace',       category: 'EMBLEM', name: 'ACE',          description: 'Aviator wings badge',      creditCost: 300  },
   { id: 'emblem_warlord',   category: 'EMBLEM', name: 'WARLORD',      description: 'Crossed blades emblem',    creditCost: 300  },
@@ -387,15 +387,15 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
   { id: 'theme_vault',    category: 'REEL_THEME', name: 'VAULT',      description: 'Armored vault-tier theme',    creditCost: -1,   iapPrice: '$1.99', previewColor: Colors.credits },
 
   // Bundles (IAP only — grant multiple items on purchase)
-  { id: 'bundle_pilot',   category: 'BUNDLE', name: 'PILOT STARTER',    description: 'RETRO ARCADE + CRIMSON CORE + 2,000 CR', creditCost: -1, iapPrice: '$2.99', featured: true },
+  { id: 'bundle_pilot',   category: 'BUNDLE', name: 'PILOT STARTER',    description: 'CASINO CHROME + OUTLAW suit + 2,000 CR', creditCost: -1, iapPrice: '$2.99', featured: true },
   { id: 'bundle_cmdr',    category: 'BUNDLE', name: 'COMMANDER PACK',   description: 'DEEP REEF theme + TACTICAL HUD + ACE emblem', creditCost: -1, iapPrice: '$4.99' },
-  { id: 'bundle_founder', category: 'BUNDLE', name: "FOUNDER'S EDITION",description: 'CHROMATIC + NEBULA suit + VOID RIFT + MARSHAL',    creditCost: -1, iapPrice: '$9.99', featured: true },
+  { id: 'bundle_founder', category: 'BUNDLE', name: "FOUNDER'S EDITION",description: 'CHROMATIC + RIFTWALKER suit + VOID RIFT + MARSHAL', creditCost: -1, iapPrice: '$9.99', featured: true },
 ];
 
 // ─── Bundle Grants ────────────────────────────────────────────────────────────
 
 export const BUNDLE_GRANTS: Record<string, { ids: string[]; bonusCredits?: number }> = {
-  bundle_pilot:   { ids: ['sym_retro', 'suit_crimson'],          bonusCredits: 2000 },
+  bundle_pilot:   { ids: ['sym_retro', 'suit_outlaw'],           bonusCredits: 2000 },
   bundle_cmdr:    { ids: ['theme_deep_reef', 'hud_tactical', 'emblem_ace'] },
-  bundle_founder: { ids: ['emblem_chromatic', 'suit_nebula', 'bg_void_rift', 'title_sovereign'] },
+  bundle_founder: { ids: ['emblem_chromatic', 'suit_riftwalker', 'bg_void_rift', 'title_sovereign'] },
 };

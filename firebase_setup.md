@@ -71,62 +71,27 @@ EXPO_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abc123
 
 ---
 
-## Step 6 — Starter Security Rules
+## Step 6 — Deploy Security Rules and Indexes
 
-Replace the default test-mode rules in **Firestore → Rules** with these before inviting any real users:
+The rules and composite indexes live in version-controlled files at the repo root:
 
+- `firestore.rules` — the security rules
+- `firestore.indexes.json` — the composite indexes used by `refillSpins` and the RADAR scan
+
+Deploy both before inviting any real users:
+
+```bash
+firebase deploy --only firestore:rules
+firebase deploy --only firestore:indexes
 ```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
 
-    // Users can only read/write their own document.
-    // The events subcollection is written by Cloud Functions and read by the owner only.
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+Anomalies (`anomalies/current`) are server-only writes — clients only read. The
+`seedAnomaly` Cloud Function (deployed in Step 7) seeds the doc on a 4-hour
+schedule.
 
-      match /events/{eventId} {
-        // Owner can read, mark-as-read (update), and delete their own events.
-        // Only Cloud Functions may create events (write = create here).
-        allow read, update, delete: if request.auth != null && request.auth.uid == uid;
-        allow create: if false; // Cloud Function only
-      }
-    }
-
-    // Habitat: any authenticated user can read (needed for radar/raids).
-    // Create requires ownerUid == caller; update/delete requires existing ownerUid match.
-    match /habitats/{habitatId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.ownerUid;
-      allow update, delete: if request.auth != null
-        && request.auth.uid == resource.data.ownerUid;
-    }
-
-    // Anomalies: any authenticated client can read and write.
-    // First connected client seeds the doc if missing; subsequent writes are
-    // handled cooperatively (each client catches the race condition internally).
-    match /anomalies/{doc} {
-      allow read, write: if request.auth != null;
-    }
-
-    // Player index: any authenticated player can read (used by RADAR scan).
-    // Each player can only write their own entry.
-    match /playerIndex/{uid} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == uid;
-    }
-
-    // Combat requests: any authenticated player can create (client initiates).
-    // Only Cloud Functions resolve (update/delete) — enforced by not granting update/delete here.
-    match /combatRequests/{requestId} {
-      allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.attackerUid;
-      allow read, update, delete: if false; // Cloud Function only
-    }
-  }
-}
-```
+If you need to inspect or hand-edit the rules in the Firebase console, remember
+to mirror the change back into `firestore.rules` so the next deploy doesn't
+clobber it.
 
 ---
 

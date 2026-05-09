@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Pressable, Modal, FlatList,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useGameStore } from '@/store/useGameStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { AdWatchModal } from '@/components/AdWatchModal';
 import { adsService, ADS_AVAILABLE } from '@/services/AdsService';
+import { iapService } from '@/services/IapService';
+import { useIapPrices } from '@/hooks/useIapPrices';
 import { CosmeticPreview } from '@/components/CosmeticPreview';
 import { hapticBuildComplete, hapticActivateBuff } from '@/constants/haptics';
 import {
@@ -100,11 +103,13 @@ function CosmeticCard({
   owned,
   active,
   onPress,
+  livePrice,
 }: {
   item: CosmeticItem;
   owned: boolean;
   active: boolean;
   onPress: (item: CosmeticItem) => void;
+  livePrice?: string;
 }) {
   const accent = item.previewColor ?? Colors.primary;
 
@@ -123,7 +128,7 @@ function CosmeticCard({
   } else {
     chipExtraStyle = { borderColor: Colors.credits + '88' };
     chipTextColor = Colors.credits;
-    chipLabel = item.iapPrice ?? '';
+    chipLabel = livePrice ?? item.iapPrice ?? '';
   }
 
   return (
@@ -146,7 +151,7 @@ function CosmeticCard({
 
 // ─── PackRow ──────────────────────────────────────────────────────────────────
 
-function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => void }) {
+function PackRow({ pack, onBuy, livePrice }: { pack: StorePack; onBuy: (p: StorePack) => void; livePrice?: string }) {
   return (
     <Pressable onPress={() => onBuy(pack)} style={[styles.packCard, pack.featured && styles.packCardFeatured]}>
       <View style={styles.packLeft}>
@@ -155,7 +160,7 @@ function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => vo
         <Text style={styles.packDesc}>{pack.description}</Text>
       </View>
       <View style={styles.packBuyCol}>
-        <Text style={styles.packPrice}>{pack.price}</Text>
+        <Text style={styles.packPrice}>{livePrice ?? pack.price}</Text>
         <View style={[styles.buyChip, pack.featured && { borderColor: Colors.primary }]}>
           <Text style={[styles.buyChipText, pack.featured && { color: Colors.primary }]}>BUY</Text>
         </View>
@@ -167,7 +172,6 @@ function PackRow({ pack, onBuy }: { pack: StorePack; onBuy: (p: StorePack) => vo
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function StoreScreen() {
-  const insets = useSafeAreaInsets();
   const { grantResources, subtractCredits, credits } = useGameStore();
   const { buy: buyCosmetic, equip: equipCosmetic, unequip: unequipCosmetic, isOwned, getActive, load: loadCosmetics } = useCosmeticsStore();
 
@@ -180,6 +184,17 @@ export default function StoreScreen() {
   const [cosmeticDetail, setCosmeticDetail] = useState<CosmeticItem | null>(null);
   const [toast, setToast]         = useState<string | null>(null);
   const [legendVisible, setLegendVisible] = useState(false);
+
+  // Live RevenueCat prices for everything that has a baked-in iapPrice or PACKS price.
+  // Falls back to the catalog string when RC isn't configured (Expo Go / no keys).
+  const iapIds = useMemo(() => {
+    const packIds = PACKS.map((p) => p.id);
+    const cosmeticIds = COSMETICS_CATALOG
+      .filter((c) => !!c.iapPrice)
+      .map((c) => c.id);
+    return [...packIds, ...cosmeticIds];
+  }, []);
+  const livePrices = useIapPrices(iapIds);
 
   const detailAccent   = cosmeticDetail?.previewColor ?? Colors.primary;
   const detailIsOwned  = cosmeticDetail ? isOwned(cosmeticDetail.id) : false;
@@ -233,12 +248,43 @@ export default function StoreScreen() {
   // ── IAP pack handlers ──
   function handlePurchase(pack: StorePack) { setPendingPack(pack); }
 
-  function confirmPurchase() {
+  async function confirmPurchase() {
     if (!pendingPack) return;
-    grantResources(pendingPack.rewards);
-    hapticBuildComplete();
-    showToast(`Purchased: ${pendingPack.label} — ${formatRewards(pendingPack.rewards)}`);
+    const pack = pendingPack;
     setPendingPack(null);
+    const r = await iapService.purchase(pack.id);
+    if (!r.ok) {
+      if (r.error && r.error !== 'cancelled') {
+        showToast(`Purchase failed — ${r.error}`);
+      }
+      return;
+    }
+    // Stub mode (Expo Go / no RC keys) — apply rewards client-side so the
+    // dev flow still works. Real receipts are validated + granted server-side
+    // by the RevenueCat webhook (see MONETIZATION_CHECKLIST.md).
+    if (r.stubbed) grantResources(pack.rewards);
+    hapticBuildComplete();
+    showToast(`Purchased: ${pack.label} — ${formatRewards(pack.rewards)}`);
+  }
+
+  async function handleManagePurchases() {
+    // Customer Center is RC's prebuilt UI for restore + refund + manage subs.
+    // It's the modern Apple-approved equivalent of a hand-rolled Restore
+    // button — fall back to plain restore() when the UI package isn't loaded
+    // (Expo Go or pre-`npm install` builds).
+    const cc = await iapService.presentCustomerCenter();
+    if (cc.shown) return;
+
+    const r = await iapService.restore();
+    if (r.stubbed) {
+      showToast('Customer Center requires a production build');
+      return;
+    }
+    showToast(
+      r.restoredProductIds.length > 0
+        ? `Restored ${r.restoredProductIds.length} purchase${r.restoredProductIds.length === 1 ? '' : 's'}`
+        : 'No previous purchases found',
+    );
   }
 
   // ── Cosmetic handlers ──
@@ -289,6 +335,7 @@ export default function StoreScreen() {
     items: COSMETICS_CATALOG.filter((c) => c.category === cat),
   })).filter((g) => g.items.length > 0);
 
+  const stardustPacks = PACKS.filter((p) => p.category === 'STARDUST');
   const credPacks     = PACKS.filter((p) => p.category === 'CREDITS');
   const spinPacks     = PACKS.filter((p) => p.category === 'SPINS');
   const resourcePacks = PACKS.filter((p) => p.category === 'RESOURCE');
@@ -296,6 +343,9 @@ export default function StoreScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
       <LinearGradient
         colors={[Colors.credits + '22', Colors.primary + '11', 'transparent']}
         start={{ x: 0, y: 0 }}
@@ -359,6 +409,7 @@ export default function StoreScreen() {
                   owned={isOwned(item.id)}
                   active={getActive(item.category) === item.id}
                   onPress={setCosmeticDetail}
+                  livePrice={livePrices[item.id]}
                 />
               )}
             />
@@ -381,6 +432,7 @@ export default function StoreScreen() {
                   owned={isOwned(item.id)}
                   active={getActive(item.category) === item.id}
                   onPress={setCosmeticDetail}
+                  livePrice={livePrices[item.id]}
                 />
               )}
             />
@@ -388,20 +440,27 @@ export default function StoreScreen() {
         ))}
 
         {/* 4. Credit packs */}
+        <Text style={styles.sectionHeader}>✦ STARDUST</Text>
+        {stardustPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
+
         <Text style={styles.sectionHeader}>CREDIT PACKS</Text>
-        {credPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+        {credPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
 
         {/* 5. Instant spin refill */}
         <Text style={styles.sectionHeader}>INSTANT SPIN REFILL</Text>
-        {spinPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+        {spinPacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
 
         {/* 6. Resource packs */}
         <Text style={styles.sectionHeader}>RESOURCES</Text>
-        {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} />)}
+        {resourcePacks.map((p) => <PackRow key={p.id} pack={p} onBuy={handlePurchase} livePrice={livePrices[p.id]} />)}
+
+        <Pressable onPress={handleManagePurchases} style={styles.restoreBtn}>
+          <Text style={styles.restoreBtnText}>MANAGE PURCHASES</Text>
+        </Pressable>
 
         <Text style={styles.footnote}>
-          CR purchases are earned in-game. Items marked with a price are simulated IAP during
-          development — no real charge occurs. Real payment integration ships at launch.
+          CR purchases are earned in-game. IAP receipts are validated server-side via RevenueCat
+          before credits are granted. In dev / Expo Go the flow is stubbed — no real charge occurs.
         </Text>
       </ScrollView>
 
@@ -476,8 +535,8 @@ export default function StoreScreen() {
               <Text style={styles.confirmTitle}>UNLOCK COSMETIC</Text>
               <Text style={styles.confirmLabel}>{pendingCosmetic.name}</Text>
               <Text style={styles.confirmDesc}>{pendingCosmetic.description}</Text>
-              <Text style={styles.confirmPrice}>{pendingCosmetic.iapPrice}</Text>
-              <Text style={styles.confirmDisclaimer}>Simulated · no real charge</Text>
+              <Text style={styles.confirmPrice}>{livePrices[pendingCosmetic.id] ?? pendingCosmetic.iapPrice}</Text>
+              <Text style={styles.confirmDisclaimer}>RevenueCat · receipt validated server-side</Text>
               <View style={styles.confirmRow}>
                 <Pressable onPress={() => setPendingCosmetic(null)} style={styles.confirmCancel}>
                   <Text style={styles.confirmCancelText}>CANCEL</Text>
@@ -550,7 +609,7 @@ export default function StoreScreen() {
                       style={[styles.detailBuyBtn, { backgroundColor: Colors.accent }]}
                       onPress={() => { setCosmeticDetail(null); handleCosmeticBuy(cosmeticDetail); }}
                     >
-                      <Text style={styles.detailBuyText}>UNLOCK — {cosmeticDetail.iapPrice}</Text>
+                      <Text style={styles.detailBuyText}>UNLOCK — {livePrices[cosmeticDetail.id] ?? cosmeticDetail.iapPrice}</Text>
                     </Pressable>
                   )}
                 </View>
@@ -566,12 +625,6 @@ export default function StoreScreen() {
           <Text style={styles.toastText}>{toast}</Text>
         </View>
       )}
-
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
-      />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="STORE LEGEND" accentColor={Colors.credits}>
         <LegendSection label="REWARDED ADS" />
@@ -651,6 +704,21 @@ const styles = StyleSheet.create({
   cosActionText:   { fontSize: 9, fontWeight: Typography.weights.bold, color: Colors.textSecondary, letterSpacing: 2 },
 
   footnote: { fontSize: 10, color: Colors.textMuted, lineHeight: 16, marginTop: Spacing.md, fontStyle: 'italic' },
+  restoreBtn: {
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.sm,
+  },
+  restoreBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
+    color: Colors.textSecondary,
+  },
 
   confirmOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
   confirmPanel:      { width: '100%', maxWidth: 320, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, gap: 4 },
@@ -690,6 +758,4 @@ const styles = StyleSheet.create({
 
   toast:     { position: 'absolute', bottom: 80, left: Spacing.md, right: Spacing.md, backgroundColor: Colors.surfaceElevated, borderColor: Colors.success, borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md, alignItems: 'center' },
   toastText: { fontSize: Typography.sizes.xs, color: Colors.success, letterSpacing: 2, fontWeight: Typography.weights.bold },
-
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

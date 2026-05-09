@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TopBar } from '@/components/TopBar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { TemporalRiftTier, RIFT_COSTS } from '@/services/SlotsEngine';
@@ -60,7 +61,6 @@ function formatMs(ms: number): string {
 }
 
 export default function RiftScreen() {
-  const insets = useSafeAreaInsets();
   const { credits, riftTier, setRiftTier } = useGameStore();
   const [legendVisible, setLegendVisible] = useState(false);
   const { definition, msRemaining, activeAnomaly } = useAnomalyStore();
@@ -78,6 +78,9 @@ export default function RiftScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
       <View style={styles.header}>
         <Text style={styles.title}>TEMPORAL RIFT</Text>
         <Text style={styles.subtitle}>You choose the rift before each spin. Cost is deducted on press.</Text>
@@ -249,12 +252,6 @@ export default function RiftScreen() {
           );
         })}
       </ScrollView>
-
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
-      />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="RIFT LEGEND" accentColor={Colors.accent}>
         <LegendSection label="TIER COSTS & EFFECTS" />
@@ -488,5 +485,4 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontWeight: Typography.weights.bold,
   },
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

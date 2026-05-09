@@ -44,6 +44,10 @@ export const SPIN_ANIM_MS = 2200;  // reel animation duration — must match Ree
 
 interface Resources {
   credits: number;
+  // Stardust (✦) — premium soft currency used to skip build timers.
+  // Earned via jackpots, outpost level-ups, and blackjack-extraction wins;
+  // also bought as IAP packs (see StoreService.STARDUST_PACKS).
+  stardust: number;
   attacks: number;
   raids: number;
   shields: number;
@@ -84,13 +88,15 @@ interface GameState extends Resources, SpinState {
   consumeShield: () => boolean;
   addCredits: (amount: number) => void;
   subtractCredits: (amount: number) => boolean;
+  addStardust: (amount: number) => void;
+  subtractStardust: (amount: number) => boolean;
   refillSpins: () => void;
   tickSpinRefill: () => void;
   tickGeneratorIncome: () => void;
   activateOverclock: () => boolean;
   activateSignalBoost: () => boolean;
   subtractResources: (costs: Partial<Pick<Resources, 'credits' | 'attacks' | 'raids' | 'shields' | 'intrusions' | 'extractions'>>) => boolean;
-  grantResources: (rewards: { credits?: number; fuel?: number; boost?: number; shields?: number; spinRefill?: boolean }) => void;
+  grantResources: (rewards: { credits?: number; stardust?: number; fuel?: number; boost?: number; shields?: number; spinRefill?: boolean }) => void;
   syncFromFirestore: (resources: Partial<Resources>) => void;
   setIsSpinning: (spinning: boolean) => void;
   debugSetResources: (delta: Partial<Resources>) => void;
@@ -99,6 +105,7 @@ interface GameState extends Resources, SpinState {
 
 const INITIAL_RESOURCES: Resources = {
   credits: 500,
+  stardust: 0,
   attacks: 5,
   raids: 0,
   shields: 0,
@@ -119,9 +126,31 @@ const INITIAL_RESOURCES: Resources = {
 const XP_PER_SPIN = 5;
 const XP_PER_LEVEL = (level: number) => 100 * level;
 
-function persistResources(data: Partial<Resources>) {
+// Idle-tick writes (generator income, spin refill) coalesce locally and flush
+// to Firestore at most once per PERSIST_COALESCE_MS. Any user-driven persist
+// flushes the pending buffer immediately.
+const PERSIST_COALESCE_MS = 5 * 60_000;
+let pendingPersist: Partial<Resources> = {};
+let lastPersistAt = Date.now();
+
+export function flushPendingPersist() {
+  if (Object.keys(pendingPersist).length === 0) return;
   const uid = auth.currentUser?.uid;
-  if (uid) writeUserResources(uid, data).catch(console.error);
+  if (uid) writeUserResources(uid, pendingPersist).catch(console.error);
+  pendingPersist = {};
+  lastPersistAt = Date.now();
+}
+
+function persistResources(data: Partial<Resources>) {
+  pendingPersist = { ...pendingPersist, ...data };
+  flushPendingPersist();
+}
+
+function persistResourcesCoalesced(data: Partial<Resources>) {
+  pendingPersist = { ...pendingPersist, ...data };
+  if (Date.now() - lastPersistAt >= PERSIST_COALESCE_MS) {
+    flushPendingPersist();
+  }
 }
 
 function deriveOutcomeType(multi: MultiSpinResult): SpinOutcomeType {
@@ -203,8 +232,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const leveledUp = newXp >= xpNeeded;
     const newRefillStart = spinRefillStart === 0 ? Date.now() : spinRefillStart;
 
+    // Stardust earn drip: jackpots are the F2P-earnable trickle for the
+    // build-skip currency. Every other resource is unaffected by the JP flag.
+    const stardustGain = result.isJackpot ? 5 : 0;
+
     const nextState: Partial<Resources> = {
       credits: newCredits,
+      stardust: get().stardust + stardustGain,
       attacks:     Math.min(MAX_SPINS, attacks     + result.attacksWon),
       raids:       Math.min(MAX_SPINS, raids       + result.raidsWon),
       shields:     Math.min(MAX_SPINS, shields     + result.shieldsWon),
@@ -292,7 +326,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (newSpins >= spinCap) {
         const update = { spinsRemaining: newSpins, spinRefillStart: 0 };
         set({ ...update, msUntilNextSpin: 0, msUntilFull: 0 });
-        persistResources(update);
+        persistResourcesCoalesced(update);
       } else {
         const msInCycle = now - newRefillStart;
         const msUntilNextSpin = SPIN_REFILL_MS - msInCycle;
@@ -300,7 +334,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
         const update = { spinsRemaining: newSpins, spinRefillStart: newRefillStart };
         set({ ...update, msUntilNextSpin, msUntilFull });
-        persistResources(update);
+        persistResourcesCoalesced(update);
       }
     } else {
       const msUntilNextSpin = SPIN_REFILL_MS - (elapsed % SPIN_REFILL_MS);
@@ -346,7 +380,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const income = genLevel * 20;
     const next = { credits: get().credits + income };
     set(next);
-    persistResources(next);
+    persistResourcesCoalesced(next);
   },
 
   setRiftTier(tier) {
@@ -395,6 +429,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
 
+  addStardust(amount) {
+    if (amount <= 0) return;
+    const next = { stardust: get().stardust + amount };
+    set(next);
+    persistResources(next);
+  },
+
+  subtractStardust(amount) {
+    const { stardust } = get();
+    if (stardust < amount) return false;
+    const next = { stardust: stardust - amount };
+    set(next);
+    persistResources(next);
+    return true;
+  },
+
   refillSpins() {
     const next = { spinsRemaining: getSpinCap(), spinRefillStart: 0 };
     set(next);
@@ -404,10 +454,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   grantResources(rewards) {
     const s = get();
     const next: Partial<Resources> = {};
-    if (rewards.credits) next.credits = s.credits + rewards.credits;
-    if (rewards.fuel)    next.attacks = Math.min(MAX_SPINS, s.attacks + rewards.fuel);
-    if (rewards.boost)   next.raids   = Math.min(MAX_SPINS, s.raids   + rewards.boost);
-    if (rewards.shields) next.shields = Math.min(MAX_SPINS, s.shields + rewards.shields);
+    if (rewards.credits)  next.credits  = s.credits  + rewards.credits;
+    if (rewards.stardust) next.stardust = s.stardust + rewards.stardust;
+    if (rewards.fuel)     next.attacks  = Math.min(MAX_SPINS, s.attacks + rewards.fuel);
+    if (rewards.boost)    next.raids    = Math.min(MAX_SPINS, s.raids   + rewards.boost);
+    if (rewards.shields)  next.shields  = Math.min(MAX_SPINS, s.shields + rewards.shields);
     if (rewards.spinRefill) {
       next.spinsRemaining  = getSpinCap();
       next.spinRefillStart = 0;

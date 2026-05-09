@@ -20,6 +20,10 @@ interface CosmeticsState {
   unequip: (category: CosmeticCategory) => void;
   isOwned: (id: string) => boolean;
   getActive: (category: CosmeticCategory) => string;
+  // Merge cosmetic IDs that the RevenueCat webhook wrote to
+  // users/{uid}.ownedCosmetics into the local owned set + persist locally
+  // so the player still has access offline.
+  syncOwnedFromRemote: (remoteIds: string[]) => void;
 }
 
 const STORAGE_OWNED  = 'cosmetics:owned_v1';
@@ -108,6 +112,22 @@ export const useCosmeticsStore = create<CosmeticsState>((set, get) => ({
 
   getActive(category) {
     return get().active[category] ?? COSMETIC_ACTIVE_DEFAULTS[category];
+  },
+
+  syncOwnedFromRemote(remoteIds) {
+    if (!remoteIds || remoteIds.length === 0) return;
+    const owned = get().owned;
+    let changed = false;
+    const next = new Set(owned);
+    for (const id of remoteIds) {
+      if (!next.has(id)) {
+        next.add(id);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    set({ owned: next });
+    _persistOwned(next);
   },
 }));
 
