@@ -63,7 +63,7 @@ PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with
 - [x] **Mock users script** — `scripts/seed-mock-users.js` (run once; populates AlphaRaider + BetaOps in playerIndex for RADAR testing)
 
 ### Remaining (ops only)
-- [ ] **Deploy Cloud Function** — `cd functions && npm install && npm run build && firebase deploy --only functions`
+- [ ] **Deploy Cloud Function** — `npm run deploy:functions` (wraps install + build + `firebase deploy --only functions:resolveCombat`; pass `-- --all` to also deploy `refillSpins`)
 - [ ] **Seed mock users** — `node scripts/seed-mock-users.js`
 
 ---
