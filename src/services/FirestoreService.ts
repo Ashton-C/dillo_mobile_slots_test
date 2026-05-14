@@ -38,6 +38,9 @@ export interface UserResourceSnapshot {
   spinRefillStart: number; // unix ms, 0 when at max spins
   xp: number;
   level: number;
+  // Daily streak — written by the claimDailyReward Cloud Function.
+  lastDailyClaimAt: number;
+  dailyClaimStreak: number;
   // IAP-granted cosmetic IDs from the RevenueCat webhook. Server-authoritative
   // ownership; the client merges these into useCosmeticsStore on subscribe.
   ownedCosmetics?: string[];
@@ -85,18 +88,20 @@ export function subscribeToUser(
       if (!snap.exists()) return;
       const d = snap.data();
       onUpdate({
-        credits:         d.credits         ?? 0,
-        stardust:        d.stardust        ?? 0,
-        attacks:         d.attacks         ?? 0,
-        raids:           d.raids           ?? 0,
-        shields:         d.shields         ?? 0,
-        intrusions:      d.intrusions      ?? 0,
-        extractions:     d.extractions     ?? 0,
-        spinsRemaining:  d.spinsRemaining  ?? 50,
-        spinRefillStart: d.spinRefillStart ?? 0,
-        xp:              d.xp              ?? 0,
-        level:           d.level           ?? 1,
-        ownedCosmetics:  Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
+        credits:           d.credits           ?? 0,
+        stardust:          d.stardust          ?? 0,
+        attacks:           d.attacks           ?? 0,
+        raids:             d.raids             ?? 0,
+        shields:           d.shields           ?? 0,
+        intrusions:        d.intrusions        ?? 0,
+        extractions:       d.extractions       ?? 0,
+        spinsRemaining:    d.spinsRemaining    ?? 50,
+        spinRefillStart:   d.spinRefillStart   ?? 0,
+        xp:                d.xp                ?? 0,
+        level:             d.level             ?? 1,
+        lastDailyClaimAt:  d.lastDailyClaimAt  ?? 0,
+        dailyClaimStreak:  d.dailyClaimStreak  ?? 0,
+        ownedCosmetics:    Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
       });
     },
     (err) => console.error('subscribeToUser error:', err),

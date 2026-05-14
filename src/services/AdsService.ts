@@ -34,6 +34,44 @@ try {
 
 export const ADS_AVAILABLE = mobileAds !== null && RewardedAdCtor !== null;
 
+// ── ATT-driven personalization ────────────────────────────────────────────────
+// iOS 14.5+ requires App Tracking Transparency permission before serving
+// personalized ads. We default to non-personalized (NPA = true) until the
+// user grants ATT in the system prompt. On Android there's no ATT so we
+// always allow personalized ads — Google's consent flow handles GDPR.
+
+let personalizedAdsAllowed = false;
+
+function refreshTrackingStatus(): void {
+  if (Platform.OS !== 'ios') {
+    personalizedAdsAllowed = true;
+    return;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const att = require('expo-tracking-transparency');
+    const status = att?.getTrackingPermissionsAsync;
+    if (!status) return;
+    // Synchronous read of cached value via the SDK's internal getter; fall
+    // back to async on first call.
+    void att.getTrackingPermissionsAsync().then((r: { status?: string }) => {
+      personalizedAdsAllowed = r?.status === 'granted';
+    });
+  } catch {
+    // Module not installed — leave NPA on.
+  }
+}
+
+refreshTrackingStatus();
+
+export function setPersonalizedAdsAllowed(allowed: boolean): void {
+  personalizedAdsAllowed = allowed;
+}
+
+function adRequestOptions() {
+  return { requestNonPersonalizedAdsOnly: !personalizedAdsAllowed };
+}
+
 // ── Ad unit IDs ───────────────────────────────────────────────────────────────
 // Real IDs come from app.json -> extra.admob in EAS builds. In dev or Expo Go
 // we use the Google-provided test IDs, which always serve and never charge.

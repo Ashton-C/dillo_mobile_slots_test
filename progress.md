@@ -1,6 +1,6 @@
 # Reelwright — Progress & Roadmap
 
-**Current Phase:** Phase 5 (Polish & Launch) — entering closed testing
+**Current Phase:** Phase 5 (Polish & Launch) — closed-testing prep
 **Last Updated:** 2026-05-14
 
 ---
@@ -102,7 +102,13 @@ Hard currency, IAP, and rewarded ads. Built the social loop fully before turning
 - [x] Onboarding — `OnboardingCarousel` 5-card swipe walkthrough + `OnboardingModal` 3-step task gate (AsyncStorage gated)
 - [x] Pilot customization — color + accessory picker on Pilot screen; `setAvatarColor` persists to Firestore
 - [x] Particle effects — jackpot confetti (`ConfettiEmitter`), `JackpotBurst`, screen shake on incoming attacks
-- [ ] Push notifications — "your build is complete", "you were raided" (FCM)
+- [x] **Push notifications** — `NotificationService` registers Expo push tokens; CF `notifyBuildComplete` fires on build-job falling edge; `resolveCombat` sends raid-outcome pushes to defenders (rate-limited by attack cooldown)
+- [x] **Daily login streak** — server-validated `claimDailyReward` CF, 7-day reward cycle with weekly milestone, `DailyRewardModal` auto-opens on first foreground after the 22h window
+- [x] **Refund clawback** — `revenueCatWebhook` now handles CANCELLATION/REFUND/EXPIRATION; reverses rewards transactionally with abuse cap (`refundedStardustTotal` ≥ 5,000 ✦ flags the account and blocks future stardust grants)
+- [x] **Attack cooldown** — defenders can only be raided every 10 minutes; failed attempts refund the breach key
+- [x] **Cost-curve rebalance** — building/outpost costs switched from `level^1.4` (max-out in <2 weeks) to geometric `1.9^(level-1)` (~2-3 month grind at OP6 EV). 5-cell evaluator scale bumped (3→2×, 4→4×, 5→6×) so OP10 grid stops paying *less* than OP6
+- [x] **Level cap removal** — building/outpost cap raised from 10 to 50; levels 11+ are "prestige" tiers granting +5% credit yield per level (multiplicative)
+- [x] **Personalized-ads gating** — `AdsService` now honors the ATT permission state instead of always forcing `requestNonPersonalizedAdsOnly: true`
 - [ ] App Store / Play Store submission (see `DEPLOY_CHECKLIST.md`)
 
 ### Also shipped in Phase 5 session
@@ -143,7 +149,13 @@ Hard currency, IAP, and rewarded ads. Built the social loop fully before turning
 | RADAR screen | ✅ Solid | SectorMap + threat tiers; seed mock users for population |
 | Roulette / Blackjack | ✅ Solid | Replaced CombatMiniGame for PvP raids; outcomes resolved in CF |
 | EventBanner | ✅ Solid | Fully wired with CF event writes; `CombatResolutionChip` for raid results |
-| Cloud Functions | ✅ Deployed | `resolveCombat`, `refillSpins`, `revenueCatWebhook` live in `us-central1`; redeploy via `npm run deploy:functions` |
+| Cloud Functions | ✅ Deployed | `resolveCombat`, `refillSpins`, `revenueCatWebhook` (+ refund clawback), `claimDailyReward`, `notifyBuildComplete`, `seedAnomaly` live in `us-central1`; redeploy via `npm run deploy:functions` |
+| Daily reward streak | ✅ New | Server-validated 22h window, 7-day cycle, weekly milestone, abuse-resistant |
+| Attack cooldown | ✅ New | 10-minute per-defender cooldown enforced in `resolveCombat`; refunds breach key on hit |
+| Push notifications | ✅ New | `expo-notifications` lazy-required for Expo Go safety; Cloud Functions send via Expo's relay; build-complete + raid-outcome pushes |
+| Refund clawback | ✅ New | Reverses rewards transactionally; cumulative stardust refund threshold flags the account |
+| Cost curve | ✅ Rebalanced | Geometric `1.9^(level-1)` for buildings + outpost; OP10 5-cell payouts bumped so it stops paying less than OP6 |
+| Prestige levels | ✅ New | Outpost 11–50 grant +5% credit yield/level via `getOutpostPrestigeMultiplier`; cap raised to `LEVEL_HARD_CAP = 50` |
 | TURRET/VAULT passives | ✅ Solid | Wired inside `resolveCombat` CF; daily charge tracking |
 | Security rules | ✅ Complete | playerIndex, events subcollection, combatRequests, anomalies/current all covered |
 | Mock users | ✅ Written | Run `node scripts/seed-mock-users.js` to populate RADAR targets |

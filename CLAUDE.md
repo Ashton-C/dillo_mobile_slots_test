@@ -78,7 +78,9 @@ All Firestore reads and writes must go through `src/services/FirestoreService.ts
 
 ### Buildings
 - **Outpost Level is the hard gate.** Buildings cannot be upgraded past the current Outpost Level. This gate must be enforced in `useHabitatStore.startBuild()` — never relax it client-side.
-- **Build times must feel meaningful at high tiers.** Level 1–3: seconds to minutes. Level 7–10: 12–72 hours. Monetization pressure comes from impatience, not desperation — Stardust skips and the build-skip IAP ladder are the relief valve.
+- **Build times must feel meaningful at high tiers.** Level 1–3: seconds to minutes. Level 7–10: 12–72 hours. Prestige levels (11+) reuse the level-10 timer. Monetization pressure comes from impatience, not desperation — Stardust skips and the build-skip IAP ladder are the relief valve.
+- **Cost is geometric.** `BUILDING_BASE_COST × 1.9^(level-1)`. Don't flatten this curve without a counter-balancing economy change — the late-game grind is the whole point of Stardust packs.
+- **Prestige levels (11–50) grant +5% credit yield per level** via `getOutpostPrestigeMultiplier`. No new grid sizes or paylines past 10 — only the multiplier scales.
 
 ### PvP
 - **Raids are RNG + skill.** `RouletteGame` (BREACH) and `BlackjackMiniGame` (EXTRACT) carry the skill layer. The legacy `CombatMiniGame` is kept only as a fallback. Don't replace the skill layer with pure RNG or pure player choice.
@@ -108,7 +110,9 @@ All Firestore reads and writes must go through `src/services/FirestoreService.ts
 | `src/store/useEventStore.ts` | Incoming PvP event queue from `users/{uid}/events` |
 | `src/store/useCosmeticsStore.ts` | Owned + equipped cosmetics, AsyncStorage + Firestore sync, bundle expansion |
 | `src/lib/firebase.ts` | Firebase app init — exports `auth` and `db` |
-| `src/models/Habitat.ts` | Building types (incl. BARRACKS), `BUILDING_UPGRADE_COST`, `BUILD_DURATION_MS`, outpost helpers |
+| `src/models/Habitat.ts` | Building types (incl. BARRACKS), `BUILDING_UPGRADE_COST` (geometric 1.9^), `getBuildDurationMs`, `getOutpostPrestigeMultiplier`, `LEVEL_HARD_CAP`, outpost helpers |
+| `src/services/NotificationService.ts` | Expo push registration + token persistence (lazy-required for Expo Go safety) |
+| `src/services/DailyRewardService.ts` | Daily-streak claim wrapper + reward preview |
 | `src/models/Drone.ts` | `DRONE_CONTRACTS` — drone definitions, costs, durations, effects |
 | `src/models/User.ts` | Player profile + resource schema (Zod) |
 | `src/constants/theme.ts` | Design tokens — Colors, Typography, Spacing, BorderRadius |
@@ -118,7 +122,7 @@ All Firestore reads and writes must go through `src/services/FirestoreService.ts
 | `app/(tabs)/hangar.tsx` | RADAR — SectorMap → RouletteGame (BREACH) / BlackjackMiniGame (EXTRACT) |
 | `app/(tabs)/pilot.tsx` | Pilot profile, customization, combat log |
 | `app/(tabs)/store.tsx` | IAP packs, Stardust ladder, watch-an-ad rewards, cosmetics grid |
-| `functions/src/index.ts` | Cloud Functions — `resolveCombat`, scheduled `refillSpins`, `revenueCatWebhook` |
+| `functions/src/index.ts` | Cloud Functions — `resolveCombat`, scheduled `refillSpins`, `revenueCatWebhook` (incl. refund clawback), `claimDailyReward`, `notifyBuildComplete`, `seedAnomaly` |
 
 ---
 

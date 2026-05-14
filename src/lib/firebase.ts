@@ -5,6 +5,7 @@ import { initializeAuth, getAuth, Auth } from 'firebase/auth';
 import { getReactNativePersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFunctions, Functions } from 'firebase/functions';
 import Constants from 'expo-constants';
 
 // Read from app.config.js extra (injected at build time) with process.env as fallback.
@@ -34,4 +35,5 @@ if (getApps().length === 0) {
 
 export { auth };
 export const db: Firestore = getFirestore(app);
+export const functions: Functions = getFunctions(app);
 export default app;

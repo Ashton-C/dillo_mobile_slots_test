@@ -14,16 +14,24 @@ export const BuildingType = z.enum([
 ]);
 export type BuildingType = z.infer<typeof BuildingType>;
 
+// Hard ceiling on building and outpost level. Above LEVEL_SOFT_CAP (10), the
+// game enters "prestige" territory: cost still scales geometrically, build
+// times saturate, and each level grants a credit-yield bonus instead of
+// unlocking new content (no new grid sizes, paylines, etc.).
+export const LEVEL_SOFT_CAP = 10;
+export const LEVEL_HARD_CAP = 50;
+
 export const BuildingSchema = z.object({
   type: BuildingType,
-  level: z.number().int().min(1).max(10).default(1),
+  level: z.number().int().min(1).max(LEVEL_HARD_CAP).default(1),
   builtAt: z.instanceof(Timestamp),
 });
 export type Building = z.infer<typeof BuildingSchema>;
 
-// Upgrade cost (credits) for each building level. Curve: base × lvl^1.4 —
-// gentler than exponential, harsher than linear. Tuned so a level-5 upgrade
-// is ~10× base and level-10 is ~25×, matching the tier-time progression.
+// Upgrade cost (credits) for each building level. Curve: base × 1.9^(level-1).
+// True geometric growth means level 10 ≈ 233× base and the full max-out grind
+// is ~2M CR at outpost 6 EV (~67 days from spins alone). Prevents the old
+// `level^1.4` shallow curve where a daily player maxed out in <2 weeks.
 const BUILDING_BASE_COST: Record<BuildingType, number> = {
   GENERATOR: 400,
   ARMORY:    250,
@@ -33,8 +41,10 @@ const BUILDING_BASE_COST: Record<BuildingType, number> = {
   BARRACKS:  250,
 };
 
+const COST_GROWTH = 1.9;
+
 function scaleCost(base: number, level: number): number {
-  return Math.round(base * Math.pow(level, 1.4));
+  return Math.round(base * Math.pow(COST_GROWTH, level - 1));
 }
 
 export const BUILDING_UPGRADE_COST: Record<BuildingType, (level: number) => number> = {
@@ -52,8 +62,10 @@ export function getMaxSpins(barracksLevel: number): number {
   return 25 + barracksLevel * 5 + (barracksLevel * (barracksLevel - 1)) / 2;
 }
 
-// Build duration (ms) to upgrade TO the given level (level 1 is free/instant on first build)
-export const BUILD_DURATION_MS: { [targetLevel: number]: number } = {
+// Build duration (ms) to upgrade TO the given level. Levels 1–10 have hand-tuned
+// timers; levels 11+ saturate at the level-10 duration (72h) so prestige levels
+// don't become unplayable.
+const BUILD_DURATION_TABLE: { [targetLevel: number]: number } = {
   1: 0,
   2: 30_000,
   3: 5 * 60_000,
@@ -66,6 +78,15 @@ export const BUILD_DURATION_MS: { [targetLevel: number]: number } = {
   10: 72 * 3_600_000,
 };
 
+export function getBuildDurationMs(targetLevel: number): number {
+  if (targetLevel <= LEVEL_SOFT_CAP) return BUILD_DURATION_TABLE[targetLevel] ?? 0;
+  return BUILD_DURATION_TABLE[LEVEL_SOFT_CAP];
+}
+
+// Legacy lookup kept for callers that read it directly. Prefer
+// getBuildDurationMs(targetLevel) for new code so >10 levels resolve correctly.
+export const BUILD_DURATION_MS: { [targetLevel: number]: number } = BUILD_DURATION_TABLE;
+
 export interface ActiveBuildJob {
   type: BuildingType;
   targetLevel: number;
@@ -73,13 +94,23 @@ export interface ActiveBuildJob {
   isOutpost?: boolean; // true when upgrading the Outpost itself
 }
 
-// Outpost upgrade: 2× the standard building duration for that level
+// Outpost upgrade: same geometric curve as buildings (base 500). At lvl 9→10
+// = 250k CR, prestige levels (10→11+) keep climbing. Duration is 2× the
+// equivalent building duration (saturated at level 10's 72h × 2 = 144h).
 export function outpostUpgradeCost(currentLevel: number): number {
-  return 500 * currentLevel;
+  return Math.round(500 * Math.pow(COST_GROWTH, currentLevel - 1));
 }
 
 export function outpostUpgradeDuration(targetLevel: number): number {
-  return (BUILD_DURATION_MS[targetLevel] ?? 0) * 2;
+  return getBuildDurationMs(targetLevel) * 2;
+}
+
+// Prestige bonus: every outpost level above LEVEL_SOFT_CAP grants +5% credit
+// yield on every spin (applied as a flat multiplier in useGameStore.spin).
+// Stacks multiplicatively with anomalies, drones, and overclock.
+export function getOutpostPrestigeMultiplier(outpostLevel: number): number {
+  const prestige = Math.max(0, outpostLevel - LEVEL_SOFT_CAP);
+  return 1 + prestige * 0.05;
 }
 
 export const AttackLogEntrySchema = z.object({

@@ -287,7 +287,13 @@ export class SlotsEngine {
       : PAIR_PAYOUTS[first];
     if (!payout) return base;
 
-    const scale = count - 2; // 3→1×, 4→2×, 5→3×
+    // 5-cell leftmost-consecutive is mathematically much rarer than the
+    // 3-cell pair-anywhere rule on the smaller grid (3-cell has 3 winning
+    // pair positions, 5-cell only has the leftmost run). To stop OP10's
+    // 10-line 5-cell board from paying *less* per spin than OP6's 5-line
+    // 3-cell board, the scale curve runs harder: 3→2×, 4→4×, 5→6×.
+    const SCALE_5CELL: Record<number, number> = { 3: 2, 4: 4, 5: 6 };
+    const scale = SCALE_5CELL[count];
     const isJackpotLine = count === 5 && first === 'CREDIT_LARGE';
     return {
       ...base,

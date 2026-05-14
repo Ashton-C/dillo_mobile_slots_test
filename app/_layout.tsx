@@ -30,18 +30,23 @@ import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 import { EventBanner } from '@/components/EventBanner';
 import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarousel';
+import { DailyRewardModal } from '@/components/DailyRewardModal';
+import { isDailyClaimReady } from '@/services/DailyRewardService';
 import { soundService } from '@/services/SoundService';
 import { adsService } from '@/services/AdsService';
 import { iapService } from '@/services/IapService';
+import { registerPushTokenForUser } from '@/services/NotificationService';
 
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
   const user = useAuthStore((s) => s.user);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showDaily, setShowDaily] = useState(false);
   const tickAnomaly = useAnomalyStore((s) => s.tick);
   const tickHabitat = useHabitatStore((s) => s.tick);
   const tickSpinRefill = useGameStore((s) => s.tickSpinRefill);
   const tickGeneratorIncome = useGameStore((s) => s.tickGeneratorIncome);
+  const lastDailyClaimAt = useGameStore((s) => s.lastDailyClaimAt);
   const subscribeToEvents = useEventStore((s) => s.subscribe);
 
   useEffect(() => {
@@ -109,7 +114,21 @@ export default function RootLayout() {
     if (!user?.uid) return;
     void iapService.init(user.uid);
     void requestAttIfNeeded();
+    void registerPushTokenForUser(user.uid);
   }, [user?.uid]);
+
+  // Pop the daily-reward modal on the first foreground frame after auth and
+  // after the user-doc snapshot lands (so lastDailyClaimAt is hydrated). Only
+  // shows once per session; users can re-trigger it from the Pilot tab.
+  useEffect(() => {
+    if (!user?.uid) return;
+    if (showDaily) return;
+    if (isDailyClaimReady(lastDailyClaimAt)) {
+      // Tiny delay so the first paint isn't blocked by a stacked modal.
+      const t = setTimeout(() => setShowDaily(true), 600);
+      return () => clearTimeout(t);
+    }
+  }, [user?.uid, lastDailyClaimAt]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -126,6 +145,7 @@ export default function RootLayout() {
         <EventBanner />
         <BuildCompleteBanner />
         {showOnboarding && <OnboardingCarousel onDismiss={() => setShowOnboarding(false)} />}
+        <DailyRewardModal visible={showDaily} onClose={() => setShowDaily(false)} />
       </View>
     </GestureHandlerRootView>
   );

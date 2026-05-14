@@ -256,35 +256,40 @@ Deployed from the **CONTRACTS** modal on the Habitat screen (requires HANGAR ≥
 
 Total credits required to max-level every building and the Outpost from scratch.
 
-Upgrade cost formula: `COST(level) = base_rate × level`, summed level 1 → 10.  
-Sum of levels 1–10 = 55. Sum of levels 1–9 (Outpost starting at Lv1) = 45.
+Upgrade cost formula: `COST(level) = base × 1.9^(level-1)`, summed level 1 → 10.  
+Geometric growth means level 10 ≈ 233× base — the late-game grind is where Stardust skips and the build-skip IAP ladder earn their value.
+
+Sum of `1.9^(L-1)` for L=1..10 ≈ **680.1**. Sum for L=1..9 (Outpost) ≈ **396.7**.
 
 ### Buildings (Lv 0 → 10)
 
-| Building | Rate / level | Total to Lv 10 | Effect at max |
+| Building | Base | Total to Lv 10 | Effect at max |
 |---|---|---|---|
-| GENERATOR | 200 CR × lvl | **11,000 CR** | +200 CR/30s · Overclock +500 CR flat |
-| ARMORY | 300 CR × lvl | **16,500 CR** | Max 100 fuel cells stored |
-| VAULT | 350 CR × lvl | **19,250 CR** | Raiders steal 15% of credits (−50% base) |
-| TURRET | 500 CR × lvl | **27,500 CR** | Auto-blocks 10 attacks/day |
-| HANGAR | 1,000 CR × lvl | **55,000 CR** | 10 drone contract slots |
-| BARRACKS | 200 CR × lvl | **11,000 CR** | Max 100 spins stored |
+| GENERATOR | 400 CR | **272,040 CR** | +200 CR/30s · Overclock +500 CR flat |
+| ARMORY | 250 CR | **170,025 CR** | Max 100 fuel cells stored |
+| VAULT | 350 CR | **238,035 CR** | Raiders lose 50% of stolen credits |
+| TURRET | 500 CR | **340,050 CR** | Auto-blocks 10 attacks/day |
+| HANGAR | 1,000 CR | **680,100 CR** | 10 drone contract slots |
+| BARRACKS | 250 CR | **170,025 CR** | Max 120 spins stored |
 
 ### Outpost (Lv 1 → 10)
 
-| Outpost upgrade | Cost | Rate |
+| Outpost step | Cost | Effect |
 |---|---|---|
-| Lv 1 → 2 | 500 CR | — |
-| … | … | 500 CR × current level |
-| Lv 9 → 10 | 4,500 CR | — |
-| **Total** | **22,500 CR** | Sum levels 1–9 × 500 |
+| Lv 1 → 2 | 500 CR | Unlocks Level-2 buildings |
+| Lv 2 → 3 | 950 CR | 3 paylines + 3×3 grid |
+| Lv 5 → 6 | 6,517 CR | 5 paylines |
+| Lv 9 → 10 | 162,687 CR | 10 paylines + 5×5 grid |
+| **Total** | **~198,300 CR** | — |
 
 ### Grand Total
 
 | Category | Credits |
 |---|---|
-| All 6 buildings to Lv 10 | 140,250 CR |
-| Outpost to Lv 10 | 22,500 CR |
-| **Full base max-out** | **162,750 CR** |
+| All 6 buildings to Lv 10 | ~1,870,275 CR |
+| Outpost to Lv 10 | ~198,300 CR |
+| **Full base max-out (Lv 10)** | **~2,068,600 CR** |
 
-> Note: only one building slot can be under construction at a time. Sequential build time to max everything is on the order of weeks at high tiers (Lv 8–10 takes 24–72 hours each).
+> Outpost levels 11–50 are **prestige** levels: each grants +5% credit yield on every spin (multiplicative with anomaly/drone/overclock bonuses) but does not unlock new grid sizes or paylines. Cost continues climbing geometrically.
+
+> At Outpost-6 EV (~30k CR/day from spins alone, more with anomaly/drone boosts), a daily-active player reaches full Lv-10 max-out in roughly **2–3 months**. Stardust skips compress that for whales.

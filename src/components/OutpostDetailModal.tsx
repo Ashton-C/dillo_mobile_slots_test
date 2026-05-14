@@ -3,7 +3,13 @@ import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { hapticBuildStart } from '@/constants/haptics';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
-import { outpostUpgradeCost, outpostUpgradeDuration } from '@/models/Habitat';
+import {
+  outpostUpgradeCost,
+  outpostUpgradeDuration,
+  getOutpostPrestigeMultiplier,
+  LEVEL_HARD_CAP,
+  LEVEL_SOFT_CAP,
+} from '@/models/Habitat';
 import { SkipBuildModal } from '@/components/SkipBuildModal';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
@@ -29,7 +35,10 @@ export function OutpostDetailModal({ visible, onClose }: Props) {
 
   const cost         = outpostUpgradeCost(outpostLevel);
   const duration     = outpostUpgradeDuration(outpostLevel + 1);
-  const maxed        = outpostLevel >= 10;
+  const maxed        = outpostLevel >= LEVEL_HARD_CAP;
+  const prestige     = Math.max(0, outpostLevel - LEVEL_SOFT_CAP);
+  const nextPrestige = Math.max(0, (outpostLevel + 1) - LEVEL_SOFT_CAP);
+  const prestigeBonusPct = Math.round((getOutpostPrestigeMultiplier(outpostLevel) - 1) * 100);
   const builderBusy  = activeBuildJob !== null;
   const isUpgrading  = activeBuildJob?.isOutpost === true;
   const canAfford    = credits >= cost;
@@ -42,18 +51,24 @@ export function OutpostDetailModal({ visible, onClose }: Props) {
 
           <View style={styles.header}>
             <Text style={styles.title}>OUTPOST</Text>
-            <Text style={styles.levelBadge}>LVL {outpostLevel}</Text>
+            <Text style={styles.levelBadge}>
+              LVL {outpostLevel}{prestige > 0 ? ` · +${prestigeBonusPct}%` : ''}
+            </Text>
           </View>
 
           <Text style={styles.desc}>
-            The Outpost level caps all buildings. Upgrading unlocks higher tiers for every structure.
+            {prestige > 0
+              ? `Prestige Lv ${prestige}: +${prestigeBonusPct}% credits on every spin. Next level adds another +5%.`
+              : 'The Outpost level caps all buildings. Upgrading unlocks higher tiers for every structure.'}
           </Text>
 
           {!maxed && (
             <View style={styles.infoRow}>
               <View style={styles.infoChip}>
                 <Text style={styles.infoChipLabel}>NEXT LEVEL</Text>
-                <Text style={styles.infoChipValue}>{outpostLevel + 1}</Text>
+                <Text style={styles.infoChipValue}>
+                  {outpostLevel + 1}{nextPrestige > 0 ? ` (+${nextPrestige * 5}%)` : ''}
+                </Text>
               </View>
               <View style={styles.infoChip}>
                 <Text style={styles.infoChipLabel}>COST</Text>

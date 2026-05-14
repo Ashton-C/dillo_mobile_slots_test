@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import {
   BuildingType,
   BUILDING_UPGRADE_COST,
-  BUILD_DURATION_MS,
+  getBuildDurationMs,
   ActiveBuildJob,
   outpostUpgradeCost,
   outpostUpgradeDuration,
+  LEVEL_HARD_CAP,
 } from '@/models/Habitat';
 import { writeHabitatState, writePlayerIndexPartial, HabitatSnapshot } from '@/services/FirestoreService';
 import { auth } from '@/lib/firebase';
@@ -74,13 +75,13 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
     const currentLevel = buildingLevels[type] ?? 0;
     const targetLevel = currentLevel + 1;
 
-    if (targetLevel > outpostLevel) return false; // hard gate
-    if (currentLevel >= 10) return false;
+    if (targetLevel > outpostLevel) return false; // outpost hard gate
+    if (currentLevel >= LEVEL_HARD_CAP) return false;
 
     const cost = BUILDING_UPGRADE_COST[type](currentLevel === 0 ? 1 : currentLevel);
     if (!subtractCredits(cost)) return false;
 
-    const duration = BUILD_DURATION_MS[targetLevel] ?? 0;
+    const duration = getBuildDurationMs(targetLevel);
     const completesAt = Date.now() + duration;
     const job: ActiveBuildJob = { type, targetLevel, completesAt };
 
@@ -92,7 +93,7 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
   upgradeOutpost(subtractCredits) {
     const { activeBuildJob, outpostLevel, habitatId } = get();
     if (activeBuildJob) return false;
-    if (outpostLevel >= 10) return false;
+    if (outpostLevel >= LEVEL_HARD_CAP) return false;
 
     const cost = outpostUpgradeCost(outpostLevel);
     if (!subtractCredits(cost)) return false;

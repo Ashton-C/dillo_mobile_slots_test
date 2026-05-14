@@ -11,7 +11,14 @@ import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
 import { BuildingDetailModal } from '@/components/BuildingDetailModal';
 import { OutpostDetailModal } from '@/components/OutpostDetailModal';
 import { OutpostMapInteractive } from '@/components/OutpostMap';
-import { BuildingType, outpostUpgradeCost, outpostUpgradeDuration } from '@/models/Habitat';
+import {
+  BuildingType,
+  outpostUpgradeCost,
+  outpostUpgradeDuration,
+  getOutpostPrestigeMultiplier,
+  LEVEL_HARD_CAP,
+  LEVEL_SOFT_CAP,
+} from '@/models/Habitat';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 function formatTimer(ms: number): string {
@@ -34,14 +41,17 @@ export default function HabitatScreen() {
 
   const builderBusy = activeBuildJob !== null;
   const isUpgradingOutpost = activeBuildJob?.isOutpost === true;
-  const outpostMaxed = outpostLevel >= 10;
+  const outpostMaxed = outpostLevel >= LEVEL_HARD_CAP;
+  const prestigeLevel = Math.max(0, outpostLevel - LEVEL_SOFT_CAP);
+  const prestigeBonusPct = Math.round((getOutpostPrestigeMultiplier(outpostLevel) - 1) * 100);
 
   const gridCfg = getGridConfig(outpostLevel);
   const numPaylines = gridCfg.numLines;
-  const paylinesNextHint = numPaylines < 3  ? '+2 AT LV 3'
-                         : numPaylines < 5  ? '+2 AT LV 6'
-                         : numPaylines < 10 ? '5×5 + 10 LINES AT LV 10'
-                         : 'MAX';
+  const paylinesNextHint = numPaylines < 3   ? '+2 AT LV 3'
+                         : numPaylines < 5   ? '+2 AT LV 6'
+                         : numPaylines < 10  ? '5×5 + 10 LINES AT LV 10'
+                         : prestigeLevel > 0 ? `PRESTIGE +${prestigeBonusPct}% CREDITS`
+                         :                     'MAX LINES';
 
   return (
     <SafeAreaView style={styles.root}>
@@ -61,10 +71,18 @@ export default function HabitatScreen() {
           <Text style={styles.outpostTitle}>HOMESTEAD</Text>
           <View style={styles.outpostLevelRow}>
             <Text style={styles.outpostLevelNum}>{outpostLevel}</Text>
-            <Text style={styles.outpostLevelMax}> / 10</Text>
+            {prestigeLevel > 0 && (
+              <Text style={[styles.outpostLevelMax, { color: Colors.accent }]}>
+                {' '}+{prestigeBonusPct}%
+              </Text>
+            )}
           </View>
           <Text style={styles.outpostHint}>
-            {outpostMaxed ? 'Fully upgraded' : `Buildings capped at homestead level ${outpostLevel}`}
+            {outpostMaxed
+              ? 'Fully upgraded'
+              : prestigeLevel > 0
+                ? `Prestige Lv ${prestigeLevel} · +${prestigeBonusPct}% credits per spin`
+                : `Buildings capped at homestead level ${outpostLevel}`}
           </Text>
           {/* 2a: Payline unlock hint */}
           <Text style={[styles.paylinesHint, { color: numPaylines >= 5 ? Colors.textMuted : Colors.accent + '99' }]}>

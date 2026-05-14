@@ -17,7 +17,7 @@ import { SkipBuildModal } from '@/components/SkipBuildModal';
 import { useState } from 'react';
 import { hapticBuildStart } from '@/constants/haptics';
 import { soundService } from '@/services/SoundService';
-import { BuildingType, BUILDING_UPGRADE_COST, BUILD_DURATION_MS } from '@/models/Habitat';
+import { BuildingType, BUILDING_UPGRADE_COST, getBuildDurationMs, LEVEL_HARD_CAP, LEVEL_SOFT_CAP } from '@/models/Habitat';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const BUILDING_META: Record<BuildingType, { icon: string; label: string }> = {
@@ -175,12 +175,16 @@ export function BuildingDetailModal({ type, onClose }: Props) {
   const detail       = BUILDING_DETAIL[type](level);
   const upgradeCost  = BUILDING_UPGRADE_COST[type](level === 0 ? 1 : level);
   const builderBusy  = activeBuildJob !== null;
-  const maxed        = level >= 10;
+  const maxed        = level >= LEVEL_HARD_CAP;
   const blocked      = builderBusy && !isBuilding;
   const gatedByOutpost = !maxed && (level + 1) > outpostLevel;
-  const totalBuildMs = BUILD_DURATION_MS[level + 1] ?? 0;
+  const totalBuildMs = getBuildDurationMs(level + 1);
   const progressPct  = totalBuildMs > 0 ? Math.max(2, (1 - msUntilComplete / totalBuildMs) * 100) : 0;
-  const levelDots    = Array.from({ length: 10 }, (_, i) => i < level ? '●' : '○').join('');
+  // Levels 1–10 fill the 10-dot bar; past 10 every level is "prestige" and we
+  // show the bar fully lit with a "+N" suffix instead.
+  const cappedDots   = Math.min(level, LEVEL_SOFT_CAP);
+  const levelDots    = Array.from({ length: LEVEL_SOFT_CAP }, (_, i) => i < cappedDots ? '●' : '○').join('');
+  const prestige     = Math.max(0, level - LEVEL_SOFT_CAP);
 
   let buttonLabel: string;
   let buttonDisabled: boolean;
@@ -232,7 +236,10 @@ export function BuildingDetailModal({ type, onClose }: Props) {
                 {!maxed && detail.nextSummary !== null && (
                   <Text style={styles.cardNextLevel}>→ LVL {level + 1}: {detail.nextSummary}</Text>
                 )}
-                <Text style={[styles.levelDots, { color }]}>{levelDots}</Text>
+                <Text style={[styles.levelDots, { color }]}>
+                  {levelDots}
+                  {prestige > 0 ? ` +${prestige}` : ''}
+                </Text>
               </View>
             </View>
 

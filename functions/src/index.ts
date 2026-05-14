@@ -24,6 +24,8 @@ interface UserDoc {
   displayName: string;
   avatarColor: string;
   activeDrones?: { type?: string }[];
+  expoPushToken?: string;
+  lastAttackedAt?: number;
 }
 
 interface HabitatDoc {
@@ -32,6 +34,54 @@ interface HabitatDoc {
   // TURRET daily charge tracking
   turretCharges?: number;
   turretResetAt?: number; // unix ms
+  ownerUid?: string;
+  activeBuildJob?: { type: string; targetLevel: number; completesAt: number; isOutpost?: boolean } | null;
+}
+
+// Per-defender attack cooldown. A successful or failed attack against a
+// defender locks them from further raids for this many ms — stops raid-spam,
+// caps push-notification frequency, and gives the defender breathing room.
+const ATTACK_COOLDOWN_MS = 10 * 60 * 1000;
+
+// Expo's push relay. Lower-friction than wiring APNs + FCM directly: send a
+// single HTTPS POST with one or more tokens and Expo forwards to the
+// appropriate transport.
+const EXPO_PUSH_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
+
+interface PushPayload {
+  to: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  sound?: 'default';
+  priority?: 'default' | 'high';
+}
+
+async function sendPush(payload: PushPayload | PushPayload[]): Promise<void> {
+  try {
+    const res = await fetch(EXPO_PUSH_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      functions.logger.warn('sendPush: non-2xx', { status: res.status });
+    }
+  } catch (err) {
+    functions.logger.warn('sendPush: fetch failed', { err: String(err) });
+  }
+}
+
+async function pushToUser(
+  uid: string,
+  title: string,
+  body: string,
+  data?: Record<string, unknown>,
+): Promise<void> {
+  const userSnap = await db.doc(`users/${uid}`).get();
+  const token = userSnap.exists ? (userSnap.data()?.expoPushToken as string | undefined) : undefined;
+  if (!token) return;
+  await sendPush({ to: token, title, body, data, sound: 'default', priority: 'high' });
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +209,25 @@ export const resolveCombat = functions.firestore
       const attacker = attackerSnap.data() as UserDoc;
       const defender = defenderSnap.data() as UserDoc;
 
+      // --- Attack cooldown: refund attack-cost if defender was hit recently ---
+      const lastAttackedAt = defender.lastAttackedAt ?? 0;
+      if (lastAttackedAt > 0 && Date.now() - lastAttackedAt < ATTACK_COOLDOWN_MS) {
+        const refundField = type === 'INTRUSION' ? 'intrusions' : 'extractions';
+        const refundedValue = ((attackerSnap.data()?.[refundField] as number | undefined) ?? 0) + 1;
+        await Promise.all([
+          db.doc(`users/${attackerUid}`).update({ [refundField]: refundedValue }),
+          writeEvent(attackerUid, {
+            type: 'COMBAT_RESULT',
+            fromUid: defenderUid,
+            fromDisplayName: defender.displayName,
+            attackerWon: false,
+            cooldown: true,
+          }),
+        ]);
+        await requestRef.update({ status: 'RESOLVED', outcome: 'BLOCKED_BY_COOLDOWN' });
+        return;
+      }
+
       // --- Load defender's habitat for TURRET + VAULT levels ---
       const defenderHabitat = await getHabitatForUser(defenderUid);
       const defBuildingLevels = defenderHabitat?.data.buildingLevels ?? {};
@@ -176,8 +245,10 @@ export const resolveCombat = functions.firestore
       }
 
       if (blockedByTurret) {
-        // Attacker is blocked — no credit change, both get notified
+        // Attacker is blocked — no credit change, both get notified. Start the
+        // cooldown so failed attacks can't be retried in a tight loop.
         await Promise.all([
+          db.doc(`users/${defenderUid}`).update({ lastAttackedAt: Date.now() }),
           writeEvent(defenderUid, {
             type: 'ATTACK_RESOLVED',
             fromUid: attackerUid,
@@ -192,6 +263,12 @@ export const resolveCombat = functions.firestore
             attackerWon: false,
             blockedByTurret: true,
           }),
+          pushToUser(
+            defenderUid,
+            'TURRET ENGAGED',
+            `${attacker.displayName} bounced off your turret.`,
+            { type: 'attack-blocked' },
+          ),
         ]);
         await requestRef.update({ status: 'RESOLVED', outcome: 'BLOCKED_BY_TURRET' });
         return;
@@ -238,7 +315,7 @@ export const resolveCombat = functions.firestore
         const attackerNewCredits = attacker.credits + transferred;
 
         await Promise.all([
-          db.doc(`users/${defenderUid}`).update({ credits: defenderNewCredits }),
+          db.doc(`users/${defenderUid}`).update({ credits: defenderNewCredits, lastAttackedAt: Date.now() }),
           db.doc(`users/${attackerUid}`).update({ credits: attackerNewCredits }),
           writeEvent(defenderUid, {
             type: type === 'INTRUSION' ? 'ATTACK_RESOLVED' : 'RAID_RESOLVED',
@@ -254,6 +331,12 @@ export const resolveCombat = functions.firestore
             attackerWon: true,
             creditsGained: transferred,
           }),
+          pushToUser(
+            defenderUid,
+            type === 'INTRUSION' ? 'INCURSION DETECTED' : 'OUTPOST RAIDED',
+            `${attacker.displayName} took ${transferred.toLocaleString()} CR. Log in to retaliate.`,
+            { type: 'attack-won', attackerUid, creditsLost: transferred },
+          ),
         ]);
 
         await requestRef.update({
@@ -266,8 +349,10 @@ export const resolveCombat = functions.firestore
           droneBonus: attackerDroneRaidBonus(attacker.activeDrones),
         });
       } else {
-        // Attacker lost — no credit change
+        // Attacker lost — no credit change, but start the cooldown anyway so
+        // the defender gets breathing room from repeated attempts.
         await Promise.all([
+          db.doc(`users/${defenderUid}`).update({ lastAttackedAt: Date.now() }),
           writeEvent(defenderUid, {
             type: type === 'INTRUSION' ? 'ATTACK_RESOLVED' : 'RAID_RESOLVED',
             fromUid: attackerUid,
@@ -280,6 +365,12 @@ export const resolveCombat = functions.firestore
             fromDisplayName: defender.displayName,
             attackerWon: false,
           }),
+          pushToUser(
+            defenderUid,
+            'ATTACK REPELLED',
+            `${attacker.displayName} tried to raid you and bounced.`,
+            { type: 'attack-repelled' },
+          ),
         ]);
 
         await requestRef.update({ status: 'RESOLVED', outcome: 'DEFENDER_WON' });
@@ -509,9 +600,7 @@ interface RcEvent {
   original_transaction_id?: string;
 }
 
-// Event types that GRANT rewards. CANCELLATION/REFUND/EXPIRATION should NOT
-// roll back grants here — that's a separate flow (see MONETIZATION_CHECKLIST.md
-// "Refund handling"). Keep this list narrow on purpose.
+// Event types that GRANT rewards.
 const GRANT_EVENT_TYPES = new Set([
   'INITIAL_PURCHASE',
   'NON_RENEWING_PURCHASE',
@@ -519,6 +608,23 @@ const GRANT_EVENT_TYPES = new Set([
   'PRODUCT_CHANGE',
   'UNCANCELLATION',
 ]);
+
+// Event types that REVOKE rewards. RC sends `CANCELLATION` for consumable
+// refunds; `REFUND` and `EXPIRATION` for completeness. Subscriptions aren't
+// in scope today but the table is here so we don't no-op when they ship.
+const REFUND_EVENT_TYPES = new Set([
+  'CANCELLATION',
+  'REFUND',
+  'EXPIRATION',
+  'SUBSCRIPTION_PAUSED',
+]);
+
+// Abuse heuristic: if a player has accumulated this much refunded stardust,
+// flag the account. Future stardust purchases for flagged accounts are
+// refused (still 200 OK to RC) so we don't keep granting + refunding in a
+// loop. Other rewards continue to flow — flagging is a soft signal, not a
+// ban.
+const REFUND_FLAG_STARDUST_THRESHOLD = 5_000;
 
 export const revenueCatWebhook = functions
   .runWith({ secrets: ['REVENUECAT_WEBHOOK_AUTH'] })
@@ -546,8 +652,10 @@ export const revenueCatWebhook = functions
       return;
     }
 
-    if (!GRANT_EVENT_TYPES.has(event.type)) {
-      functions.logger.info(`revenueCatWebhook: skip non-grant event ${event.type}`);
+    const isGrant  = GRANT_EVENT_TYPES.has(event.type);
+    const isRefund = REFUND_EVENT_TYPES.has(event.type);
+    if (!isGrant && !isRefund) {
+      functions.logger.info(`revenueCatWebhook: skip non-actionable event ${event.type}`);
       res.status(200).send('skipped');
       return;
     }
@@ -565,6 +673,13 @@ export const revenueCatWebhook = functions
     const userRef   = db.doc(`users/${uid}`);
 
     try {
+      if (isRefund) {
+        const result = await applyRefund(uid, productId, txnId, txnRef, userRef, event.type);
+        functions.logger.info(`revenueCatWebhook: refund ${result.reason} ${productId} for ${uid}`);
+        res.status(200).send('ok');
+        return;
+      }
+
       // Idempotency: a failed `create` here means the event was already
       // applied. RC retries on non-2xx so we want one-and-only-once delivery.
       const grant = await db.runTransaction(async (tx) => {
@@ -604,6 +719,23 @@ export const revenueCatWebhook = functions
           return { applied: false, reason: 'unknown-product' as const };
         }
 
+        // Refund-abuse gate: a flagged account loses access to stardust grants
+        // (the only currency without a clawback ceiling) but other purchases
+        // still flow. Keeps the gate soft — players can recover by contacting
+        // support and getting the flag cleared.
+        if (user.refundFlagged === true && packReward.stardust) {
+          functions.logger.warn(`revenueCatWebhook: blocked stardust grant for flagged user ${uid}`);
+          tx.set(txnRef, {
+            uid,
+            productId,
+            transactionId: txnId,
+            eventType: event.type,
+            blocked: 'refund-flagged',
+            appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return { applied: false, reason: 'refund-flagged' as const };
+        }
+
         // Apply ---------------------------------------------------------------
         const update: admin.firestore.DocumentData = haveResourceGrant
           ? applyPackToUserData(user, packReward)
@@ -623,6 +755,7 @@ export const revenueCatWebhook = functions
           appliedAt: admin.firestore.FieldValue.serverTimestamp(),
           packReward: haveResourceGrant ? packReward : null,
           cosmeticGrants: cosmeticIdsToGrant,
+          refunded: false,
         });
 
         return { applied: true, reason: 'ok' as const, packReward, cosmeticIdsToGrant };
@@ -653,4 +786,240 @@ export const revenueCatWebhook = functions
       functions.logger.error('revenueCatWebhook: failure', { uid, productId, txnId, err: msg });
       res.status(status).send(msg);
     }
+  });
+
+// ---------------------------------------------------------------------------
+// Refund clawback (called from revenueCatWebhook on CANCELLATION/REFUND/etc.)
+//
+// Reads the original iapTransactions/{txnId} doc to find what was granted,
+// then reverses the grant inside a single Firestore transaction:
+//
+// • numeric resources are clamped at 0 — players can never owe credits
+// • cosmetic IDs are arrayRemoved from ownedCosmetics (idempotent if absent)
+// • a refund counter accumulates on the user doc; over the abuse threshold
+//   the account is flagged and future stardust packs are refused
+// • the transaction doc gets refunded=true so a duplicate refund is a no-op
+// ---------------------------------------------------------------------------
+
+async function applyRefund(
+  uid: string,
+  productId: string,
+  txnId: string,
+  txnRef: admin.firestore.DocumentReference,
+  userRef: admin.firestore.DocumentReference,
+  eventType: string,
+): Promise<{ applied: boolean; reason: string }> {
+  return db.runTransaction(async (tx) => {
+    const txnSnap = await tx.get(txnRef);
+    if (!txnSnap.exists) {
+      // RC sometimes sends a refund for a grant we never recorded (sandbox
+      // weirdness, or a manual refund predating webhook config). Persist a
+      // breadcrumb but don't try to reverse anything.
+      tx.set(txnRef, {
+        uid,
+        productId,
+        transactionId: txnId,
+        eventType,
+        refunded: true,
+        refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+        note: 'orphan-refund',
+      });
+      return { applied: false, reason: 'orphan' };
+    }
+
+    const txn = txnSnap.data() as admin.firestore.DocumentData;
+    if (txn.refunded === true) {
+      return { applied: false, reason: 'already-refunded' };
+    }
+
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists) {
+      // No user doc to claw back from. Mark the transaction so we don't loop.
+      tx.update(txnRef, {
+        refunded: true,
+        refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+        note: 'no-user-doc',
+      });
+      return { applied: false, reason: 'no-user' };
+    }
+    const user = userSnap.data() as admin.firestore.DocumentData;
+
+    const packReward: PackReward | null = txn.packReward ?? null;
+    const cosmeticGrants: string[] = Array.isArray(txn.cosmeticGrants) ? txn.cosmeticGrants : [];
+
+    const update: admin.firestore.DocumentData = {};
+
+    if (packReward) {
+      // Clamp every numeric subtraction at 0 — the wallet can't go negative,
+      // even if the player has already spent the refunded currency. The cost
+      // of this abuse is bounded by the cumulative-refund flag.
+      if (packReward.credits)  update.credits  = Math.max(0, (user.credits  ?? 0) - packReward.credits);
+      if (packReward.stardust) update.stardust = Math.max(0, (user.stardust ?? 0) - packReward.stardust);
+      if (packReward.fuel)     update.attacks  = Math.max(0, (user.attacks  ?? 0) - packReward.fuel);
+      if (packReward.boost)    update.raids    = Math.max(0, (user.raids    ?? 0) - packReward.boost);
+      if (packReward.shields)  update.shields  = Math.max(0, (user.shields  ?? 0) - packReward.shields);
+      // spinRefill is consumed at grant time; no rollback possible. Skip.
+    }
+
+    if (cosmeticGrants.length > 0) {
+      update.ownedCosmetics = admin.firestore.FieldValue.arrayRemove(...cosmeticGrants);
+    }
+
+    // Track cumulative refunded stardust; cross the threshold → flag the
+    // account. Once flagged, future stardust grants are blocked in the
+    // grant path until support clears the flag.
+    const refundedStardustNow = packReward?.stardust ?? 0;
+    if (refundedStardustNow > 0) {
+      const prev = (user.refundedStardustTotal as number | undefined) ?? 0;
+      const total = prev + refundedStardustNow;
+      update.refundedStardustTotal = total;
+      if (total >= REFUND_FLAG_STARDUST_THRESHOLD && !user.refundFlagged) {
+        update.refundFlagged = true;
+        update.refundFlaggedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+    }
+    update.refundCount = ((user.refundCount as number | undefined) ?? 0) + 1;
+    update.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+    tx.update(userRef, update);
+    tx.update(txnRef, {
+      refunded: true,
+      refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+      refundEventType: eventType,
+    });
+
+    return { applied: true, reason: 'ok' };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// claimDailyReward — callable, validates streak server-side
+//
+// Streak logic:
+//   • first claim → streak = 1
+//   • next claim within 24h of last → rejected (too early)
+//   • next claim 24h–48h after last → streak + 1
+//   • next claim past 48h → streak resets to 1
+//
+// Reward cycles on a 7-day table; every 7th day adds milestone stardust.
+// Days past 7 keep cycling (day 8 reward = day 1 reward) but `dailyClaimStreak`
+// keeps climbing so the UI can flex the long-streak count.
+// ---------------------------------------------------------------------------
+
+const DAILY_CLAIM_WINDOW_MIN_MS = 22 * 60 * 60 * 1000; // 22h slack for timezone drift
+const DAILY_CLAIM_WINDOW_MAX_MS = 48 * 60 * 60 * 1000; // past 48h → streak resets
+
+interface DailyReward {
+  credits?: number;
+  stardust?: number;
+  fuel?: number;
+  boost?: number;
+  shields?: number;
+  spinRefill?: boolean;
+}
+
+const DAILY_REWARDS: Record<number, DailyReward> = {
+  1: { credits: 200 },
+  2: { credits: 400,  fuel: 1 },
+  3: { credits: 600,  boost: 1 },
+  4: { credits: 1000, shields: 2 },
+  5: { credits: 1500, stardust: 5 },
+  6: { credits: 2200, fuel: 2, boost: 2 },
+  7: { credits: 5000, stardust: 20, spinRefill: true },
+};
+
+function dailyRewardForStreak(streak: number): DailyReward {
+  const slot = ((streak - 1) % 7) + 1;
+  const base = DAILY_REWARDS[slot];
+  if (!base) return { credits: 200 };
+  // Weekly bonus stardust on every 7th day past the first cycle:
+  // day 14 +5, day 21 +10, day 28 +15, capped.
+  if (slot === 7 && streak > 7) {
+    const weeksPast = Math.floor((streak - 1) / 7);
+    const bonus = Math.min(50, weeksPast * 5);
+    return { ...base, stardust: (base.stardust ?? 0) + bonus };
+  }
+  return base;
+}
+
+export const claimDailyReward = functions.https.onCall(async (_data, context) => {
+  if (!context.auth?.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign-in required.');
+  }
+  const uid = context.auth.uid;
+  const userRef = db.doc(`users/${uid}`);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists) {
+      throw new functions.https.HttpsError('not-found', 'User doc missing.');
+    }
+    const user = snap.data() as admin.firestore.DocumentData;
+
+    const now = Date.now();
+    const lastAt: number = (user.lastDailyClaimAt as number | undefined) ?? 0;
+    const prevStreak: number = (user.dailyClaimStreak as number | undefined) ?? 0;
+    const elapsed = now - lastAt;
+
+    if (lastAt > 0 && elapsed < DAILY_CLAIM_WINDOW_MIN_MS) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        `Daily reward not ready (${Math.ceil((DAILY_CLAIM_WINDOW_MIN_MS - elapsed) / 1000)}s)`,
+      );
+    }
+
+    const newStreak = (lastAt === 0 || elapsed > DAILY_CLAIM_WINDOW_MAX_MS) ? 1 : prevStreak + 1;
+    const reward = dailyRewardForStreak(newStreak);
+
+    const update: admin.firestore.DocumentData = {
+      lastDailyClaimAt: now,
+      dailyClaimStreak: newStreak,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (reward.credits)  update.credits  = (user.credits  ?? 0) + reward.credits;
+    if (reward.stardust) update.stardust = (user.stardust ?? 0) + reward.stardust;
+    if (reward.fuel)     update.attacks  = Math.min(MAX_FUEL_CAP,    (user.attacks ?? 0) + reward.fuel);
+    if (reward.boost)    update.raids    = Math.min(MAX_BOOST_CAP,   (user.raids   ?? 0) + reward.boost);
+    if (reward.shields)  update.shields  = Math.min(MAX_SHIELDS_CAP, (user.shields ?? 0) + reward.shields);
+    if (reward.spinRefill) {
+      update.spinsRemaining  = MAX_SPINS_CAP;
+      update.spinRefillStart = 0;
+    }
+
+    tx.update(userRef, update);
+    return { streak: newStreak, reward, claimedAt: now };
+  });
+});
+
+// ---------------------------------------------------------------------------
+// notifyBuildComplete — push when a build job clears
+//
+// Watches habitats/{habitatId} for the activeBuildJob field transitioning
+// from non-null to null. Fires a single push to the habitat owner. We don't
+// need a cooldown here: builds at high tiers take 12–72h so the frequency
+// is naturally bounded.
+// ---------------------------------------------------------------------------
+
+export const notifyBuildComplete = functions.firestore
+  .document('habitats/{habitatId}')
+  .onUpdate(async (change) => {
+    const before = change.before.data() as HabitatDoc;
+    const after  = change.after.data()  as HabitatDoc;
+    const hadJob = before.activeBuildJob != null;
+    const hasJob = after.activeBuildJob  != null;
+    if (!(hadJob && !hasJob)) return; // only fire on the falling edge
+
+    const ownerUid = after.ownerUid;
+    if (!ownerUid) return;
+    const prevJob = before.activeBuildJob;
+    if (!prevJob) return;
+    const label = prevJob.isOutpost
+      ? `Outpost Lv ${prevJob.targetLevel}`
+      : `${prevJob.type} Lv ${prevJob.targetLevel}`;
+    await pushToUser(
+      ownerUid,
+      'BUILD COMPLETE',
+      `${label} is online. Tap to claim.`,
+      { type: 'build-complete' },
+    );
   });

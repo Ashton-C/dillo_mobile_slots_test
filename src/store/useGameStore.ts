@@ -7,7 +7,7 @@ import { useDroneStore } from '@/store/useDroneStore';
 import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
 import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
-import { getMaxSpins } from '@/models/Habitat';
+import { getMaxSpins, getOutpostPrestigeMultiplier } from '@/models/Habitat';
 import { auth } from '@/lib/firebase';
 
 export interface SpinHistoryEntry {
@@ -63,6 +63,9 @@ interface Resources {
   totalBreachesAttempted: number;
   totalExtractionsAttempted: number;
   totalRaidsSuffered: number;
+  // Daily login streak — written by the claimDailyReward Cloud Function.
+  lastDailyClaimAt: number;
+  dailyClaimStreak: number;
 }
 
 interface SpinState {
@@ -121,6 +124,8 @@ const INITIAL_RESOURCES: Resources = {
   totalBreachesAttempted: 0,
   totalExtractionsAttempted: 0,
   totalRaidsSuffered: 0,
+  lastDailyClaimAt: 0,
+  dailyClaimStreak: 0,
 };
 
 const XP_PER_SPIN = 5;
@@ -221,8 +226,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
     const overclockBonus = overclockActive ? genLevel * 40 + 100 : 0;
     const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
+    const prestigeMultiplier = getOutpostPrestigeMultiplier(outpostLevel);
     const boostedCreditsWon = Math.floor(
-      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier,
+      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier * prestigeMultiplier,
     ) + overclockBonus;
 
     // Pre-calculate all resource changes using values captured at spin time
