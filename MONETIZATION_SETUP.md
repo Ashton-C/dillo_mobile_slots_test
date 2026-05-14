@@ -174,19 +174,27 @@ Then flip `requestNonPersonalizedAdsOnly: false` in `AdsService.ts`.
 
 ### In-app purchases
 
-Currently the store **simulates** all purchases — `confirmPurchase()` in
-`store.tsx` grants resources directly. To replace with real IAP:
+**RevenueCat is now wired** — `src/services/IapService.ts` wraps
+`react-native-purchases` and the `revenueCatWebhook` Cloud Function
+(`functions/src/index.ts`) is the source of truth for granting rewards.
+See **[MONETIZATION_CHECKLIST.md](./MONETIZATION_CHECKLIST.md)** for the
+full registration + sandbox-testing flow.
 
-1. **RevenueCat** (recommended for cross-platform): `npm install react-native-purchases`. SKUs in their dashboard, then `Purchases.purchaseProduct(sku)` returns a receipt. Cleanest receipt validation story.
-2. **expo-iap** (lighter, native-only): `npx expo install expo-iap`. SKUs in App Store Connect / Google Play Console. You implement receipt validation server-side.
+Key points if you need to extend it:
 
-Either way, `confirmPurchase()` becomes:
-```ts
-const receipt = await Purchases.purchaseProduct(pendingPack.sku);
-if (receipt.transactionIdentifier) {
-  grantResources(pendingPack.rewards);
-}
-```
+- **New pack ID:** add to both `src/services/StoreService.ts:PACKS` and
+  `functions/src/index.ts:PACK_REWARDS`. They must mirror.
+- **Stub mode:** in Expo Go / when no RC public key is set, the client
+  grants rewards locally (`stubbed: true` in the purchase result). The
+  webhook never fires in this mode.
+- **Live prices:** `useIapPrices` hook returns localized `priceString`
+  values from RC at runtime; the hardcoded `price` fields in `PACKS` are
+  fallbacks only.
+- **Customer Center / paywalls:** `iapService.presentCustomerCenter()` and
+  `iapService.presentPaywall({ offeringId })` ship via
+  `react-native-purchases-ui`. The Store tab's MANAGE PURCHASES button
+  uses Customer Center; the paywall isn't currently triggered (Reelwright
+  is consumables-only — see the checklist § 11).
 
 ### Rewarded interstitial for spin-refill
 
@@ -196,8 +204,8 @@ handler at `grantResources({ spinRefill: true })` (or a partial refill).
 
 ### Push notifications
 
-`expo-notifications` + a Cloud Function on the `combatRequests` collection.
-Out of scope until Phase 4 — see `progress.md`.
+`expo-notifications` + a Cloud Function on `users/{uid}/events`. Still
+outstanding — see `progress.md` Phase 5.
 
 ---
 

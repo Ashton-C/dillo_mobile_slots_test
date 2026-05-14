@@ -49,45 +49,73 @@ app/
   _layout.tsx          # Root layout — auth init, global timers, EventBanner
   (tabs)/
     spin.tsx           # Main spin screen — reels, quick actions, rift selector
-    habitat.tsx        # Base builder — buildings, outpost upgrade, drone contracts
-    hangar.tsx         # RADAR screen — PvP target discovery, BREACH/EXTRACT
+    habitat.tsx        # Base builder — OutpostMap, drone contracts, build queue
+    hangar.tsx         # RADAR — SectorMap, target discovery, BREACH (roulette) / EXTRACT (blackjack)
     rift.tsx           # Temporal Rift selector (also accessible from spin screen)
-    pilot.tsx          # Pilot profile — XP, stats, combat log
+    pilot.tsx          # Pilot profile — XP, stats, customization, combat log
+    store.tsx          # IAP packs, Stardust ladder, watch-an-ad rewards, cosmetics
+    dev.tsx            # Hidden debug screen (tab hidden via tabBarButton)
     _layout.tsx        # Tab bar config
 
 src/
   components/
-    PilotAvatar.tsx         # Procedural pilot avatar from RN primitives
-    CombatMiniGame.tsx      # Insta-stop PvP mini-game (3 cycling reels, tap to lock)
-    DroneMarketplace.tsx    # Drone hire modal (CONTRACTS button on Habitat screen)
-    EventBanner.tsx         # Slide-down PvP notification banner
-    ModifierPanel.tsx       # Active effects panel (Rift + Anomaly + Drones) — dots/numbers toggle
-    ReelDisplay.tsx         # Animated slot reel display (3 cells)
-    ResourceBar.tsx         # Top HUD bar (credits, fuel, boost, shields, spins)
-    RiftSelector.tsx        # Temporal Rift tier selector
-    SpinButton.tsx          # Main spin button with pulse glow animation
-    UsernameSetupModal.tsx  # First-launch display name prompt
+    BlackjackMiniGame.tsx   # PvP extraction mini-game (blackjack hand)
+    RouletteGame.tsx        # PvP breach mini-game (roulette wheel)
+    CombatMiniGame.tsx      # Legacy 3-reel insta-stop game (kept for fallback)
+    SectorMap.tsx           # Sector-based RADAR discovery grid
+    SectorTrailMap.tsx      # Visited-sector trail visualization
+    OutpostMap.tsx          # Node-based base layout on Habitat tab
+    BuildingDetailModal.tsx # Per-building upgrade sheet
+    OutpostDetailModal.tsx  # Outpost-level upgrade sheet
+    SkipBuildModal.tsx      # Spend Stardust to instantly finish a build
+    SpinRefillModal.tsx     # 0-spin recovery: wait, watch ad, or buy refill
+    LedgerDrawer.tsx        # Swipe-up history of last 20 spins with receipts
+    BuildCompleteBanner.tsx # Slide-in completion notice
+    CombatResolutionChip.tsx# Compact raid result chip
+    CosmeticCategoryGrid.tsx# Cosmetics grid (per category)
+    CosmeticPurchaseModal.tsx # Buy/equip flow with preview
+    CosmeticPreview.tsx     # Live preview tile
+    OnboardingCarousel.tsx  # First-launch 5-card swipe walkthrough
+    OnboardingModal.tsx     # First-launch 3-step task gate
+    JackpotBurst.tsx        # JACKPOT win ceremony animation
+    ConfettiEmitter.tsx     # Particle burst on big wins
+    AdWatchModal.tsx        # Rewarded-ad fallback modal (Expo Go)
+    HexFrame.tsx, TopBar.tsx, IconButton.tsx, TooltipPopover.tsx, LegendCard.tsx, OddsModal.tsx, DroneCard.tsx, CreditCounter.tsx
+    PilotAvatar.tsx, DroneMarketplace.tsx, EventBanner.tsx, ModifierPanel.tsx, ReelDisplay.tsx, ResourceBar.tsx, RiftSelector.tsx, SpinButton.tsx, UsernameSetupModal.tsx
 
   models/
     Drone.ts           # DroneContract definitions, cost schemas
     Habitat.ts         # BuildingType, upgrade costs, build durations, outpost helpers
+    User.ts            # Player profile + resource schema
 
   services/
+    SlotsEngine.ts             # Weighted random slot engine, rift modifiers, payout tables
+    FirestoreService.ts        # All Firestore read/write operations (typed)
     AnomalyService.ts          # Global 4-hour weather event sync (Firestore)
     DroneMercenaryService.ts   # Effect aggregation for active drones
-    FirestoreService.ts        # All Firestore read/write operations (typed)
-    SlotsEngine.ts             # Weighted random slot engine, rift modifiers, payout tables
+    CosmeticsService.ts        # 50-item catalog, token maps, bundle grants
+    StoreService.ts            # IAP pack table (`PACKS`), reward shape
+    IapService.ts              # RevenueCat wrapper + Customer Center + paywall + Expo Go stub
+    AdsService.ts              # AdMob rewarded + interstitial + Expo Go stub
+    SoundService.ts            # SFX dispatch (asset slots in `ASSETS.md`)
 
   store/
     useAnomalyStore.ts   # Space Anomaly state + Firestore subscription
     useAuthStore.ts      # Firebase Auth, user profile, player index writes
+    useCosmeticsStore.ts # Owned + equipped cosmetics, buy/equip/bundle expansion
     useDroneStore.ts     # Active drones, deploy/tick lifecycle
     useEventStore.ts     # Incoming PvP event queue, dismiss logic
-    useGameStore.ts      # All player resources, spin logic, buff management
-    useHabitatStore.ts   # Building levels, active build job, outpost level
+    useGameStore.ts      # All player resources (incl. Stardust), spin logic, buff management
+    useHabitatStore.ts   # Building levels, active build job, outpost level, grid config
+
+  lib/
+    firebase.ts        # Firebase app init (auth + Firestore)
 
   constants/
     theme.ts           # Colors, Typography, Spacing, BorderRadius
+
+functions/
+  src/index.ts         # Cloud Functions: resolveCombat, refillSpins, revenueCatWebhook
 ```
 
 ---
@@ -157,8 +185,9 @@ Evaluation order: triple → pair (center+right or left+center) → outer pair �
 | Fuel Cells | ⚡ | Spinning (ATTACK symbol) | Overclock spin buff |
 | Signal Boosters | ▲▲ | Spinning (RAID symbol) | Signal Boost spin buff |
 | Shields | ◉ | Spinning (SHIELD symbol) | Defense (passive) |
-| Breach Keys | ⚔ | Spinning (INTRUSION symbol) | RADAR → BREACH attack |
-| Extraction Beams | ⛏ | Spinning (EXTRACTION symbol) | RADAR → EXTRACT raid |
+| Breach Keys | ⚔ | Spinning (INTRUSION symbol) | RADAR → BREACH (roulette) |
+| Extraction Beams | ⛏ | Spinning (EXTRACTION symbol) | RADAR → EXTRACT (blackjack) |
+| Stardust | ✦ | JACKPOT (5 ✦), outpost level-up (10 ✦), blackjack-extract wins (1 ✦), IAP | Instant build/outpost skips (`SkipBuildModal`) |
 
 ### Buildings
 
@@ -175,11 +204,11 @@ All buildings are gated by **Outpost Level** — a building can't exceed the cur
 
 ### PvP (RADAR Screen)
 
-1. Scan for nearby targets from the `playerIndex` collection
-2. Tap **BREACH** (costs 1 Breach Key) or **EXTRACT** (costs 1 Extraction Beam)
-3. **CombatMiniGame** opens: 3 reels cycle at different speeds — tap each to lock it (skill element), or wait for 3s auto-stop
-4. Power is calculated from reel pattern + Outpost Level bonus
-5. A `combatRequest` doc is written to Firestore — a Cloud Function resolves the outcome and delivers results via `users/{uid}/events`
+1. Open the `SectorMap` and pick a sector to scan — targets are pulled from `playerIndex` with threat tiers (WEAK / EVEN / STRONG) based on the defender's Outpost Level
+2. Tap **BREACH** (costs 1 Breach Key) → `RouletteGame` mini-game, or **EXTRACT** (costs 1 Extraction Beam) → `BlackjackMiniGame`
+3. Each mini-game produces a power value (or a bust); a `combatRequest` doc is written to Firestore
+4. The `resolveCombat` Cloud Function applies TURRET (daily auto-block charges) and VAULT (credit loss reduction) passives, computes the outcome, and writes events to both players' `users/{uid}/events` subcollections
+5. The defender sees an `EventBanner` slide in on next foreground; the attacker sees a `CombatResolutionChip` with the power delta and any loot
 
 ### Space Anomalies
 
@@ -213,10 +242,13 @@ Deployed from the **CONTRACTS** modal on the Habitat screen (requires HANGAR ≥
 
 ## Development Notes
 
-- **Server authority:** Combat resolution happens in a Cloud Function, not the client. Clients write requests; the server writes results.
+- **Server authority:** Combat resolution happens in a Cloud Function, not the client. Clients write requests; the server writes results. IAP grants also flow through a server webhook (`revenueCatWebhook`) — the client only grants stubbed rewards in Expo Go.
 - **Path alias:** `@/*` maps to `./src/*` — configured in `tsconfig.json` and `babel.config.js`.
 - **Type checking:** `npx tsc --noEmit`
-- **No test suite yet** — SlotsEngine unit tests are on the Phase 4 backlog.
+- **Tests:** `npx jest --no-watch` — 37 passing covering SlotsEngine math, payouts, rift modifiers, multiline evaluation.
+- **Cloud Functions:** `functions/src/index.ts` contains `resolveCombat`, scheduled `refillSpins`, and `revenueCatWebhook`. Deploy via `npm run deploy:functions` (scopes to `resolveCombat` by default; `-- --all` to deploy everything).
+- **EAS builds:** see `EAS_BUILD_RUNBOOK.md`. Native modules (AdMob, RC) require a dev-client or production build — Expo Go falls back to stubs.
+- **Closed testing:** see `DEPLOY_CHECKLIST.md` for the iOS/Android submission flow and `MONETIZATION_CHECKLIST.md` for the RC + AdMob + IAP product registration gates.
 
 ---
 
