@@ -4,6 +4,8 @@ A from-zero checklist for shipping Reelwright to the App Store and
 Google Play. Plan a full week the first time; subsequent releases take a
 few hours.
 
+> See **[EAS_BUILD_RUNBOOK.md](./EAS_BUILD_RUNBOOK.md)** for the build pipeline (env vars, pinned deps, troubleshooting) and **[MONETIZATION_CHECKLIST.md](./MONETIZATION_CHECKLIST.md)** for the RC/AdMob/IAP gates. This file focuses on store-account setup and the release dance.
+
 ---
 
 ## Phase 0 — Accounts (do this first; some take days)
@@ -151,7 +153,7 @@ Copy this section, work through it the day before submission.
 - [ ] App version bumped in `app.json` (`version` + `buildNumber` + `versionCode`)
 - [ ] AdMob real App IDs in `app.json` (not test IDs) for production
 - [ ] AdMob real Ad Unit IDs in `app.json` `extra.admob.*`
-- [ ] Firebase project config in `src/config/firebase.ts` is the **prod** project, not dev
+- [ ] Firebase project config in `src/lib/firebase.ts` (env-driven via `.env.local` / EAS env) points at the **prod** project, not dev
 - [ ] Cloud Functions deployed to prod project (`firebase deploy --only functions`)
 - [ ] Firestore security rules tightened (no wildcard reads)
 - [ ] Privacy Policy URL is reachable

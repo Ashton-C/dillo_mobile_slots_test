@@ -166,11 +166,27 @@ This deletes both `users/`, `habitats/`, `playerIndex/` entries plus any queued 
 
 ---
 
-## What We're Building Next (Auth Session)
+## Auth Session — Status
 
-Once this setup is done, the coding session will:
-1. Wire `firebase/auth` anonymous sign-in into the app startup flow
-2. Create a `useAuthStore` that holds the current Firebase `User`
-3. On first sign-in, write an initial `users/{uid}` doc to Firestore
-4. Swap `useGameStore`'s local initial state for a Firestore `onSnapshot` listener
-5. Stand up the `AnomalyService` using a shared `anomalies/current` doc
+All five auth-wiring tasks below are now implemented in code. Kept here for
+posterity / future contributors who need to trace what's hooked up where.
+
+1. ✅ Anonymous sign-in wired into app startup — `app/_layout.tsx` calls
+   `useAuthStore.initialize()` on mount, which runs `onAuthStateChanged` and
+   falls back to `signInAnonymously(auth)` when no user exists.
+2. ✅ `useAuthStore` holds the current Firebase `User` (plus `displayName`,
+   `avatarColor`, `avatarAccessory`, `outpostColor`, `needsUsername` flag).
+3. ✅ On first sign-in, `ensureUserDoc()` in `src/store/useAuthStore.ts`
+   creates the `users/{uid}` doc with starter resources (credits 500,
+   attacks 5, spinsRemaining 50, etc.).
+4. ✅ `useGameStore` is hydrated via `subscribeToUser` → `onSnapshot` →
+   `syncFromFirestore`. Same pattern for `useHabitatStore` via
+   `subscribeToHabitat`.
+5. ✅ `AnomalyService` listens on `anomalies/current`; subscription is
+   managed by `useAnomalyStore.subscribe()`, kicked off inside
+   `useAuthStore.initialize()` after the user resolves.
+
+Beyond the original list, the auth flow also writes to `playerIndex/{uid}`
+on login + on display-name/avatar/level changes, gates the first-launch
+username modal via `needsUsername`, and propagates `ownedCosmetics` into
+`useCosmeticsStore` so paid skins survive a reinstall.

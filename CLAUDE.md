@@ -37,14 +37,16 @@ Instructions and context for AI assistants working on this codebase. Read this b
 ### State ownership
 - **Zustand stores** own all client state. Never use `useState` for data that needs to be shared across screens.
 - **Firestore** is the source of truth for resources, habitat, and events. Stores sync from Firestore via `onSnapshot` — never read directly from Firestore in components.
-- **Server authority:** Combat resolution and resource changes from PvP happen in Cloud Functions, not the client. The client writes *requests*; the server writes *results*.
+- **Server authority:** Combat resolution and IAP grants happen in Cloud Functions, not the client. The client writes *requests* (`combatRequests`); the server writes *results* (events, resource updates). Real IAP grants flow through `revenueCatWebhook` with `iapTransactions/{id}` idempotency — the client only grants stub rewards in Expo Go.
 
 ### File organization
 - `src/services/` — singleton service classes and Firestore I/O functions. One file per major system.
-- `src/store/` — Zustand stores. Each store owns one domain (game resources, habitat, drones, auth, events, anomaly).
+- `src/store/` — Zustand stores. Each store owns one domain (game, habitat, drones, auth, events, anomaly, cosmetics).
 - `src/models/` — plain data types, Zod schemas, static config objects (costs, durations).
 - `src/components/` — reusable UI components. Screens live in `app/(tabs)/`.
+- `src/lib/firebase.ts` — Firebase app init (auth + Firestore). Single import point for `auth` / `db`.
 - `src/constants/theme.ts` — the single source for all Colors, Typography sizes, Spacing, and BorderRadius.
+- `functions/src/index.ts` — all Cloud Functions (`resolveCombat`, scheduled `refillSpins`, `revenueCatWebhook`).
 
 ### Always use theme constants
 Never hardcode colors, font sizes, or spacing. Import from `@/constants/theme`.
@@ -70,16 +72,17 @@ All Firestore reads and writes must go through `src/services/FirestoreService.ts
 
 ### Economy
 - **Credits are the primary currency.** Every mechanic that spends Credits must have a clear return path. Don't add Credit sinks without a proportional source.
+- **Stardust (✦) is the premium soft currency.** Sole sink: build/outpost skips (1 ✦/min building, 2 ✦/min outpost). F2P earn rate is deliberately slow (5 ✦ per JACKPOT, 10 ✦ per outpost level-up, 1 ✦ per blackjack-extract win). IAP ladder is the primary path. Do not redirect Stardust to other sinks — the design depends on the build-skip pressure.
 - **Never add a new currency without thinking through inflation.** Drone Fuel, Signal Boosters, Breach Keys, etc. must have clear caps and sinks. Check that new resources don't make Credits redundant.
-- **Spin energy is a core engagement driver.** Max 50 spins, refill at 1 per 5 minutes. Do not change these values lightly — they anchor the daily session loop.
+- **Spin energy is a core engagement driver.** Base max 50 spins (BARRACKS raises the cap), refill at 1 per 5 minutes. Do not change these values lightly — they anchor the daily session loop.
 
 ### Buildings
 - **Outpost Level is the hard gate.** Buildings cannot be upgraded past the current Outpost Level. This gate must be enforced in `useHabitatStore.startBuild()` — never relax it client-side.
-- **Build times must feel meaningful at high tiers.** Level 1–3: seconds to minutes. Level 7–10: 12–72 hours. IAP pressure comes from impatience, not desperation.
+- **Build times must feel meaningful at high tiers.** Level 1–3: seconds to minutes. Level 7–10: 12–72 hours. Monetization pressure comes from impatience, not desperation — Stardust skips and the build-skip IAP ladder are the relief valve.
 
 ### PvP
-- **Combat is RNG + skill.** The `CombatMiniGame` insta-stop mechanic is the skill layer. Don't replace it with pure RNG or pure player choice.
-- **Never resolve PvP client-side.** Clients write `combatRequests`. The Cloud Function resolves outcomes, applies VAULT/TURRET passives, and writes to both players' event logs.
+- **Raids are RNG + skill.** `RouletteGame` (BREACH) and `BlackjackMiniGame` (EXTRACT) carry the skill layer. The legacy `CombatMiniGame` is kept only as a fallback. Don't replace the skill layer with pure RNG or pure player choice.
+- **Never resolve PvP client-side.** Clients write `combatRequests`. The `resolveCombat` Cloud Function applies VAULT (credit-loss reduction) and TURRET (daily auto-block charges) passives and writes to both players' event logs.
 
 ### UI
 - **Flat hierarchy.** Maximum one drill-down from any tab. If a screen needs two taps to reach, reconsider the architecture.
@@ -92,20 +95,30 @@ All Firestore reads and writes must go through `src/services/FirestoreService.ts
 
 | File | What it does |
 |---|---|
-| `src/services/SlotsEngine.ts` | Weighted slot engine, rift modifiers, signal boost, payout tables |
-| `src/store/useGameStore.ts` | All player resources + spin logic + buff state |
-| `src/store/useHabitatStore.ts` | Building levels, active build job, outpost level, outpost gate |
-| `src/store/useAuthStore.ts` | Firebase Auth lifecycle, player index writes |
-| `src/store/useEventStore.ts` | Incoming PvP event queue |
-| `src/services/FirestoreService.ts` | All Firestore operations — the only file that touches `firebase/firestore` |
-| `src/models/Habitat.ts` | Building types, upgrade costs (`BUILDING_UPGRADE_COST`), build durations (`BUILD_DURATION_MS`), outpost helpers |
+| `src/services/SlotsEngine.ts` | Weighted slot engine, rift modifiers, signal boost, multiline payout tables (`spinRows`) |
+| `src/services/FirestoreService.ts` | All Firestore operations — only file that touches `firebase/firestore` (besides `useAuthStore` for the auth subscription) |
+| `src/services/AnomalyService.ts` | Global 4-hour weather event sync from `anomalies/current` |
+| `src/services/IapService.ts` | RevenueCat wrapper, Customer Center, paywall hooks, Expo Go stub fallback |
+| `src/services/AdsService.ts` | AdMob rewarded + interstitial, frequency cap, Expo Go stub fallback |
+| `src/services/CosmeticsService.ts` | 50-item catalog, category token maps, bundle grants |
+| `src/services/StoreService.ts` | `PACKS` table — IAP product IDs + reward shape (mirrored in `functions/src/index.ts:PACK_REWARDS`) |
+| `src/store/useGameStore.ts` | All player resources incl. Stardust, spin logic, buff state, `addStardust`, `subtractStardust`, `grantResources` |
+| `src/store/useHabitatStore.ts` | Building levels, active build job, outpost level, outpost gate, `getGridConfig`, `getNumActiveLines` |
+| `src/store/useAuthStore.ts` | Firebase Auth lifecycle, ensureUserDoc, player index writes, avatar/outpost color setters |
+| `src/store/useEventStore.ts` | Incoming PvP event queue from `users/{uid}/events` |
+| `src/store/useCosmeticsStore.ts` | Owned + equipped cosmetics, AsyncStorage + Firestore sync, bundle expansion |
+| `src/lib/firebase.ts` | Firebase app init — exports `auth` and `db` |
+| `src/models/Habitat.ts` | Building types (incl. BARRACKS), `BUILDING_UPGRADE_COST`, `BUILD_DURATION_MS`, outpost helpers |
 | `src/models/Drone.ts` | `DRONE_CONTRACTS` — drone definitions, costs, durations, effects |
+| `src/models/User.ts` | Player profile + resource schema (Zod) |
 | `src/constants/theme.ts` | Design tokens — Colors, Typography, Spacing, BorderRadius |
-| `app/_layout.tsx` | Root layout — auth init, global intervals (anomaly, habitat tick, spin refill, generator income), EventBanner |
-| `app/(tabs)/spin.tsx` | Main game screen |
-| `app/(tabs)/habitat.tsx` | Building management + DroneMarketplace modal |
-| `app/(tabs)/hangar.tsx` | RADAR screen — PvP discovery and combat launch |
-| `app/(tabs)/pilot.tsx` | Pilot profile, stats, combat log |
+| `app/_layout.tsx` | Root layout — auth init, global intervals (anomaly, habitat tick, spin refill, generator income), EventBanner, onboarding |
+| `app/(tabs)/spin.tsx` | Main game screen — reels, modifiers, ledger drawer |
+| `app/(tabs)/habitat.tsx` | OutpostMap + BuildingDetailModal + DroneMarketplace + SkipBuildModal |
+| `app/(tabs)/hangar.tsx` | RADAR — SectorMap → RouletteGame (BREACH) / BlackjackMiniGame (EXTRACT) |
+| `app/(tabs)/pilot.tsx` | Pilot profile, customization, combat log |
+| `app/(tabs)/store.tsx` | IAP packs, Stardust ladder, watch-an-ad rewards, cosmetics grid |
+| `functions/src/index.ts` | Cloud Functions — `resolveCombat`, scheduled `refillSpins`, `revenueCatWebhook` |
 
 ---
 
@@ -113,12 +126,13 @@ All Firestore reads and writes must go through `src/services/FirestoreService.ts
 
 | Collection | Who writes | Who reads |
 |---|---|---|
-| `users/{uid}` | Client (resources, profile) | Client |
-| `users/{uid}/events` | Cloud Function | Client (onSnapshot) |
-| `habitats/{habitatId}` | Client | Client |
+| `users/{uid}` | Client (resources, profile, ownedCosmetics) + `revenueCatWebhook` (IAP grants) + `resolveCombat` (credit deltas) | Client |
+| `users/{uid}/events` | Cloud Function (`resolveCombat`) | Client (onSnapshot) |
+| `habitats/{habitatId}` | Client + `resolveCombat` (TURRET charge deductions) | Client |
 | `anomalies/current` | Cloud Function / admin | Client (onSnapshot) |
-| `playerIndex/{uid}` | Client (on login + rename) | Client (RADAR scan) |
-| `combatRequests` | Client | Cloud Function |
+| `playerIndex/{uid}` | Client (on login + rename + outpost level-up) | Client (RADAR scan) |
+| `combatRequests` | Client | Cloud Function (`resolveCombat`) |
+| `iapTransactions/{id}` | `revenueCatWebhook` (idempotency marker) | Function only |
 
 ---
 
@@ -128,9 +142,9 @@ See **[progress.md](./progress.md)** for the full phase breakdown with completio
 
 **Phase 1** (Engine Foundation) ✅ complete
 **Phase 2** (Strategic Systems) ✅ complete
-**Phase 3** (Social Combat) 🔨 mostly complete — Cloud Function + TURRET/VAULT passives remaining
-**Phase 4** (Monetization) 📋 not started
-**Phase 5** (Polish & Launch) 📋 not started
+**Phase 3** (Social Combat) ✅ complete — `resolveCombat` deployed, TURRET/VAULT passives live, Roulette + Blackjack mini-games replaced the legacy 3-reel `CombatMiniGame`
+**Phase 4** (Monetization) ✅ complete — RevenueCat + AdMob wired, `revenueCatWebhook` deployed, Stardust system live; sandbox purchase verification + store submission still pending
+**Phase 5** (Polish & Launch) 🔨 closed testing prep — push notifications + store submission outstanding
 
 ---
 
@@ -152,6 +166,8 @@ See **[progress.md](./progress.md)** for the full phase breakdown with completio
 
 8. **Write to `playerIndex` when player data changes.** Any action that changes `displayName`, `level`, or `outpostLevel` should also update `playerIndex/{uid}` so RADAR targets stay accurate.
 
-9. **The combat loop is incomplete without the Cloud Function.** `combatRequests` are written client-side but not yet resolved. Don't design features that assume resolution has happened until the Cloud Function exists.
+9. **PvP resolution is server-side.** `combatRequests` are resolved by the `resolveCombat` Cloud Function; outcomes land in `users/{uid}/events`. Don't read combat results back on the client between writing the request and the event arriving — let the snapshot listener drive UI.
 
-10. **Reference progress.md for scope.** Before starting any new feature, check if it's in the current phase. If it's Phase 4+ work, flag it rather than implementing it speculatively.
+10. **IAP grants are server-side.** Real purchases route through `revenueCatWebhook`; the client only grants stub rewards in Expo Go. If you add a new pack ID, update both `src/services/StoreService.ts:PACKS` and `functions/src/index.ts:PACK_REWARDS` — they must mirror.
+
+11. **Reference progress.md for scope.** Before starting any new feature, check if it's in the current phase. We're in closed-testing prep — favor QoL and polish over new systems unless explicitly scoped.

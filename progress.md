@@ -1,7 +1,7 @@
 # Reelwright — Progress & Roadmap
 
-**Current Phase:** Phase 5 (Polish & Launch) — in progress
-**Last Updated:** 2026-05-01
+**Current Phase:** Phase 5 (Polish & Launch) — entering closed testing
+**Last Updated:** 2026-05-14
 
 ---
 
@@ -50,7 +50,8 @@ PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with
 - [x] Drone Marketplace — CONTRACTS modal, hire flow, atomic resource deduction
 - [x] INTRUSION + EXTRACTION symbols — added to `SlotsEngine` weight tables and payout tables; tracked in `useGameStore` and persisted to Firestore
 - [x] **RADAR screen** (repurposed from Hangar tab) — scans `playerIndex` for 5 nearby targets, threat assessment (WEAK/EVEN/STRONG), BREACH + EXTRACT action buttons
-- [x] **CombatMiniGame** — insta-stop modal: 3 reels at staggered speeds, tap-to-lock, 3s auto-stop, power evaluation, writes `combatRequest` to Firestore
+- [x] **PvP mini-games** — `RouletteGame` (BREACH/INTRUSION outcome) and `BlackjackMiniGame` (EXTRACT/EXTRACTION outcome) replaced the original 3-reel CombatMiniGame; both write `combatRequests` for the Cloud Function to resolve. `CombatMiniGame` is still in the tree as a legacy fallback.
+- [x] **SectorMap** — discovery UI replaces the old flat list of nearby targets; players pick a sector, see procedurally placed targets with threat tiers, then launch BREACH or EXTRACT
 - [x] **EventBanner** — Reanimated slide-down notification for all PvP event types; auto-dismisses at 5s; wired into root layout
 - [x] **useEventStore** — Firestore `users/{uid}/events` subcollection subscription, event deduplication, active-event queue
 - [x] **Player index writes** — `useAuthStore` writes to `playerIndex` on login and on display name change
@@ -68,47 +69,57 @@ PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with
 
 ---
 
-## Phase 4: Monetization ✅ (cosmetics complete; IAP/ads pending)
+## Phase 4: Monetization ✅ (RC + AdMob wired; sandbox testing pending)
 
-Hard currency, IAP, and rewarded ads. Build the social loop fully before adding monetization pressure.
+Hard currency, IAP, and rewarded ads. Built the social loop fully before turning monetization pressure on.
 
 ### Completed
-- [x] **IAP Credit Packs** — POCKET / HOARD / VAULT / STAR FORGE (credits); SPIN REFILL; FUEL TANK / SIGNAL ARRAY / BARRIER PACK; COMMANDER PACK / WAR CHEST (store tab, simulated flow)
-- [x] **Ad rewards** — +5 SPINS, +500 CR, +1 FUEL, +1 SIGNAL BOOSTER (rewarded ad buttons in store)
+- [x] **IAP Credit Packs** — POCKET / HOARD / VAULT / STAR FORGE (credits); SPIN REFILL; FUEL TANK / SIGNAL ARRAY / BARRIER PACK; COMMANDER PACK / WAR CHEST
+- [x] **Stardust (✦) premium currency** — replaces the flat `reelwright_skip_build` IAP. Build skip costs scale with time remaining (1 ✦/min building, 2 ✦/min outpost). 5-tier IAP ladder (`sd_starter` → `sd_hoard`, $0.99 → $49.99). F2P earn paths: 5 ✦ per JACKPOT roulette result, 10 ✦ per outpost level-up milestone, 1 ✦ per blackjack-extraction win.
+- [x] **`SkipBuildModal`** — unified UI for spending Stardust to finish a build instantly; opens from active build job in Habitat / Outpost detail
+- [x] **RevenueCat integration** — `IapService` wraps `react-native-purchases` with stub fallback for Expo Go; live `priceString` overrides hardcoded pack prices via `useIapPrices`; Customer Center sheet replaces the old hand-rolled restore button
+- [x] **Receipt-validation webhook** — `revenueCatWebhook` in `functions/src/index.ts` is the source of truth for `cr_*` / `sp_*` / `rs_*` / `bd_*` / `sd_*` / cosmetic purchases; `iapTransactions/{id}` idempotency; cosmetic bundle expansion via `arrayUnion` on `users/{uid}.ownedCosmetics`; deployed and verified end-to-end with RC TEST webhook
+- [x] **AdMob rewarded ads** — `AdsService` wraps `react-native-google-mobile-ads` with Expo Go fallback (`ADS_AVAILABLE` flag); test IDs in dev, real IDs from `extra.admob` in production; rewarded video powers the store-tab ad cards
+- [x] **AdMob interstitials** — wired with frequency cap; trigger on spin-tab blur, configurable
 - [x] **Cosmetics catalog** — 50 items across 9 categories: reel themes, symbol packs, spin button skins, HUD skins, ambient backgrounds, suit colors, pilot emblems, pilot titles, win celebration animations
 - [x] **`CosmeticsService.ts`** — full token maps for all categories; `COSMETIC_CATALOG` with credit/IAP pricing; `BUNDLE_GRANTS` for multi-item packs
-- [x] **`useCosmeticsStore.ts`** — Zustand store with AsyncStorage persistence; `buy()` / `equip()` / `isOwned()` actions; bundle grant expansion; free-item whitelist
-- [x] **Store tab cosmetics sections** — horizontal FlatList per category; `CosmeticCard` with ACTIVE / EQUIP / CR / IAP contextual button; buy/equip haptics + toast; IAP confirmation modal
+- [x] **`useCosmeticsStore.ts`** — Zustand store with AsyncStorage persistence; `buy()` / `equip()` / `isOwned()` actions; bundle grant expansion; free-item whitelist; remote `ownedCosmetics` sync from Firestore on auth init
+- [x] **Store tab** — `CosmeticCategoryGrid` per category; `CosmeticPurchaseModal` with preview; buy/equip haptics + toast; MANAGE PURCHASES launches RC Customer Center
 - [x] **Live cosmetic wiring** — `ReelDisplay` reads active reel theme + symbol pack; `SpinButton` reads active button skin; `ResourceBar` reads HUD skin + emblem + pilot title; `spin.tsx` reads ambient background
 
-### Remaining
-- [ ] **Temporal Crystals** — hard currency (distinct from Credits); earned via IAP or sparingly via gameplay
-- [ ] **RevenueCat integration** — real StoreKit/Play Billing for all IAP items
-- [ ] **AdMob rewarded ads** — real ad placements replacing simulated ad buttons
-- [ ] **Instant build skip** — spend hard currency to complete active build job instantly
+### Remaining (ops only)
+- [ ] First real sandbox purchase end-to-end on iOS (blocked on Apple Developer account)
+- [ ] First real sandbox purchase end-to-end on Android (Play Console product registration)
+- [ ] App Store Connect IAP product creation (see `MONETIZATION_CHECKLIST.md` § 3)
+- [ ] Refund-clawback path on RC `CANCELLATION` webhook event (currently no-op)
 
 ---
 
-## Phase 5: Polish & Launch 🔨
+## Phase 5: Polish & Launch 🔨 (closed testing prep)
 
-- [x] Unit tests — `SlotsEngine` payout math, weight normalization, Rift modifiers, multiline evaluation
+- [x] Unit tests — `SlotsEngine` payout math, weight normalization, Rift modifiers, multiline evaluation (37 passing)
 - [ ] Integration tests — Zustand store actions, Firestore write/read round-trips
-- [x] Onboarding tutorial — first-run overlay: spin → build → deploy drone (3-step modal, AsyncStorage gated)
+- [x] Onboarding — `OnboardingCarousel` 5-card swipe walkthrough + `OnboardingModal` 3-step task gate (AsyncStorage gated)
 - [x] Pilot customization — color + accessory picker on Pilot screen; `setAvatarColor` persists to Firestore
-- [x] Particle effects — jackpot confetti (`ConfettiEmitter`), screen shake on incoming attacks
+- [x] Particle effects — jackpot confetti (`ConfettiEmitter`), `JackpotBurst`, screen shake on incoming attacks
 - [ ] Push notifications — "your build is complete", "you were raided" (FCM)
-- [ ] App Store / Play Store submission
+- [ ] App Store / Play Store submission (see `DEPLOY_CHECKLIST.md`)
 
 ### Also shipped in Phase 5 session
-- [x] **Multiline slot machine** — 3×3 reel window; 1/3/5 paylines gated by Outpost Level; `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay
+- [x] **Multiline slot machine** — 3×3 / 5×5 reel windows; 1/3/5/10 paylines gated by Outpost Level (`getGridConfig`); `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay
+- [x] **Roulette + Blackjack PvP mini-games** — replaced the 3-reel CombatMiniGame for raid resolution; thematically distinct outcomes for BREACH (roulette wheel) vs EXTRACT (blackjack hand)
+- [x] **SectorMap discovery** — replaces the old flat target list; pick a sector, see procedurally placed threats, launch raid; `SectorTrailMap` shows traversal history
+- [x] **OutpostMap** — animated node-based building layout on the Habitat screen; tap a node to open `BuildingDetailModal` or `OutpostDetailModal`
+- [x] **HexFrame / TopBar / IconButton / TooltipPopover** — design system primitives for the cozy-frontier look
+- [x] **BuildCompleteBanner** — slide-in completion notice + tap-to-claim flow
+- [x] **CombatResolutionChip** — compact result chip on the EventBanner showing power deltas
 - [x] **Winning number fix** — outcome banner now shows the fully boosted amount (drone × anomaly + overclock), matching the Ledger
 - [x] **Spin button physicality** — aggressive press spring animation + haptic ticks during spinning
 - [x] **Win ceremony animations** — JACKPOT burst, multi-line badge, cell highlights
-- [x] **Spin history drawer** — swipe-up log of last 20 spins with outcome icons
+- [x] **Spin history drawer** — `LedgerDrawer` swipe-up log of last 20 spins with outcome icons + full breakdown receipts
 - [x] **RADAR recent targets** — last 5 scanned players cached on device
-- [x] **Ledger receipts** — full breakdown modal per spin (base × drone × anomaly × overclock)
 - [x] **Combat math transparency** — modifier display in mini-game shows live power calculation
-- [x] **RIFT visual clarity** — tier glyphs + cost preview before activating
+- [x] **RIFT visual clarity** — tier glyphs + cost preview before activating; dedicated `(tabs)/rift.tsx` route in addition to the spin-screen selector
 - [x] **Base crash fix** — resolved undefined-habitat crash on cold start
 
 ---
@@ -117,24 +128,27 @@ Hard currency, IAP, and rewarded ads. Build the social loop fully before adding 
 
 | System | Status | Notes |
 |---|---|---|
-| SlotsEngine | ✅ Solid | 9 symbols, rift modifiers, signal boost, multiline (1/3/5 paylines), full payout table |
-| useGameStore | ✅ Solid | All resources, spin buffs, Firestore sync, reelWindow + activeWinLines |
-| useHabitatStore | ✅ Solid | Outpost gate, build timers, Firestore persistence, `getNumActiveLines()` |
+| SlotsEngine | ✅ Solid | 9 symbols, rift modifiers, signal boost, multiline (1/3/5/10 paylines), full payout table |
+| useGameStore | ✅ Solid | All resources incl. Stardust, spin buffs, Firestore sync, reelWindow + activeWinLines |
+| useHabitatStore | ✅ Solid | Outpost gate, build timers, Firestore persistence, `getNumActiveLines()`, `getGridConfig()` |
 | useDroneStore | ✅ Solid | Deploy/tick/expire lifecycle |
 | useAnomalyStore | ✅ Solid | Global sync via onSnapshot |
-| useEventStore | ✅ Solid | Firestore events subscription, needs CF to write events |
-| useAuthStore | ✅ Solid | Player index writes, avatarColor, setAvatarColor |
-| useCosmeticsStore | ✅ New | AsyncStorage persistence, buy/equip/bundle, free-item whitelist |
-| FirestoreService | ✅ Solid | All collections covered; CF integration pending |
-| CosmeticsService | ✅ New | 50-item catalog, all token maps, bundle grants |
-| RADAR screen | ✅ Solid | Needs real playerIndex data to populate |
-| CombatMiniGame | ✅ Solid | Client-side only; outcomes pending CF |
-| EventBanner | ✅ Solid | Fully wired; events pending CF writes |
-| Cloud Function | ✅ Deployed | `resolveCombat` + `refillSpins` live in `us-central1`; redeploy via `npm run deploy:functions` |
-| TURRET/VAULT passives | ✅ Written | Wired inside resolveCombat CF |
-| Security rules | ✅ Complete | playerIndex, events subcollection, combatRequests all covered |
+| useEventStore | ✅ Solid | Firestore events subscription; CF writes events on resolve |
+| useAuthStore | ✅ Solid | Player index writes, avatar color/accessory, outpost color, cosmetics rehydrate |
+| useCosmeticsStore | ✅ Solid | AsyncStorage + Firestore-synced `ownedCosmetics`, buy/equip/bundle, free-item whitelist |
+| FirestoreService | ✅ Solid | All collections covered; CF integration live |
+| CosmeticsService | ✅ Solid | 50-item catalog, all token maps, bundle grants |
+| IapService | ✅ Solid | RevenueCat client wrapper, Customer Center, paywall hooks, Expo Go stub fallback |
+| AdsService | ✅ Solid | Rewarded + interstitial, frequency cap, test IDs in dev, Expo Go stub fallback |
+| RADAR screen | ✅ Solid | SectorMap + threat tiers; seed mock users for population |
+| Roulette / Blackjack | ✅ Solid | Replaced CombatMiniGame for PvP raids; outcomes resolved in CF |
+| EventBanner | ✅ Solid | Fully wired with CF event writes; `CombatResolutionChip` for raid results |
+| Cloud Functions | ✅ Deployed | `resolveCombat`, `refillSpins`, `revenueCatWebhook` live in `us-central1`; redeploy via `npm run deploy:functions` |
+| TURRET/VAULT passives | ✅ Solid | Wired inside `resolveCombat` CF; daily charge tracking |
+| Security rules | ✅ Complete | playerIndex, events subcollection, combatRequests, anomalies/current all covered |
 | Mock users | ✅ Written | Run `node scripts/seed-mock-users.js` to populate RADAR targets |
-| Unit tests | ✅ New | SlotsEngine: evaluate, spinRows, rift modifiers, signal boost, weight normalization |
-| Onboarding | ✅ New | 3-step first-run modal, AsyncStorage gated |
-| Pilot customization | ✅ New | Color + accessory picker on Pilot tab |
-| Particle effects | ✅ New | ConfettiEmitter (jackpot), screen shake (incoming attack) |
+| Unit tests | ✅ Solid | SlotsEngine: evaluate, spinRows, rift modifiers, signal boost, weight normalization (37 passing) |
+| Onboarding | ✅ Solid | `OnboardingCarousel` 5-card swipe + `OnboardingModal` 3-step task gate |
+| Pilot customization | ✅ Solid | Color + accessory + outpost color picker on Pilot tab |
+| Particle effects | ✅ Solid | ConfettiEmitter (jackpot), JackpotBurst, screen shake (incoming attack) |
+| Stardust system | ✅ Solid | 5-tier IAP ladder, F2P earn paths, SkipBuildModal for build/outpost skips |
