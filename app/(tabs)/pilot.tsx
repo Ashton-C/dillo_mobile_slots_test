@@ -1,53 +1,72 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform, Image, ImageBackground } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCallback, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
-import { NAMEPLATE_IMAGE_MAP, EMBLEM_GLYPHS, TITLE_LABELS } from '@/services/CosmeticsService';
+import {
+  NAMEPLATE_STYLES,
+  EMBLEM_GLYPHS,
+  TITLE_LABELS,
+  CosmeticCategory,
+  CosmeticItem,
+} from '@/services/CosmeticsService';
 import { GameEvent } from '@/services/FirestoreService';
 import { PilotAvatar, AvatarAccessory } from '@/components/PilotAvatar';
+import { CosmeticCategoryGrid } from '@/components/CosmeticCategoryGrid';
+import { CosmeticPurchaseModal } from '@/components/CosmeticPurchaseModal';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
-const AVATAR_COLORS = [
+const OUTPOST_COLORS = [
+  { label: 'PLASMA',  value: '#9B59FF' }, // default — purple
   { label: 'EMBER',   value: '#FF6B35' },
-  { label: 'VOID',    value: '#1A1A2E' },
-  { label: 'PLASMA',  value: '#9B59FF' },
   { label: 'NEON',    value: '#FF1493' },
   { label: 'ACID',    value: '#39FF14' },
   { label: 'ICE',     value: '#00D4FF' },
   { label: 'GOLD',    value: '#FFD700' },
   { label: 'CRIMSON', value: '#CC2244' },
+  { label: 'VOID',    value: '#5C5C8A' },
 ];
 
-const AVATAR_ACCESSORIES: { label: string; value: AvatarAccessory }[] = [
-  { label: 'NONE',    value: 'none'    },
-  { label: 'VISOR',   value: 'visor'   },
-  { label: 'HELMET',  value: 'helmet'  },
-  { label: 'BADGE',   value: 'badge'   },
-  { label: 'CROWN',   value: 'crown'   },
+// Pilot-related cosmetic categories shown in the Customize modal
+const CUSTOMIZE_CATEGORIES: { category: CosmeticCategory; label: string }[] = [
+  { category: 'SUIT_COLOR', label: 'SUITS' },
+  { category: 'HELMET',     label: 'HELMETS' },
+  { category: 'ACCESSORY',  label: 'ACCESSORIES' },
+  { category: 'FRAME',      label: 'AVATAR FRAMES' },
+  { category: 'NAMEPLATE',  label: 'NAMEPLATES' },
+  { category: 'EMBLEM',     label: 'EMBLEMS' },
+  { category: 'TITLE',      label: 'TITLES' },
 ];
 
 function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
-  const insets = useSafeAreaInsets();
-  const { displayName, avatarColor, avatarAccessory, setDisplayName, setAvatarColor, setAvatarAccessory } = useAuthStore();
+  const { displayName, avatarColor, avatarAccessory, outpostColor, setDisplayName, setOutpostColor } = useAuthStore();
   const activeNameplate = useCosmeticsStore((s) => s.active.NAMEPLATE);
   const activeEmblem    = useCosmeticsStore((s) => s.active.EMBLEM);
   const activeTitle     = useCosmeticsStore((s) => s.active.TITLE);
-  const nameplateImage = NAMEPLATE_IMAGE_MAP[activeNameplate];
+  const nameplateStyle = NAMEPLATE_STYLES[activeNameplate] ?? NAMEPLATE_STYLES.nameplate_none;
+  const hasNameplate   = activeNameplate !== 'nameplate_none';
   const emblemGlyph    = EMBLEM_GLYPHS[activeEmblem] ?? '';
   const titleLabel     = TITLE_LABELS[activeTitle] ?? '';
+  const [pendingPurchase, setPendingPurchase] = useState<CosmeticItem | null>(null);
+  const [customizeToast, setCustomizeToast] = useState<string | null>(null);
   const { credits, attacks, raids, shields, intrusions, extractions, level, xp,
           totalSpins, totalCreditsEarned, totalJackpots,
           totalBreachesAttempted, totalExtractionsAttempted, totalRaidsSuffered } = useGameStore();
   const events = useEventStore((s) => s.events);
+  const markPilotSeen = useEventStore((s) => s.markPilotSeen);
+
+  // Clear the unread-event dot when the player lands on the PILOT tab.
+  useFocusEffect(useCallback(() => { markPilotSeen(); }, [markPilotSeen]));
 
   const [editVisible, setEditVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(false);
@@ -69,6 +88,9 @@ export default function PilotScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
       <ScrollView contentContainerStyle={styles.scroll}>
 
         {/* Avatar section with gradient backdrop */}
@@ -83,17 +105,21 @@ export default function PilotScreen() {
               <PilotAvatar color={avatarColor} size={80} accessory={avatarAccessory as AvatarAccessory} />
             </View>
           </View>
-          <Text style={styles.pilotTitle}>{titleLabel || 'PILOT'}</Text>
-          {nameplateImage ? (
-            <ImageBackground
-              source={nameplateImage}
-              style={styles.nameplate}
-              imageStyle={{ resizeMode: 'contain' }}
+          <Text style={[styles.pilotTitle, titleLabel && { color: nameplateStyle.accentColor }]}>{titleLabel || 'PILOT'}</Text>
+          {hasNameplate ? (
+            <LinearGradient
+              colors={nameplateStyle.gradient as unknown as [string, string]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.nameplateBanner, { borderColor: nameplateStyle.borderColor }]}
             >
-              <Text style={[styles.pilotName, styles.pilotNameOnPlate]}>
-                {emblemGlyph ? `${emblemGlyph}  ` : ''}{displayName ?? '—'}
+              <View style={[styles.nameplateAccent, { backgroundColor: nameplateStyle.accentColor }]} />
+              {emblemGlyph ? <Text style={[styles.nameplateEmblem, { color: nameplateStyle.accentColor }]}>{emblemGlyph}</Text> : null}
+              <Text style={[styles.nameplateName, { color: nameplateStyle.textColor }]} numberOfLines={1}>
+                {displayName ?? '—'}
               </Text>
-            </ImageBackground>
+              <View style={[styles.nameplateAccent, { backgroundColor: nameplateStyle.accentColor }]} />
+            </LinearGradient>
           ) : (
             <Text style={styles.pilotName}>
               {emblemGlyph ? `${emblemGlyph}  ` : ''}{displayName ?? '—'}
@@ -197,55 +223,58 @@ export default function PilotScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
-      />
-
       {/* Customize modal */}
       <Modal visible={customizeVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setCustomizeVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, styles.customizeCard]}>
             <Text style={styles.modalTitle}>CUSTOMIZE PILOT</Text>
 
-            {/* Live preview */}
-            <View style={styles.previewRow}>
-              <PilotAvatar color={avatarColor} size={72} accessory={avatarAccessory as AvatarAccessory} />
-            </View>
+            <ScrollView contentContainerStyle={styles.customizeScroll} showsVerticalScrollIndicator={false}>
+              {/* Live preview */}
+              <View style={styles.previewRow}>
+                <PilotAvatar color={avatarColor} size={72} accessory={avatarAccessory as AvatarAccessory} />
+              </View>
 
-            {/* Color picker */}
-            <Text style={styles.pickerLabel}>SUIT COLOR</Text>
-            <View style={styles.colorGrid}>
-              {AVATAR_COLORS.map((c) => (
-                <Pressable
-                  key={c.value}
-                  onPress={() => { Haptics.selectionAsync(); setAvatarColor(c.value); }}
-                  style={[styles.colorSwatch, { backgroundColor: c.value }, avatarColor === c.value && styles.swatchActive]}
+              {/* Outpost color picker */}
+              <Text style={styles.pickerLabel}>OUTPOST COLOR</Text>
+              <View style={styles.colorGrid}>
+                {OUTPOST_COLORS.map((c) => (
+                  <Pressable
+                    key={c.value}
+                    onPress={() => { Haptics.selectionAsync(); setOutpostColor(c.value); }}
+                    style={[styles.colorSwatch, { backgroundColor: c.value }, outpostColor === c.value && styles.swatchActive]}
+                  />
+                ))}
+              </View>
+
+              {/* Cosmetic categories — owned items full color, locked dim, click locked → purchase */}
+              {CUSTOMIZE_CATEGORIES.map(({ category, label }) => (
+                <CosmeticCategoryGrid
+                  key={category}
+                  label={label}
+                  category={category}
+                  onLockedPress={setPendingPurchase}
+                  onEquipped={(item) => { setCustomizeToast(`Equipped: ${item.name}`); setTimeout(() => setCustomizeToast(null), 1800); }}
                 />
               ))}
-            </View>
+            </ScrollView>
 
-            {/* Accessory picker */}
-            <Text style={styles.pickerLabel}>ACCESSORY</Text>
-            <View style={styles.accessoryRow}>
-              {AVATAR_ACCESSORIES.map((a) => (
-                <Pressable
-                  key={a.value}
-                  onPress={() => { Haptics.selectionAsync(); setAvatarAccessory(a.value); }}
-                  style={[styles.accessoryChip, avatarAccessory === a.value && styles.accessoryChipActive]}
-                >
-                  <Text style={[styles.accessoryText, avatarAccessory === a.value && { color: Colors.textPrimary }]}>{a.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+            {customizeToast && (
+              <Text style={styles.customizeToast}>{customizeToast}</Text>
+            )}
 
             <Pressable onPress={() => setCustomizeVisible(false)} style={styles.modalConfirm}>
-              <Text style={styles.modalConfirmText}>DONE</Text>
+              <Text style={styles.modalConfirmText}>BACK</Text>
             </Pressable>
           </View>
         </View>
       </Modal>
+
+      <CosmeticPurchaseModal
+        item={pendingPurchase}
+        onDismiss={() => setPendingPurchase(null)}
+        onResult={(msg) => { setCustomizeToast(msg); setTimeout(() => setCustomizeToast(null), 2200); }}
+      />
 
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="PILOT LEGEND" accentColor={Colors.info}>
         <LegendSection label="XP & LEVELING" />
@@ -275,6 +304,8 @@ function StatCard({ label, value, color }: { label: string; value: string; color
 }
 
 function logMeta(event: GameEvent): { icon: string; summary: string; color: string } {
+  const lost   = (event.creditsLost   ?? 0).toLocaleString();
+  const gained = (event.creditsGained ?? 0).toLocaleString();
   switch (event.type) {
     case 'ATTACK_INCOMING':
       return { icon: '⚠', summary: `Breach attempt by ${event.fromDisplayName}`, color: Colors.danger };
@@ -282,15 +313,15 @@ function logMeta(event: GameEvent): { icon: string; summary: string; color: stri
       return { icon: '⚠', summary: `Extraction beam from ${event.fromDisplayName}`, color: Colors.accent };
     case 'ATTACK_RESOLVED':
       return event.attackerWon
-        ? { icon: '✗', summary: `Breached by ${event.fromDisplayName} — lost ${event.creditsLost ?? 0} CR`, color: Colors.danger }
+        ? { icon: '✗', summary: `Breached by ${event.fromDisplayName} — lost ${lost} CR`, color: Colors.danger }
         : { icon: '◉', summary: `Breach by ${event.fromDisplayName} was repelled`, color: Colors.shield };
     case 'RAID_RESOLVED':
       return event.attackerWon
-        ? { icon: '✗', summary: `${event.fromDisplayName} siphoned ${event.creditsLost ?? 0} CR`, color: Colors.accent }
+        ? { icon: '✗', summary: `${event.fromDisplayName} siphoned ${lost} CR`, color: Colors.accent }
         : { icon: '◉', summary: `Extraction blocked — VAULT held`, color: Colors.shield };
     case 'COMBAT_RESULT':
       return event.attackerWon
-        ? { icon: '⚔', summary: `Raid on ${event.fromDisplayName} succeeded +${event.creditsGained ?? 0} CR`, color: Colors.success }
+        ? { icon: '⚔', summary: `Raid on ${event.fromDisplayName} succeeded · +${gained} CR`, color: Colors.success }
         : { icon: '✗', summary: `Raid on ${event.fromDisplayName} failed`, color: Colors.textMuted };
     default:
       return { icon: '·', summary: 'Transmission received', color: Colors.textMuted };
@@ -304,13 +335,19 @@ function CombatLogRow({ event }: { event: GameEvent }) {
     : age < 3_600_000 ? `${Math.floor(age / 60_000)}m ago`
     : age < 86_400_000 ? `${Math.floor(age / 3_600_000)}h ago`
     : `${Math.floor(age / 86_400_000)}d ago`;
+  // Highlight events that landed in the last minute so the player can spot
+  // fresh combat at a glance when they open the PILOT tab.
+  const isFresh = age < 60_000;
 
   return (
-    <View style={styles.logRow}>
+    <View style={[styles.logRow, isFresh && { borderLeftWidth: 2, borderLeftColor: color, paddingLeft: 6 }]}>
       <View style={[styles.logDot, { backgroundColor: color }]} />
       <View style={styles.logContent}>
         <Text style={[styles.logIcon, { color }]}>{icon}  <Text style={styles.logSummary}>{summary}</Text></Text>
-        <Text style={styles.logAge}>{ageLabel}</Text>
+        <Text style={styles.logAge}>
+          {ageLabel}
+          {isFresh ? <Text style={{ color: Colors.success }}>  · NEW</Text> : null}
+        </Text>
       </View>
     </View>
   );
@@ -355,15 +392,31 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     letterSpacing: 3,
   },
-  nameplate: {
-    width: 240,
-    height: 56,
+  nameplateBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
+    marginTop: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+    minWidth: 180,
+    gap: 8,
   },
-  pilotNameOnPlate: {
-    color: Colors.textPrimary,
+  nameplateAccent: {
+    width: 12,
+    height: 2,
+    opacity: 0.8,
+  },
+  nameplateEmblem: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+  },
+  nameplateName: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 3,
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
@@ -588,5 +641,19 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 1,
   },
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
+  customizeCard: {
+    maxHeight: '85%',
+    width: '92%',
+  },
+  customizeScroll: {
+    gap: Spacing.sm,
+  },
+  customizeToast: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.success,
+    letterSpacing: 2,
+    textAlign: 'center',
+    fontWeight: Typography.weights.bold,
+    paddingVertical: 6,
+  },
 });

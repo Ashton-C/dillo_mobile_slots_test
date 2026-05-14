@@ -7,7 +7,8 @@ import {
   outpostUpgradeCost,
   outpostUpgradeDuration,
 } from '@/models/Habitat';
-import { writeHabitatState, HabitatSnapshot } from '@/services/FirestoreService';
+import { writeHabitatState, writePlayerIndexPartial, HabitatSnapshot } from '@/services/FirestoreService';
+import { auth } from '@/lib/firebase';
 
 interface HabitatState {
   habitatId: string | null;
@@ -20,6 +21,9 @@ interface HabitatState {
   setHabitatId: (id: string) => void;
   startBuild: (type: BuildingType, subtractCredits: (n: number) => boolean) => boolean;
   upgradeOutpost: (subtractCredits: (n: number) => boolean) => boolean;
+  // Reduces the active build's remaining time. `'instant'` completes the
+  // build on the next tick. Used by SkipBuildModal (CR / rewarded-ad / IAP).
+  applyBuildSkip: (skip: number | 'instant') => void;
   tick: () => void;
   syncFromFirestore: (data: HabitatSnapshot) => void;
   clearCompletedBuilding: () => void;
@@ -103,6 +107,18 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
     return true;
   },
 
+  applyBuildSkip(skip) {
+    const { activeBuildJob, habitatId } = get();
+    if (!activeBuildJob) return;
+    const newCompletesAt =
+      skip === 'instant'
+        ? Date.now()
+        : Math.max(Date.now(), activeBuildJob.completesAt - skip);
+    const job: ActiveBuildJob = { ...activeBuildJob, completesAt: newCompletesAt };
+    set({ activeBuildJob: job, msUntilComplete: Math.max(0, newCompletesAt - Date.now()) });
+    persist(habitatId, { activeBuildJob: job });
+  },
+
   tick() {
     const { activeBuildJob, buildingLevels, outpostLevel, habitatId } = get();
     if (!activeBuildJob) return;
@@ -114,6 +130,17 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
         const newOutpostLevel = activeBuildJob.targetLevel;
         set({ outpostLevel: newOutpostLevel, activeBuildJob: null, msUntilComplete: 0 });
         persist(habitatId, { outpostLevel: newOutpostLevel, activeBuildJob: null });
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          writePlayerIndexPartial(uid, { outpostLevel: newOutpostLevel }).catch(console.error);
+        }
+        // Outpost level-ups grant +10 ✦ stardust as a milestone reward.
+        // Lazy require avoids the useHabitatStore ↔ useGameStore static
+        // circular import (useGameStore.tickSpinRefill already pulls
+        // habitat for the spin cap).
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { useGameStore } = require('@/store/useGameStore') as typeof import('@/store/useGameStore');
+        useGameStore.getState().addStardust(10);
       } else {
         const newLevels = {
           ...buildingLevels,

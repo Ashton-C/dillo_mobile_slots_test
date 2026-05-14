@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticBuildStart } from '@/constants/haptics';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
+import { TopBar } from '@/components/TopBar';
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
@@ -24,7 +25,6 @@ function formatTimer(ms: number): string {
 }
 
 export default function HabitatScreen() {
-  const insets = useSafeAreaInsets();
   const { credits } = useGameStore();
   const { buildingLevels, outpostLevel, activeBuildJob, msUntilComplete } = useHabitatStore();
 
@@ -45,6 +45,10 @@ export default function HabitatScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+
+      <TopBar
+        right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
+      />
 
       {/* Outpost banner */}
       <LinearGradient
@@ -123,12 +127,6 @@ export default function HabitatScreen() {
         onClose={() => setOutpostModalVisible(false)}
       />
 
-      <IconButton
-        glyph="?"
-        onPress={() => setLegendVisible(true)}
-        style={[styles.legendBtnPos, { top: insets.top + 6 }]}
-      />
-
       <LegendCard visible={legendVisible} onDismiss={() => setLegendVisible(false)} title="BASE LEGEND" accentColor={Colors.credits}>
         <LegendSection label="BUILDINGS" />
         <LegendRow left="GENERATOR" right="Passive +level×20 CR / 30s" color={Colors.credits} />
@@ -196,6 +194,4 @@ const styles = StyleSheet.create({
   builderBadgeIdle: { borderColor: Colors.border },
   builderText: { fontSize: Typography.sizes.xs, color: Colors.accent, fontWeight: Typography.weights.bold, letterSpacing: 1 },
   builderTextIdle: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 1 },
-
-  legendBtnPos: { position: 'absolute', right: Spacing.md, zIndex: 50 },
 });

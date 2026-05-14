@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react';
-import { View, LogBox } from 'react-native';
+import { View, LogBox, AppState, Platform } from 'react-native';
+
+// Lazy-required so Expo Go and pre-`npm install` builds don't crash.
+async function requestAttIfNeeded() {
+  if (Platform.OS !== 'ios') return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const att = require('expo-tracking-transparency');
+    if (att?.requestTrackingPermissionsAsync) {
+      await att.requestTrackingPermissionsAsync();
+    }
+  } catch {
+    // Module not installed yet — fine in dev / Expo Go.
+  }
+}
 
 LogBox.ignoreLogs(['It looks like you might be using shared value']);
 import { Stack } from 'expo-router';
@@ -10,7 +24,7 @@ import { Colors } from '@/constants/theme';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
-import { useGameStore } from '@/store/useGameStore';
+import { useGameStore, flushPendingPersist } from '@/store/useGameStore';
 import { useEventStore } from '@/store/useEventStore';
 import { UsernameSetupModal } from '@/components/UsernameSetupModal';
 import { EventBanner } from '@/components/EventBanner';
@@ -18,6 +32,7 @@ import { BuildCompleteBanner } from '@/components/BuildCompleteBanner';
 import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarousel';
 import { soundService } from '@/services/SoundService';
 import { adsService } from '@/services/AdsService';
+import { iapService } from '@/services/IapService';
 
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
@@ -39,12 +54,36 @@ export default function RootLayout() {
       tickSpinRefill();
     }, 1_000);
     const generatorInterval = setInterval(tickGeneratorIncome, 30_000);
+    // Track foreground/background transitions so we can flush on suspend AND
+    // immediately re-tick on resume — `setInterval` doesn't run while the app
+    // is backgrounded, so a build that should have completed while away
+    // would otherwise show the wrong remaining time until the next interval
+    // fires.
+    let lastActiveAt = Date.now();
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        flushPendingPersist();
+        lastActiveAt = Date.now();
+      } else if (state === 'active') {
+        const awayMs = Date.now() - lastActiveAt;
+        // Only catch up if we were actually away for >2s (filters out the
+        // momentary inactive→active flicker on iOS notification permission
+        // sheets, etc).
+        if (awayMs > 2_000) {
+          tickHabitat();
+          tickSpinRefill();
+          tickGeneratorIncome();
+          tickAnomaly();
+        }
+      }
+    });
 
     return () => {
       unsubAuth();
       clearInterval(anomalyInterval);
       clearInterval(secondInterval);
       clearInterval(generatorInterval);
+      appStateSub.remove();
     };
   }, []);
 
@@ -60,6 +99,16 @@ export default function RootLayout() {
     if (!user?.uid) return;
     const unsub = subscribeToEvents(user.uid);
     return unsub;
+  }, [user?.uid]);
+
+  // Configure RevenueCat with the Firebase UID once we have it. Requesting
+  // App Tracking Transparency on iOS is best done shortly after launch and
+  // before the first ad request — call it here, lazily, so it doesn't block
+  // anything else.
+  useEffect(() => {
+    if (!user?.uid) return;
+    void iapService.init(user.uid);
+    void requestAttIfNeeded();
   }, [user?.uid]);
 
   return (

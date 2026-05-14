@@ -1,16 +1,32 @@
 import { Tabs } from 'expo-router';
 import { StyleSheet, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEventStore } from '@/store/useEventStore';
 import { Colors, Typography } from '@/constants/theme';
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
+function TabIcon({ label, focused, dot }: { label: string; focused: boolean; dot?: boolean }) {
   return (
     <View style={styles.iconContainer}>
-      <Text style={[styles.iconLabel, focused && styles.iconLabelActive]}>
+      <Text
+        style={[styles.iconLabel, focused && styles.iconLabelActive]}
+        numberOfLines={1}
+        allowFontScaling={false}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
         {label}
       </Text>
+      {dot ? <View style={styles.notifyDot} /> : null}
     </View>
   );
+}
+
+function PilotTabIcon({ focused }: { focused: boolean }) {
+  // Subscribe to events array so the dot updates as new events arrive.
+  const events = useEventStore((s) => s.events);
+  const pilotLastSeenAt = useEventStore((s) => s.pilotLastSeenAt);
+  const hasUnread = events.some((e) => e.timestamp > pilotLastSeenAt);
+  return <TabIcon label="PILOT" focused={focused} dot={hasUnread} />;
 }
 
 export default function TabLayout() {
@@ -21,8 +37,9 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: [
           styles.tabBar,
-          { height: 60 + insets.bottom, paddingBottom: 8 + insets.bottom },
+          { height: 68 + insets.bottom, paddingBottom: 8 + insets.bottom },
         ],
+        tabBarItemStyle: styles.tabBarItem,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarShowLabel: false,
@@ -60,7 +77,7 @@ export default function TabLayout() {
         name="pilot"
         options={{
           title: 'Pilot',
-          tabBarIcon: ({ focused }) => <TabIcon label="PILOT" focused={focused} />,
+          tabBarIcon: ({ focused }) => <PilotTabIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -86,18 +103,35 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     borderTopWidth: 1,
   },
+  tabBarItem: {
+    paddingHorizontal: 0,
+  },
   iconContainer: {
+    width: '100%',
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 8,
   },
   iconLabel: {
-    fontSize: Typography.sizes.xs,
+    fontSize: 10,
     fontWeight: Typography.weights.bold,
-    letterSpacing: 2,
     color: Colors.textMuted,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   iconLabelActive: {
     color: Colors.primary,
+  },
+  notifyDot: {
+    position: 'absolute',
+    top: 2,
+    right: '24%',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.danger,
+    borderWidth: 1,
+    borderColor: Colors.surface,
   },
 });

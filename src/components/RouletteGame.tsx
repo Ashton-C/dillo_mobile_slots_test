@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -11,23 +11,33 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { writeCombatRequest, PlayerIndexEntry } from '@/services/FirestoreService';
+import {
+  writeCombatRequest,
+  subscribeToCombatRequest,
+  PlayerIndexEntry,
+  CombatRequestResolution,
+} from '@/services/FirestoreService';
+import { CombatResolutionChip } from '@/components/CombatResolutionChip';
 import { auth } from '@/lib/firebase';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 type BetType = 'EVEN' | 'SECTOR' | 'JACKPOT';
 type Phase = 'BET' | 'SPINNING' | 'DONE';
 
-const BET_CONFIGS: Record<BetType, { label: string; odds: string; segments: number; winPower: number; color: string; creditReward: number }> = {
-  EVEN:    { label: 'EVEN',    odds: '50%', segments: 6, winPower: 75,  color: Colors.primary,  creditReward: 150 },
-  SECTOR:  { label: 'SECTOR',  odds: '33%', segments: 4, winPower: 110, color: Colors.accent,   creditReward: 225 },
-  JACKPOT: { label: 'JACKPOT', odds: '17%', segments: 2, winPower: 145, color: Colors.credits,  creditReward: 350 },
+const BET_CONFIGS: Record<BetType, { label: string; odds: string; segments: number; winPower: number; color: string; lootHint: string }> = {
+  EVEN:    { label: 'EVEN',    odds: '42%', segments: 5, winPower: 75,  color: Colors.primary, lootHint: '5%'  },
+  SECTOR:  { label: 'SECTOR',  odds: '25%', segments: 3, winPower: 110, color: Colors.accent,  lootHint: '8%'  },
+  JACKPOT: { label: 'JACKPOT', odds: '8%',  segments: 1, winPower: 145, color: Colors.credits, lootHint: '12%' },
 };
 
-// 12 segments: EVEN×6, SECTOR×4, JACKPOT×2
-const SEGMENT_ZONES: BetType[] = [
-  'EVEN', 'EVEN', 'SECTOR', 'EVEN', 'SECTOR', 'EVEN',
-  'EVEN', 'JACKPOT', 'EVEN', 'SECTOR', 'EVEN', 'JACKPOT',
+// 12 segments: EVEN×5, SECTOR×3, JACKPOT×1, MISS×3.
+// MISS-only segments are decoration where landing is always a loss; they
+// shrink the win-zone footprint so visually the wheel matches the new odds.
+const MISS = 'MISS' as const;
+type SegmentZone = BetType | typeof MISS;
+const SEGMENT_ZONES: SegmentZone[] = [
+  'EVEN', 'SECTOR', 'EVEN', MISS, 'EVEN', 'JACKPOT',
+  'EVEN', MISS, 'SECTOR', 'EVEN', MISS, 'SECTOR',
 ];
 
 const WHEEL_SIZE   = 240;
@@ -77,8 +87,8 @@ function WheelView({
         const x = WHEEL_CENTER + Math.cos(a) * DOT_RADIUS - DOT_SIZE / 2;
         const y = WHEEL_CENTER + Math.sin(a) * DOT_RADIUS - DOT_SIZE / 2;
         const isLanded = landedIdx === i;
-        const color = BET_CONFIGS[zone].color;
-        const isHighlighted = activeBet === zone;
+        const color = zone === MISS ? Colors.textMuted : BET_CONFIGS[zone].color;
+        const isHighlighted = zone !== MISS && activeBet === zone;
         return (
           <View
             key={i}
@@ -191,7 +201,7 @@ function BetButtons({
           >
             <Text style={[betStyles.label, { color: cfg.color }]}>{cfg.label}</Text>
             <Text style={betStyles.oddsText}>{cfg.odds}</Text>
-            <Text style={[betStyles.credit, { color: cfg.color }]}>+{cfg.creditReward} CR ◈</Text>
+            <Text style={[betStyles.credit, { color: cfg.color }]}>{cfg.lootHint} LOOT</Text>
           </Pressable>
         );
       })}
@@ -241,12 +251,16 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
   const [landedIdx, setLandedIdx] = useState<number | null>(null);
   const [won, setWon] = useState(false);
   const [resultText, setResultText] = useState('');
+  const [resolution, setResolution] = useState<CombatRequestResolution | null>(null);
+  const requestUnsubRef = useRef<(() => void) | null>(null);
 
   const ballAngle = useSharedValue(-Math.PI / 2);
 
   useEffect(() => {
     if (!visible) {
       cancelAnimation(ballAngle);
+      requestUnsubRef.current?.();
+      requestUnsubRef.current = null;
       return;
     }
     setPhase('BET');
@@ -254,8 +268,13 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
     setLandedIdx(null);
     setWon(false);
     setResultText('');
+    setResolution(null);
     ballAngle.value = -Math.PI / 2;
   }, [visible]);
+
+  useEffect(() => () => {
+    requestUnsubRef.current?.();
+  }, []);
 
   function startSpin() {
     if (!activeBet) return;
@@ -295,6 +314,15 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
         defenderUid: target.uid,
         type: combatType,
         attackerPower: power,
+      }).then((requestId) => {
+        requestUnsubRef.current?.();
+        requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {
+          setResolution(r);
+          if (r.status === 'RESOLVED') {
+            requestUnsubRef.current?.();
+            requestUnsubRef.current = null;
+          }
+        });
       }).catch(console.error);
     }
 
@@ -342,7 +370,7 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
           )}
 
           <Text style={styles.rewardBanner}>
-            EVEN 50% → 150 CR  ·  SECTOR 33% → 225 CR  ·  JACKPOT 17% → 350 CR
+            EVEN 42%  ·  SECTOR 25%  ·  JACKPOT 8%  ·  loot scales with target wallet
           </Text>
 
           <View style={styles.wheelWrap}>
@@ -358,28 +386,11 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
           )}
 
           {phase === 'DONE' && (
-            <View style={styles.powerRow}>
-              <View style={styles.powerChip}>
-                {won ? (
-                  <>
-                    <Text style={styles.powerChipLabel}>WON</Text>
-                    <Text style={[styles.powerChipVal, { color: Colors.success, fontSize: Typography.sizes.md }]}>
-                      +{activeBetCfg?.creditReward ?? 0} CR ◈
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.powerChipLabel}>YOUR POWER</Text>
-                    <Text style={[styles.powerChipVal, { color: Colors.danger }]}>8</Text>
-                  </>
-                )}
-              </View>
-              <Text style={styles.dot}>·</Text>
-              <View style={styles.powerChip}>
-                <Text style={styles.powerChipLabel}>DEFENDER</Text>
-                <Text style={styles.powerChipVal}>SERVER</Text>
-              </View>
-            </View>
+            <CombatResolutionChip
+              won={won}
+              power={won ? (activeBetCfg?.winPower ?? 8) : 8}
+              resolution={resolution}
+            />
           )}
 
           {phase === 'BET' && (

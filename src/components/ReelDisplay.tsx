@@ -5,7 +5,9 @@ import Animated, {
   withTiming,
   withSequence,
   withSpring,
+  withDelay,
   cancelAnimation,
+  runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -45,17 +47,24 @@ function randomSymbol(): SlotSymbol {
   return ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
 }
 
-interface ReelProps {
-  symbol: SlotSymbol;
+interface ReelColumnProps {
+  // Symbols that should land in each visible row (top→bottom).
+  targetSymbols: SlotSymbol[];
   isSpinning: boolean;
-  isWinning: boolean;
-  colIndex?: number;
-  decelStartMs?: number;
-  highlightColor?: string | null;
-  cellHeight?: number;
-  symbolSize?: number;
+  colIndex: number;
+  cellHeight: number;
+  symbolSize: number;
   glyphs: SymbolGlyphs;
   cellBg: string;
+  borderColor: string;
+  // Per-row win highlight color (null = no highlight on that row).
+  cellHighlights: (string | null)[];
+  // Optional middle-row background tint (3x3 mid row, 5x5 center row).
+  midRowBg?: string;
+  // Whether to draw 1px horizontal dividers between rows.
+  showHDividers: boolean;
+  // Whether to draw a 1px vertical divider on the LEFT edge (for col > 0).
+  showLeftDivider: boolean;
 }
 
 function isImageGlyph(g: SymbolGlyph): boolean {
@@ -100,154 +109,217 @@ function GlyphView({ glyph, color, fontSize, animated, animatedStyle }: GlyphVie
   );
 }
 
-// Each reel renders a clipped strip of STRIP_LEN + 1 cells that scrolls vertically.
-// Symbols slide upward — new symbols enter from the bottom, old ones exit at the top.
-// This gives the "continuous scroll" look of a physical reel instead of random flashing.
-const STRIP_LEN = 20;
-// Strip cells are slightly smaller than the container so partial cells are visible
-// above and below the center, revealing ~3 symbol positions to the eye at once.
-const STRIP_CELL_RATIO = 0.72;
+// Each column is one continuous scrolling strip that spans every visible row.
+// Symbols flow through the entire window from top to bottom while the strip
+// translates upward; the last `numRows` cells of the strip are the target
+// landing symbols. Single withTiming + cubic-out easing gives the buttery
+// slot-machine feel (fast at start, soft deceleration into the landing).
+//
+// Total duration per column = COL_DURATION_MS, with each column starting
+// COL_STAGGER_MS later than the previous. For SPIN_ANIM_MS=2200ms the last
+// column (5x5 = col 4) lands around 2040ms, leaving 160ms for the result
+// reveal.
+const STRIP_PAD = 28;
+const COL_STAGGER_MS = 160;
+const COL_DURATION_MS = 1400;
 
-function Reel({ symbol, isSpinning, isWinning, colIndex = 0, decelStartMs = 500, highlightColor, cellHeight = 100, symbolSize, glyphs, cellBg }: ReelProps) {
-  const STRIP_CELL_H = Math.round(cellHeight * STRIP_CELL_RATIO);
-  const TOTAL_H = (STRIP_LEN + 1) * STRIP_CELL_H;
+function ReelColumn({
+  targetSymbols,
+  isSpinning,
+  colIndex,
+  cellHeight,
+  symbolSize,
+  glyphs,
+  cellBg,
+  borderColor,
+  cellHighlights,
+  midRowBg,
+  showHDividers,
+  showLeftDivider,
+}: ReelColumnProps) {
+  const numRows = targetSymbols.length;
+  const stripLen = STRIP_PAD + numRows;
+  const finalY = -(STRIP_PAD * cellHeight);
 
-  const centerOn = (i: number) => (cellHeight - STRIP_CELL_H) / 2 - i * STRIP_CELL_H;
-
-  const stripRef = useRef<SlotSymbol[]>(Array.from({ length: STRIP_LEN + 1 }, () => symbol));
+  const stripRef = useRef<SlotSymbol[]>(
+    Array.from({ length: stripLen }, (_, i) => targetSymbols[Math.max(0, i - STRIP_PAD)] ?? targetSymbols[0])
+  );
   const [, forceUpdate] = useState(0);
 
-  const translateY = useSharedValue(centerOn(0));
-  const glowOp     = useSharedValue(0);
-  const cellScale  = useSharedValue(1);
+  const translateY = useSharedValue(finalY);
+  const winGlow    = useSharedValue(0);
+  const winPop     = useSharedValue(1);
 
-  const intervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const playLandSound = () => {
+    void soundService.play((`reelStop${colIndex}` as SoundKey));
+  };
 
-  function clearAll() {
-    intervalsRef.current.forEach(clearInterval);
-    timersRef.current.forEach(clearTimeout);
-    intervalsRef.current = [];
-    timersRef.current = [];
-  }
-
+  // Spin / land animation
   useEffect(() => {
     if (isSpinning) {
-      clearAll();
-      glowOp.value = 0;
-
-      // Build strip: STRIP_LEN random symbols, target symbol at the end
-      const strip = Array.from({ length: STRIP_LEN }, randomSymbol) as SlotSymbol[];
-      strip.push(symbol);
+      // Build a fresh strip: random cells first, then the target symbols at the bottom.
+      const strip: SlotSymbol[] = [];
+      for (let i = 0; i < STRIP_PAD; i++) strip.push(randomSymbol());
+      for (const s of targetSymbols) strip.push(s);
       stripRef.current = strip;
-      forceUpdate(n => n + 1);
+      forceUpdate((n) => n + 1);
 
-      // Start at top of strip
       cancelAnimation(translateY);
-      translateY.value = centerOn(0);
+      translateY.value = 0;
+      winGlow.value = 0;
 
-      // Phase 1 — fast scroll: animate one cell per 95ms interval, symbols slide upward
-      let currentIdx = 0;
-      const scrollToNext = (duration: number) => {
-        currentIdx = Math.min(currentIdx + 1, STRIP_LEN - 1);
-        translateY.value = withTiming(centerOn(currentIdx), {
-          duration,
-          easing: Easing.linear,
-        });
-      };
+      const startDelay = colIndex * COL_STAGGER_MS;
 
-      const fast = setInterval(() => scrollToNext(90), 95);
-      intervalsRef.current.push(fast);
-
-      // Phase 2 — medium after decelStartMs
-      timersRef.current.push(setTimeout(() => {
-        clearInterval(fast);
-        intervalsRef.current = intervalsRef.current.filter(i => i !== fast);
-        const medium = setInterval(() => scrollToNext(130), 140);
-        intervalsRef.current.push(medium);
-
-        // Phase 3 — slow deceleration
-        timersRef.current.push(setTimeout(() => {
-          clearInterval(medium);
-          intervalsRef.current = intervalsRef.current.filter(i => i !== medium);
-          const slow = setInterval(() => scrollToNext(230), 250);
-          intervalsRef.current.push(slow);
-
-          // Phase 4 — land on target (index STRIP_LEN)
-          timersRef.current.push(setTimeout(() => {
-            clearInterval(slow);
-            intervalsRef.current = intervalsRef.current.filter(i => i !== slow);
-            void soundService.play((`reelStop${colIndex}` as SoundKey));
-            // Overshoot slightly then spring back for the physical "clunk"
-            translateY.value = withSequence(
-              withTiming(centerOn(STRIP_LEN) - 10, { duration: 180, easing: Easing.out(Easing.quad) }),
-              withSpring(centerOn(STRIP_LEN), { damping: 12, stiffness: 300 }),
-            );
-          }, 280));
-        }, 300));
-      }, decelStartMs));
-
-    } else if (isWinning) {
-      clearAll();
-      translateY.value = withTiming(centerOn(STRIP_LEN), { duration: 120 });
-      glowOp.value = withSequence(
-        withTiming(1, { duration: 180 }),
-        withTiming(0.45, { duration: 500 }),
-        withTiming(0.85, { duration: 280 }),
-        withTiming(0, { duration: 650 }),
-      );
-      // Pop only the landing (winning) symbol
-      cellScale.value = 1;
-      cellScale.value = withSequence(
-        withSpring(1.2, { damping: 6, stiffness: 260 }),
-        withTiming(1, { duration: 320 }),
+      translateY.value = withDelay(
+        startDelay,
+        withTiming(
+          finalY,
+          { duration: COL_DURATION_MS, easing: Easing.out(Easing.cubic) },
+          (finished) => {
+            if (finished) {
+              // Soft "clunk": a small overshoot past the landing, then spring back.
+              translateY.value = withSequence(
+                withTiming(finalY - 6, { duration: 90, easing: Easing.out(Easing.quad) }),
+                withSpring(finalY, { damping: 14, stiffness: 280 }),
+              );
+              runOnJS(playLandSound)();
+            }
+          },
+        ),
       );
     } else {
-      clearAll();
-      translateY.value = withTiming(centerOn(STRIP_LEN), { duration: 150 });
-      glowOp.value = withTiming(0, { duration: 200 });
-      cellScale.value = withTiming(1, { duration: 150 });
+      // Snap to landed position with the target symbols.
+      const strip: SlotSymbol[] = [];
+      for (let i = 0; i < STRIP_PAD; i++) strip.push(targetSymbols[0]);
+      for (const s of targetSymbols) strip.push(s);
+      stripRef.current = strip;
+      forceUpdate((n) => n + 1);
+      cancelAnimation(translateY);
+      translateY.value = finalY;
     }
+  }, [isSpinning]);
 
-    return clearAll;
-  }, [isSpinning, isWinning]);
-
-  // Update strip target when symbol prop changes between spins
+  // Win highlight pulse — independent of spin, fires when a row wins.
+  const hasAnyWin = cellHighlights.some((c) => c !== null);
   useEffect(() => {
-    if (!isSpinning) {
-      stripRef.current = Array.from({ length: STRIP_LEN + 1 }, () => symbol);
-      translateY.value = centerOn(STRIP_LEN);
-      forceUpdate(n => n + 1);
+    if (!isSpinning && hasAnyWin) {
+      winGlow.value = withSequence(
+        withTiming(1,    { duration: 180 }),
+        withTiming(0.45, { duration: 500 }),
+        withTiming(0.85, { duration: 280 }),
+        withTiming(0,    { duration: 650 }),
+      );
+      winPop.value = 1;
+      winPop.value = withSequence(
+        withSpring(1.18, { damping: 6, stiffness: 260 }),
+        withTiming(1, { duration: 320 }),
+      );
+    } else if (isSpinning) {
+      winGlow.value = 0;
+      winPop.value = 1;
     }
-  }, [symbol, isSpinning]);
+  }, [isSpinning, hasAnyWin]);
 
-  const stripStyle     = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
-  const glowStyle      = useAnimatedStyle(() => ({ opacity: glowOp.value }));
-  const cellScaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: cellScale.value }] }));
+  const stripStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: winGlow.value }));
+  const popStyle  = useAnimatedStyle(() => ({ transform: [{ scale: winPop.value }] }));
 
-  const glowColor = highlightColor ?? SYMBOL_COLORS[symbol];
-  const fontSize = symbolSize ?? (cellHeight >= 90 ? Typography.sizes.hero : Math.round(Typography.sizes.xl * STRIP_CELL_RATIO));
+  const containerH = numRows * cellHeight + (showHDividers ? Math.max(0, numRows - 1) : 0);
+  const midRowIdx = Math.floor(numRows / 2);
 
   return (
-    <View style={[styles.reelCell, { height: cellHeight, backgroundColor: cellBg, overflow: 'hidden' }]}>
-      {/* Win glow backdrop */}
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: glowColor + '28' }, glowStyle]}
-      />
-      {/* Scrolling symbol strip — only the landing cell needs Animated.Text */}
-      <Animated.View style={[{ position: 'absolute', left: 0, right: 0, top: 0, height: TOTAL_H }, stripStyle]}>
-        {stripRef.current.map((sym, i) => (
-          <View key={i} style={{ height: STRIP_CELL_H, alignItems: 'center', justifyContent: 'center' }}>
-            <GlyphView
-              glyph={glyphs[sym]}
-              color={SYMBOL_COLORS[sym]}
-              fontSize={fontSize}
-              animated={i === STRIP_LEN}
-              animatedStyle={cellScaleStyle}
-            />
-          </View>
-        ))}
+    <View style={{ flex: 1, height: containerH, backgroundColor: cellBg, overflow: 'hidden' }}>
+      {/* Vertical divider on the left edge for non-leftmost columns */}
+      {showLeftDivider && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 1,
+            backgroundColor: borderColor + '66',
+            zIndex: 5,
+          }}
+        />
+      )}
+
+      {/* Mid-row background tint — sits behind the scrolling strip */}
+      {midRowBg && numRows > 1 && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: midRowIdx * cellHeight + (showHDividers ? midRowIdx : 0),
+            height: cellHeight,
+            backgroundColor: midRowBg,
+          }}
+        />
+      )}
+
+      {/* Per-row win glow overlays — pulse on win, sit behind the strip */}
+      {cellHighlights.map((color, rowIdx) =>
+        color ? (
+          <Animated.View
+            key={`hl${rowIdx}`}
+            pointerEvents="none"
+            style={[
+              {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: rowIdx * cellHeight + (showHDividers ? rowIdx : 0),
+                height: cellHeight,
+                backgroundColor: color + '28',
+              },
+              glowStyle,
+            ]}
+          />
+        ) : null,
+      )}
+
+      {/* The scrolling strip — single continuous Animated.View carries every glyph */}
+      <Animated.View pointerEvents="none" style={[{ width: '100%' }, stripStyle]}>
+        {stripRef.current.map((sym, i) => {
+          const visibleRowIdx = i - STRIP_PAD;
+          const inLandedWindow = visibleRowIdx >= 0 && visibleRowIdx < numRows;
+          const isHighlightedRow = inLandedWindow && cellHighlights[visibleRowIdx] !== null;
+          return (
+            <View key={i} style={{ height: cellHeight, alignItems: 'center', justifyContent: 'center' }}>
+              <GlyphView
+                glyph={glyphs[sym]}
+                color={SYMBOL_COLORS[sym]}
+                fontSize={symbolSize}
+                animated={isHighlightedRow}
+                animatedStyle={popStyle}
+              />
+            </View>
+          );
+        })}
       </Animated.View>
+
+      {/* Horizontal dividers — drawn on top so they always crisp */}
+      {showHDividers &&
+        Array.from({ length: numRows - 1 }, (_, i) => (
+          <View
+            key={`hd${i}`}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: (i + 1) * cellHeight + i,
+              height: 1,
+              backgroundColor: borderColor + '66',
+              zIndex: 4,
+            }}
+          />
+        ))}
     </View>
   );
 }
@@ -467,61 +539,53 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
     transform: [{ scale: trackScale.value }],
   }));
 
-  // --- 1x3 single-row rendering (outpost levels 1-2) ---
-  if (grid.size === '1x3') {
-    const midRowIdx = reelWindow ? Math.floor(reelWindow.length / 2) : 0;
-    const r0 = reelWindow ? reelWindow[midRowIdx][0] : reels[0];
-    const r1 = reelWindow ? reelWindow[midRowIdx][1] : reels[1];
-    const r2 = reelWindow ? reelWindow[midRowIdx][2] : reels[2];
-    return (
-      <View style={styles.container}>
-        <Animated.View style={[styles.track, { backgroundColor: theme.trackBg, borderColor: theme.borderColor }, trackScaleStyle]}>
-          {themeImage && (
-            <Image
-              source={themeImage}
-              style={[StyleSheet.absoluteFill, { opacity: 0.35 }]}
-              resizeMode="cover"
-              pointerEvents="none"
-            />
-          )}
-          <Reel symbol={r0} isSpinning={isSpinning} isWinning={reelWins[0]} colIndex={0} decelStartMs={400}  glyphs={glyphs} cellBg={theme.cellBg} />
-          <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-          <Reel symbol={r1} isSpinning={isSpinning} isWinning={reelWins[1]} colIndex={1} decelStartMs={800}  glyphs={glyphs} cellBg={theme.cellBg} />
-          <View style={[styles.divider, { backgroundColor: theme.borderColor + '99' }]} />
-          <Reel symbol={r2} isSpinning={isSpinning} isWinning={reelWins[2]} colIndex={2} decelStartMs={1200} glyphs={glyphs} cellBg={theme.cellBg} />
-        </Animated.View>
-        {winLabel !== '' && !isSpinning && (
-          <View style={[styles.winBadge, { backgroundColor: winColor }]}>
-            <Text style={styles.winBadgeText}>{winLabel}</Text>
-          </View>
-        )}
-        <View style={styles.linesRow}>
-          <Text style={styles.linesActive}>1 PAYLINE</Text>
-          <Text style={styles.linesUnlock}>+2 at Outpost Lv.3</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // --- 3x3 / 5x5 multi-row rendering ---
+  // --- Unified rendering for 1x3 / 3x3 / 5x5 ---
   const isFiveByFive = grid.size === '5x5';
-  const CELL_H = isFiveByFive ? 46 : 62;
-  const displayLabel = multiWinLabel;
+  const isOneByThree = grid.size === '1x3';
+  const CELL_H = isFiveByFive ? 50 : isOneByThree ? 100 : 80;
+  const symbolSize = isFiveByFive
+    ? Typography.sizes.md
+    : isOneByThree
+    ? Typography.sizes.hero
+    : Typography.sizes.xl;
+  const showHDividers = !isOneByThree;
+  const showMidRowBg  = !isOneByThree;
+
+  const displayLabel = isOneByThree ? winLabel : multiWinLabel;
   const displayColor = displayLabel === 'JACKPOT' ? Colors.credits
                      : displayLabel === 'TRIPLE'  ? Colors.primary
+                     : isOneByThree ? winColor
                      : Colors.success;
 
   const activeIds = isFiveByFive ? ACTIVE_LINE_IDS_5X5 : ACTIVE_LINE_IDS[grid.numLines as 1 | 3 | 5];
   const winIds = new Set<WinLineId>((activeWinLines ?? []).map((wl) => wl.id));
 
-  const nextUnlock = !isFiveByFive && grid.numLines < 3 ? { lines: 3, level: 3 }
+  const nextUnlock = isOneByThree                       ? { lines: 3, level: 3 }
+                   : !isFiveByFive && grid.numLines < 3 ? { lines: 3, level: 3 }
                    : !isFiveByFive && grid.numLines < 5 ? { lines: 5, level: 6 }
-                   : !isFiveByFive ? { lines: 10, level: 10 }
+                   : !isFiveByFive                      ? { lines: 10, level: 10 }
                    : null;
 
-  const rowIndices = Array.from({ length: grid.rows }, (_, i) => i);
   const colIndices = Array.from({ length: grid.cols }, (_, i) => i);
-  const midRow = Math.floor(grid.rows / 2);
+
+  // Resolve the target symbol for each cell. For 1x3 we display the single-row
+  // result; for 3x3/5x5 we use the full reelWindow.
+  const resolveTargets = (col: number): SlotSymbol[] => {
+    if (isOneByThree) {
+      // Single-row mode: each column has 1 cell; use the corresponding reel.
+      const r = reelWindow ? reelWindow[Math.floor(reelWindow.length / 2)][col] : reels[col];
+      return [r];
+    }
+    return Array.from({ length: grid.rows }, (_, row) => reelWindow?.[row]?.[col] ?? 'EMPTY' as SlotSymbol);
+  };
+
+  const resolveHighlights = (col: number): (string | null)[] => {
+    if (isOneByThree) {
+      // For 1x3, use the simple-mode reelWins for the single visible row.
+      return [reelWins[col] ? Colors.credits : null];
+    }
+    return Array.from({ length: grid.rows }, (_, row) => cellHighlights[row]?.[col] ?? null);
+  };
 
   return (
     <View style={styles.container}>
@@ -534,34 +598,28 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
             pointerEvents="none"
           />
         )}
-        {rowIndices.map((rowIdx) => (
-          <View key={rowIdx}>
-            {rowIdx > 0 && <View style={[styles.hDivider, { backgroundColor: theme.borderColor + '66' }]} />}
-            <View style={[styles.multiRow, rowIdx === midRow && { backgroundColor: theme.midRowBg }]}>
-              {colIndices.map((col) => {
-                const sym = reelWindow?.[rowIdx]?.[col] ?? 'EMPTY' as SlotSymbol;
-                return (
-                  <View key={col} style={styles.multiCellWrap}>
-                    {col > 0 && <View style={[styles.divider, { backgroundColor: theme.borderColor + '66' }]} />}
-                    <Reel
-                      symbol={sym}
-                      isSpinning={isSpinning}
-                      isWinning={cellHighlights[rowIdx]?.[col] != null}
-                      highlightColor={cellHighlights[rowIdx]?.[col]}
-                      colIndex={col}
-                      decelStartMs={col * 300 + 400}
-                      cellHeight={CELL_H}
-                      symbolSize={isFiveByFive ? Typography.sizes.md : Typography.sizes.xl}
-                      glyphs={glyphs}
-                      cellBg={theme.cellBg}
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        ))}
-        <PaylineGuides activeIds={activeIds} winLineIds={winIds} isSpinning={isSpinning} CELL_H={CELL_H} cols={grid.cols} />
+        <View style={styles.colsRow}>
+          {colIndices.map((col) => (
+            <ReelColumn
+              key={col}
+              targetSymbols={resolveTargets(col)}
+              isSpinning={isSpinning}
+              colIndex={col}
+              cellHeight={CELL_H}
+              symbolSize={symbolSize}
+              glyphs={glyphs}
+              cellBg={theme.cellBg}
+              borderColor={theme.borderColor}
+              cellHighlights={resolveHighlights(col)}
+              midRowBg={showMidRowBg ? theme.midRowBg : undefined}
+              showHDividers={showHDividers}
+              showLeftDivider={col > 0}
+            />
+          ))}
+        </View>
+        {!isOneByThree && (
+          <PaylineGuides activeIds={activeIds} winLineIds={winIds} isSpinning={isSpinning} CELL_H={CELL_H} cols={grid.cols} />
+        )}
       </Animated.View>
       {displayLabel !== '' && !isSpinning && (
         <View style={[styles.winBadge, { backgroundColor: displayColor }]}>
@@ -569,9 +627,13 @@ export function ReelDisplay({ reels, isSpinning, lastResult, reelWindow, activeW
         </View>
       )}
       <View style={styles.linesRow}>
-        <Text style={styles.linesActive}>{activeIds.length} PAYLINE{activeIds.length !== 1 ? 'S' : ''}</Text>
+        <Text style={styles.linesActive}>
+          {isOneByThree ? '1 PAYLINE' : `${activeIds.length} PAYLINE${activeIds.length !== 1 ? 'S' : ''}`}
+        </Text>
         {nextUnlock && (
-          <Text style={styles.linesUnlock}>+{nextUnlock.lines - activeIds.length} at Outpost Lv.{nextUnlock.level}</Text>
+          <Text style={styles.linesUnlock}>
+            {isOneByThree ? '+2 at Outpost Lv.3' : `+${nextUnlock.lines - activeIds.length} at Outpost Lv.${nextUnlock.level}`}
+          </Text>
         )}
       </View>
     </View>
@@ -595,6 +657,10 @@ const styles = StyleSheet.create({
   },
   multiTrack: {
     flexDirection: 'column',
+  },
+  colsRow: {
+    flexDirection: 'row',
+    width: '100%',
   },
   multiRow: {
     flexDirection: 'row',

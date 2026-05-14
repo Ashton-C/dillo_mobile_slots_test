@@ -13,9 +13,9 @@ export const Colors = {
   gradientMid: '#CC44AA',
   gradientEnd: '#9B59FF',
 
-  textPrimary: '#F0F0FF',
-  textSecondary: '#8888BB',
-  textMuted: '#4A4A7A',
+  textPrimary: '#FFFFFF',
+  textSecondary: '#C8C8E8',
+  textMuted: '#9696C2',
 
   success: '#39FF14',
   warning: '#FFD700',

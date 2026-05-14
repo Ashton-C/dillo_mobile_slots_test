@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { AnomalyId, ANOMALIES } from '@/services/AnomalyService';
+import { HexFrame } from '@/components/HexFrame';
 
 // ── Anomaly helpers ───────────────────────────────────────────────────────────
 
@@ -225,54 +226,17 @@ interface HexNodeProps {
 }
 
 function HexNode({ cx, cy, size, color, fillAlpha, borderWidth = 1 }: HexNodeProps) {
-  const h = size * Math.sqrt(3);
-  // Six outline edges
-  const verts: [number, number][] = [
-    [ size,      0 ],
-    [ size / 2,  h / 2 ],
-    [-size / 2,  h / 2 ],
-    [-size,      0 ],
-    [-size / 2, -h / 2 ],
-    [ size / 2, -h / 2 ],
-  ];
+  // size here is the circumradius — full hex width = 2*size
+  const fullW = size * 2;
+  const fullH = size * Math.sqrt(3);
+  const fillColor = fillAlpha === '00' ? undefined : color + fillAlpha;
   return (
-    <>
-      {/* Filled background — approximated as a slightly inset rect to keep it cheap */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          left: cx - size * 0.86,
-          top:  cy - h / 2 + 1,
-          width: size * 1.72,
-          height: h - 2,
-          backgroundColor: color + fillAlpha,
-        }}
-      />
-      {verts.map((v, i) => {
-        const v2 = verts[(i + 1) % 6];
-        const x1 = cx + v[0],  y1 = cy + v[1];
-        const x2 = cx + v2[0], y2 = cy + v2[1];
-        const dx = x2 - x1, dy = y2 - y1;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-        return (
-          <View
-            key={i}
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: (x1 + x2) / 2 - len / 2,
-              top:  (y1 + y2) / 2 - borderWidth / 2,
-              width: len,
-              height: borderWidth,
-              backgroundColor: color,
-              transform: [{ rotate: `${angle}deg` }],
-            }}
-          />
-        );
-      })}
-    </>
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', left: cx - fullW / 2, top: cy - fullH / 2, width: fullW, height: fullH }}
+    >
+      <HexFrame size={fullW} color={color} thickness={borderWidth} fillColor={fillColor} />
+    </View>
   );
 }
 
@@ -284,8 +248,11 @@ function PathLine({
   x1: number; y1: number; x2: number; y2: number;
   color: string; opacity: number; thick?: boolean;
 }) {
+  // Use the raw delta — nodeXY returns un-iso-projected coords, so the line
+  // must too in order to land on hex centers. (Previously we multiplied dy by
+  // ISO_Y here which made the path stop short of every node.)
   const dx = x2 - x1;
-  const dy = (y2 - y1) * ISO_Y;
+  const dy = y2 - y1;
   const len = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
   const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
@@ -417,23 +384,16 @@ export function SectorTrailMap({ startedAt, currentAnomalyId, msRemaining }: Pro
           );
         })}
 
-        {/* Glow ring behind current node */}
+        {/* Hex glow ring behind current node — pulses outward */}
         <Animated.View
           pointerEvents="none"
           style={[
-            {
-              position: 'absolute',
-              left: cur.x - 22,
-              top: cur.y - 22,
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              borderWidth: 1,
-              borderColor: curColor,
-            },
+            { position: 'absolute', left: cur.x - 30, top: cur.y - 26, width: 60, height: 52, alignItems: 'center', justifyContent: 'center' },
             glowStyle,
           ]}
-        />
+        >
+          <HexFrame size={60} color={curColor} thickness={1} />
+        </Animated.View>
 
         {/* Vertical pole below ship icon */}
         <Animated.View
