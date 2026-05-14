@@ -35,7 +35,7 @@ The mechanics that differentiate Reelwright from Coin Master.
 
 ---
 
-## Phase 3: Social Combat ✅ (code complete; deploy pending)
+## Phase 3: Social Combat ✅ (deployed)
 
 PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with the slot theme.
 
@@ -63,7 +63,7 @@ PvP loop built around the insta-stop mechanic — skill meets RNG, on-brand with
 - [x] **Mock users script** — `scripts/seed-mock-users.js` (run once; populates AlphaRaider + BetaOps in playerIndex for RADAR testing)
 
 ### Remaining (ops only)
-- [ ] **Deploy Cloud Function** — `cd functions && npm install && npm run build && firebase deploy --only functions`
+- [x] **Deploy Cloud Function** — deployed `resolveCombat` + `refillSpins` to `us-central1` via `npm run deploy:functions`
 - [ ] **Seed mock users** — `node scripts/seed-mock-users.js`
 
 ---
@@ -130,7 +130,7 @@ Hard currency, IAP, and rewarded ads. Build the social loop fully before adding 
 | RADAR screen | ✅ Solid | Needs real playerIndex data to populate |
 | CombatMiniGame | ✅ Solid | Client-side only; outcomes pending CF |
 | EventBanner | ✅ Solid | Fully wired; events pending CF writes |
-| Cloud Function | ✅ Written | Needs deploy: `cd functions && npm run build && firebase deploy --only functions` |
+| Cloud Function | ✅ Deployed | `resolveCombat` + `refillSpins` live in `us-central1`; redeploy via `npm run deploy:functions` |
 | TURRET/VAULT passives | ✅ Written | Wired inside resolveCombat CF |
 | Security rules | ✅ Complete | playerIndex, events subcollection, combatRequests all covered |
 | Mock users | ✅ Written | Run `node scripts/seed-mock-users.js` to populate RADAR targets |

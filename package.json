@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "test": "jest --watchAll",
     "lint": "eslint . --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy:functions": "bash scripts/deploy-functions.sh"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

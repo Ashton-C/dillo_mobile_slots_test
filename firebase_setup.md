@@ -141,12 +141,20 @@ If your Firebase project ID is something other than `reelwright`, either edit `.
 Run the deploy from the **repo root** (not from `functions/`):
 
 ```bash
-# From repo root
-cd functions && npm install && cd ..
-firebase deploy --only functions
+# Recommended — installs deps, builds, and deploys resolveCombat only
+npm run deploy:functions
+
+# Include refillSpins (or any other function in the file)
+npm run deploy:functions -- --all
+
+# Override the default project from .firebaserc
+npm run deploy:functions -- --project my-firebase-project
 ```
 
-The `predeploy` hook in `firebase.json` runs `npm run build` inside `functions/` automatically.
+The wrapper lives at `scripts/deploy-functions.sh`. It scopes the deploy to
+`functions:resolveCombat` by default so the scheduled `refillSpins` job isn't
+republished on every PvP iteration. The `predeploy` hook in `firebase.json`
+re-runs the TypeScript build as a safety net.
 
 Requires the Firebase CLI: `npm install -g firebase-tools` and `firebase login`.
 
