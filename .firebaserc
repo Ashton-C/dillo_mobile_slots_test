@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "sovereign-slots-2b109"
-  }
+    "default": "sovereign-slots-2b109",
+    "staging": "sovereign-slots-2b109"
+  },
+  "targets": {},
+  "etags": {}
 }
