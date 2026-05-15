@@ -22,6 +22,7 @@ import { CosmeticPurchaseModal } from '@/components/CosmeticPurchaseModal';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
+import { ResourceBar } from '@/components/ResourceBar';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const OUTPOST_COLORS = [
@@ -95,6 +96,7 @@ export default function PilotScreen() {
       <TopBar
         right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
       />
+      <ResourceBar compact />
       <ScrollView contentContainerStyle={styles.scroll}>
 
         {/* Avatar section with gradient backdrop */}

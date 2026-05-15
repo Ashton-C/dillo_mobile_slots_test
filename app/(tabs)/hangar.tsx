@@ -9,6 +9,7 @@ import { adsService } from '@/services/AdsService';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
+import { ResourceBar } from '@/components/ResourceBar';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
@@ -280,6 +281,7 @@ export default function RadarScreen() {
       <TopBar
         right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
       />
+      <ResourceBar compact />
       {/* Header */}
       <LinearGradient
         colors={[Colors.danger + '22', Colors.accent + '11', 'transparent']}

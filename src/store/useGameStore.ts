@@ -456,7 +456,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       overclockBonus,
       signalBoostUsed: signalBoostActive,
       droneMultiplier: droneEffects.creditMultiplier,
-      anomalyMultiplier,
+      anomalyMultiplier: effectiveAnomaly,
       timestamp: Date.now(),
       reelWindow: multi.reelWindow,
       winLineIds: multi.winLines.map((wl) => wl.id),

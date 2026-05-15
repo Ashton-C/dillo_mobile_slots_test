@@ -9,6 +9,7 @@ import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
+import { ResourceBar } from '@/components/ResourceBar';
 import { AdWatchModal } from '@/components/AdWatchModal';
 import { adsService, ADS_AVAILABLE } from '@/services/AdsService';
 import { iapService } from '@/services/IapService';
@@ -346,6 +347,7 @@ export default function StoreScreen() {
       <TopBar
         right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
       />
+      <ResourceBar compact />
       <LinearGradient
         colors={[Colors.credits + '22', Colors.primary + '11', 'transparent']}
         start={{ x: 0, y: 0 }}

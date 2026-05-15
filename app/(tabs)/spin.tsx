@@ -381,9 +381,7 @@ export default function SpinScreen() {
           </>
         }
       />
-
-      {/* ResourceBar is now rendered globally in (tabs)/_layout.tsx so the
-          currency strip stays visible across every screen. */}
+      <ResourceBar compact />
 
       <ModifierPanel />
       <View style={styles.cardStrip}>
