@@ -233,8 +233,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
     const overclockBonus = overclockActive ? genLevel * 40 + 100 : 0;
     const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
+    // Marked pilots take 3× the hit if successfully raided — small upside is
+    // a +25% credit yield while marked so the role isn't pure punishment.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useAnomalyStore } = require('@/store/useAnomalyStore') as typeof import('@/store/useAnomalyStore');
+    const markedUntil = useAnomalyStore.getState().myMarkedUntil;
+    const markedBuff = markedUntil > Date.now() ? 1.25 : 1;
     const boostedCreditsWon = Math.floor(
-      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier,
+      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier * markedBuff,
     ) + overclockBonus;
 
     // Pre-calculate all resource changes using values captured at spin time

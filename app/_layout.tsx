@@ -104,6 +104,13 @@ export default function RootLayout() {
     return unsub;
   }, [user?.uid]);
 
+  // Watch our own playerIndex doc for the MARKED_PILOT mark.
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = useAnomalyStore.getState().subscribeToMyMark(user.uid);
+    return unsub;
+  }, [user?.uid]);
+
   // Anomaly → engine hook sync. Pushes slot-engine-relevant flags into the
   // singleton on every snapshot, plus one-shot side effects (CHRONO_BLOOM
   // jump, STARDUST_WAKE counter reset) keyed on activeAnomaly.startedAt so

@@ -66,6 +66,13 @@ function anomalyRaidBonus(anomalyId: string | undefined): number {
   return 0;
 }
 
+// Loot multiplier applied when the defender is currently marked. Today only
+// MARKED_PILOT sets a non-1 value; the lookup keeps the math anomaly-keyed
+// in case future anomalies stack their own marked-multipliers.
+const ANOMALIES_MARKED_LOOT_MULT: Record<string, number> = {
+  MARKED_PILOT: 3,
+};
+
 // RAIDER drone (if currently active for the attacker) → +40% raid loot.
 // Other drones don't affect raid math.
 function attackerDroneRaidBonus(activeDrones: { type?: string }[] | undefined): number {
@@ -169,6 +176,11 @@ export const resolveCombat = functions.firestore
       const turretLevel = defBuildingLevels['TURRET'] ?? 0;
       const vaultLevel  = defBuildingLevels['VAULT']  ?? 0;
 
+      // --- MARKED_PILOT: read defender's playerIndex mark state ---
+      const defenderIndexSnap = await db.doc(`playerIndex/${defenderUid}`).get();
+      const defenderMarkedUntil = (defenderIndexSnap.data()?.markedUntil as number | undefined) ?? 0;
+      const defenderIsMarked = defenderMarkedUntil > Date.now();
+
       // --- TURRET check (auto-block) — disabled during OUTPOST_ECLIPSE ---
       let blockedByTurret = false;
       if (!eclipseActive && turretLevel > 0 && defenderHabitat) {
@@ -226,7 +238,10 @@ export const resolveCombat = functions.firestore
         const baseBonused    = Math.floor(baseClamped * (1 + totalRaidBonus));
 
         const reduction   = eclipseActive ? 0 : vaultReduction(vaultLevel);
-        const creditsLost = Math.floor(baseBonused * (1 - reduction));
+        const markedMult  = defenderIsMarked
+          ? (ANOMALIES_MARKED_LOOT_MULT[anomalyId ?? ''] ?? 1)
+          : 1;
+        const creditsLost = Math.floor(baseBonused * markedMult * (1 - reduction));
         // Closed loop: attacker receives exactly what defender lost. No minting.
         // Cap the actual transfer at the defender's wallet so we never withdraw
         // more than they had — VAULT-reduced loss already kept this realistic
@@ -236,7 +251,7 @@ export const resolveCombat = functions.firestore
         const defenderNewCredits = defender.credits - transferred;
         const attackerNewCredits = attacker.credits + transferred;
 
-        await Promise.all([
+        const writes: Promise<unknown>[] = [
           db.doc(`users/${defenderUid}`).update({ credits: defenderNewCredits }),
           db.doc(`users/${attackerUid}`).update({ credits: attackerNewCredits }),
           writeEvent(defenderUid, {
@@ -246,6 +261,7 @@ export const resolveCombat = functions.firestore
             attackerWon: true,
             creditsLost: transferred,
             eclipseActive,
+            defenderMarked: defenderIsMarked,
           }),
           writeEvent(attackerUid, {
             type: 'COMBAT_RESULT',
@@ -254,8 +270,15 @@ export const resolveCombat = functions.firestore
             attackerWon: true,
             creditsGained: transferred,
             eclipseActive,
+            defenderMarked: defenderIsMarked,
           }),
-        ]);
+        ];
+        if (defenderIsMarked) {
+          writes.push(db.doc(`playerIndex/${defenderUid}`).update({
+            markedUntil: admin.firestore.FieldValue.delete(),
+          }));
+        }
+        await Promise.all(writes);
 
         await requestRef.update({
           status: 'RESOLVED',
@@ -266,6 +289,8 @@ export const resolveCombat = functions.firestore
           anomalyBonus: anomalyRaidBonus(anomalyId),
           droneBonus: attackerDroneRaidBonus(attacker.activeDrones),
           eclipseActive,
+          defenderMarked: defenderIsMarked,
+          markedLootMult: markedMult,
         });
       } else {
         // Attacker lost — no credit change
@@ -416,6 +441,55 @@ export const seedAnomaly = functions.pubsub
     });
 
     functions.logger.info(`seedAnomaly: ${previousId ?? '(none)'} -> ${id}`);
+  });
+
+// ---------------------------------------------------------------------------
+// markRandomPilot — scheduled every hour
+// Picks one eligible player while MARKED_PILOT is the active anomaly and
+// stamps `markedUntil` on their playerIndex doc. No-ops if the anomaly
+// isn't active. Clears any prior mark so only one pilot is ever marked.
+// ---------------------------------------------------------------------------
+
+const MARK_DURATION_MS = 60 * 60 * 1000;
+
+export const markRandomPilot = functions.pubsub
+  .schedule('every 60 minutes')
+  .onRun(async () => {
+    const anomalySnap = await db.doc('anomalies/current').get();
+    const anomalyId = anomalySnap.data()?.id as AnomalyId | undefined;
+    const anomalyActive = ((anomalySnap.data()?.endsAt as number | undefined) ?? 0) > Date.now();
+    if (!anomalyActive || anomalyId !== 'MARKED_PILOT') {
+      // Clear any stale marks once the anomaly leaves.
+      const stale = await db.collection('playerIndex')
+        .where('markedUntil', '>', 0).limit(50).get();
+      if (!stale.empty) {
+        const batch = db.batch();
+        stale.forEach((d) => batch.update(d.ref, { markedUntil: admin.firestore.FieldValue.delete() }));
+        await batch.commit();
+      }
+      return;
+    }
+
+    // Eligibility: any player with outpostLevel >= 1. Cap the candidate sweep
+    // at 200 to bound cost in a growing player base.
+    const candidates = await db.collection('playerIndex').limit(200).get();
+    if (candidates.empty) return;
+
+    const ids: string[] = [];
+    candidates.forEach((d) => ids.push(d.id));
+    const newMarkedId = ids[Math.floor(Math.random() * ids.length)];
+
+    const batch = db.batch();
+    candidates.forEach((d) => {
+      if (d.id === newMarkedId) {
+        batch.update(d.ref, { markedUntil: Date.now() + MARK_DURATION_MS });
+      } else if (d.data().markedUntil) {
+        batch.update(d.ref, { markedUntil: admin.firestore.FieldValue.delete() });
+      }
+    });
+    await batch.commit();
+
+    functions.logger.info(`markRandomPilot: marked ${newMarkedId}`);
   });
 
 // ---------------------------------------------------------------------------
