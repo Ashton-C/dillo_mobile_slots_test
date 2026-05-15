@@ -48,6 +48,16 @@ export interface UserResourceSnapshot {
   cards: Record<string, number>;
   activeReelCard: string | null;
   activeReelCardSpinsLeft: number;
+  // Per-card-session state, written/cleared alongside activeReelCard.
+  // `lockedAnomalyId` snapshots the anomaly at activate time for the
+  // reel_anomaly_lock card. `lastWinningSymbol` powers hot_streak.
+  // `cardWinStreak` is the consecutive-wins counter while a card is
+  // active (resets on loss). `lockedCellsSymbols` holds the symbols
+  // pinned by the lock_cells card for the next spin.
+  lockedAnomalyId: string | null;
+  lastWinningSymbol: string | null;
+  cardWinStreak: number;
+  lockedCellsSymbols: string[];
   // 15-minute vengeance window — written by the server when an attacker
   // wins a raid against you. Map of attackerUid → expiry timestamp.
   vengeanceTargets: Record<string, number>;
@@ -118,6 +128,10 @@ export function subscribeToUser(
         cards:                     (d.cards && typeof d.cards === 'object') ? (d.cards as Record<string, number>) : {},
         activeReelCard:            typeof d.activeReelCard === 'string' ? d.activeReelCard : null,
         activeReelCardSpinsLeft:   typeof d.activeReelCardSpinsLeft === 'number' ? d.activeReelCardSpinsLeft : 0,
+        lockedAnomalyId:           typeof d.lockedAnomalyId === 'string' ? d.lockedAnomalyId : null,
+        lastWinningSymbol:         typeof d.lastWinningSymbol === 'string' ? d.lastWinningSymbol : null,
+        cardWinStreak:             typeof d.cardWinStreak === 'number' ? d.cardWinStreak : 0,
+        lockedCellsSymbols:        Array.isArray(d.lockedCellsSymbols) ? (d.lockedCellsSymbols as string[]) : [],
         vengeanceTargets:          (d.vengeanceTargets && typeof d.vengeanceTargets === 'object') ? (d.vengeanceTargets as Record<string, number>) : {},
         ownedCosmetics:    Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
       });

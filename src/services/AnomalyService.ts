@@ -137,6 +137,13 @@ export class AnomalyService {
     return ANOMALIES[this.currentAnomaly.id];
   }
 
+  // Lookup an anomaly definition by id — used by reel_anomaly_lock so the
+  // store can read the snapshotted anomaly's multipliers even after the
+  // global cycle has rotated.
+  getDefinitionForId(id: string): AnomalyDefinition | null {
+    return (ANOMALIES as Record<string, AnomalyDefinition>)[id] ?? null;
+  }
+
   // Apply anomaly modifiers to credit wins
   applyToCredits(baseCredits: number): number {
     const def = this.getDefinition();

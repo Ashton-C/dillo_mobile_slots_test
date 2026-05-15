@@ -176,6 +176,23 @@ synergies); **Raid cards** are picked pre-raid and applied server-side inside
       logged from `resolveCombat` for win/loss/turret outcomes.
       `IMPLEMENTED_RAID_EFFECT_KINDS` opens up the final 3 raid effects,
       so all 30 raid card baseIds × 2 tiers now drop.
+- [x] **Phase E.2 — full reel coverage** (100% catalog): wired all 11
+      remaining reel-effect kinds. `symbol_convert` runs post-draw in
+      `SlotsEngine.drawSymbol`. `compound`, `rift_refund`, `void_tap`
+      (Rift 3 + fuel gate), `anomaly_lock` (snapshot at activate),
+      `hot_streak` (engine weight bias keyed on `lastWinningSymbol`),
+      `streak_bonus` (caps on `cardWinStreak`) all flow through the
+      existing `computePostSpinModifiers` pipeline. `layout_force` and
+      `lock_cells` apply post-draw via the new
+      `setActiveCardLayoutEffect` hook on the engine (mirror /
+      mid-row-match / top-bot-mirror / all-rows-match for layout_force;
+      previous-spin cell carry for lock_cells). `echo_chance` and
+      `cascade` chain via module-level `pendingChainSpins` — chain
+      spins skip `spinsRemaining` drain, terminate on a losing spin,
+      and respect the card's maxExtra/maxChain bound. New state
+      fields on the user doc: `lockedAnomalyId`, `lastWinningSymbol`,
+      `cardWinStreak`, `lockedCellsSymbols`. **All 120 SKUs (60 reel +
+      60 raid) now drop and apply.**
 
 ### Also shipped in Phase 5 session
 - [x] **Multiline slot machine** — 3×3 / 5×5 reel windows; 1/3/5/10 paylines gated by Outpost Level (`getGridConfig`); `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay

@@ -15,7 +15,7 @@ import type {
   CardTier,
   ReelEffect,
 } from '@/models/Card';
-import type { SpinResult, WinLine } from '@/services/SlotsEngine';
+import type { SlotSymbol, SpinResult, WinLine } from '@/services/SlotsEngine';
 
 // ---------------------------------------------------------------------------
 // Drop logic — pure client-side. Same trust model as credits/spins (the user
@@ -43,6 +43,18 @@ const IMPLEMENTED_REEL_EFFECT_KINDS: ReelEffect['kind'][] = [
   'reel_stardust_on_big_win',
   'reel_anomaly_gated_bonus',
   'reel_tier_echo',
+  // Phase E.2 — full reel coverage
+  'reel_symbol_convert',
+  'reel_compound',
+  'reel_rift_refund',
+  'reel_void_tap',
+  'reel_anomaly_lock',
+  'reel_hot_streak',
+  'reel_streak_bonus',
+  'reel_echo_chance',
+  'reel_layout_force',
+  'reel_cascade',
+  'reel_lock_cells',
 ];
 
 // Phase C/C.2 raid effects wired in functions/src/index.ts:resolveCombat.
@@ -166,8 +178,20 @@ export interface PostSpinModifiers {
   stardustGain: number;
   // Per-token additive bumps (quartermaster, guarantee_drop).
   tokenBumps: { attacks: number; raids: number; shields: number };
-  // True when the card refunds the Rift cost for this spin.
+  // True when the card refunds the full Rift cost for this spin.
   freeRift: boolean;
+  // Fractional rift-cost refund (0..1). reel_rift_refund applies this on
+  // each spin during the card's window.
+  riftRefundPct: number;
+  // void_tap (Rift 3 only): consume this much fuel for the multiplier to fire.
+  fuelCost: number;
+  // anomaly_lock override — when non-null, the engine should read this
+  // anomaly id instead of the live one.
+  anomalyIdOverride: string | null;
+  // Schedule an echo / cascade re-spin chain. When > 0 the store will
+  // queue that many extra spins on the next tick. Triggered only on a
+  // winning spin (echo_chance) or unconditionally on win (cascade).
+  echoSpinsToQueue: number;
 }
 
 export function defaultPostSpinModifiers(): PostSpinModifiers {
@@ -179,6 +203,10 @@ export function defaultPostSpinModifiers(): PostSpinModifiers {
     stardustGain: 0,
     tokenBumps: { attacks: 0, raids: 0, shields: 0 },
     freeRift: false,
+    riftRefundPct: 0,
+    fuelCost: 0,
+    anomalyIdOverride: null,
+    echoSpinsToQueue: 0,
   };
 }
 
@@ -188,6 +216,13 @@ interface PostSpinContext {
   result: SpinResult;
   winLines: WinLine[];
   numActiveLines: number;
+  // Per-card-session state read from the store. spinsConsumedSoFar starts
+  // at 0 on the first spin of a card session and increments each spin —
+  // used by reel_compound to ramp the multiplier and reel_streak_bonus
+  // (which also factors in cardWinStreak).
+  spinsConsumedSoFar: number;
+  cardWinStreak: number;
+  lockedAnomalyId: string | null;
 }
 
 export function computePostSpinModifiers(
@@ -272,16 +307,58 @@ export function computePostSpinModifiers(
     case 'reel_rift_tier_boost':
     case 'reel_weight_multiplier':
     case 'reel_empty_reduction':
-      // Handled by the engine pre-draw; no post-spin work.
+    case 'reel_symbol_convert':
+    case 'reel_hot_streak':
+    case 'reel_layout_force':
+    case 'reel_lock_cells':
+      // Handled by the engine pre-draw / post-layout; no post-spin work.
       break;
     case 'reel_extra_lines':
       // Wired through useGameStore.spin's line selection; no post-spin work.
       break;
+    case 'reel_compound': {
+      // Each spin during the window stacks +perSpinPct, starting with the
+      // first spin (so the +5% / +10% feels rewarding immediately). The
+      // store passes spinsConsumedSoFar = 0 on the first spin of the
+      // session, 1 on the second, etc.
+      mods.payoutMultiplier = 1 + effect.perSpinPct * (ctx.spinsConsumedSoFar + 1);
+      break;
+    }
+    case 'reel_streak_bonus': {
+      // +perWinPct per consecutive winning spin, capped.
+      const raw = effect.perWinPct * ctx.cardWinStreak;
+      mods.payoutMultiplier = 1 + Math.min(raw, effect.cap);
+      break;
+    }
+    case 'reel_rift_refund':
+      mods.riftRefundPct = effect.pct;
+      break;
+    case 'reel_void_tap':
+      // Rift 3 gate — outside Rift 3 the card is consumed but does nothing.
+      if (ctx.riftTier === 3) {
+        mods.payoutMultiplier = effect.payoutMultiplier;
+        mods.fuelCost = effect.fuelCost;
+      }
+      break;
+    case 'reel_anomaly_lock':
+      mods.anomalyIdOverride = ctx.lockedAnomalyId;
+      break;
+    case 'reel_echo_chance':
+      // Win-gated: only queue echoes if the current spin actually won.
+      if (ctx.result.outcomeType !== 'NOTHING' && Math.random() < effect.chance) {
+        mods.echoSpinsToQueue = effect.maxExtra;
+      }
+      break;
+    case 'reel_cascade':
+      // Win-gated; queue a re-spin chain. Major (maxChain=10) cascades
+      // until no win — implemented as "queue 1 extra, the next spin can
+      // queue another if it also wins (handled by the store loop)."
+      if (ctx.result.outcomeType !== 'NOTHING') {
+        mods.echoSpinsToQueue = effect.maxChain;
+      }
+      break;
     default:
-      // Unimplemented effect kinds for v1 (cascade, layout_force, hot_streak,
-      // compound, streak_bonus, rift_refund, void_tap, symbol_convert,
-      // echo_chance, anomaly_lock, lock_cells). Drop filter keeps them from
-      // appearing — but if one ever sneaks through, no-op is safe.
+      // Exhaustive switch — TS guarantees no fall-through.
       break;
   }
 
@@ -289,7 +366,10 @@ export function computePostSpinModifiers(
 }
 
 // Convenience for the engine pre-draw setup.
-export function pickEngineWeightEffect(effect: ReelEffect | null) {
+export function pickEngineWeightEffect(
+  effect: ReelEffect | null,
+  ctx: { lastWinningSymbol?: string | null } = {},
+) {
   if (!effect) return null;
   if (effect.kind === 'reel_weight_multiplier') {
     return { kind: 'weight_multiplier' as const, symbols: effect.symbols, multiplier: effect.multiplier };
@@ -299,6 +379,36 @@ export function pickEngineWeightEffect(effect: ReelEffect | null) {
   }
   if (effect.kind === 'reel_rift_tier_boost') {
     return { kind: 'rift_tier_boost' as const, delta: effect.delta };
+  }
+  if (effect.kind === 'reel_symbol_convert') {
+    return { kind: 'symbol_convert' as const, from: effect.from, to: effect.to };
+  }
+  if (effect.kind === 'reel_hot_streak') {
+    // Bias toward the previous winning symbol. If the player hasn't won yet,
+    // fall back to the highest-value credit symbol so the card still does
+    // something on the first spin.
+    const fallback = 'CREDIT_LARGE' as const;
+    const symbol = (ctx.lastWinningSymbol ?? fallback) as SlotSymbol;
+    return { kind: 'symbol_bias' as const, symbol, multiplier: effect.symbolBonusPct };
+  }
+  return null;
+}
+
+// Returns a layout effect for the engine to apply post-draw. Includes the
+// lock_cells carry-over (using cells captured from the previous spin) and
+// layout_force (mirror / mid_row_match / etc).
+export function pickEngineLayoutEffect(
+  effect: ReelEffect | null,
+  ctx: { lockedCellsSymbols?: string[] } = {},
+) {
+  if (!effect) return null;
+  if (effect.kind === 'reel_layout_force') {
+    return { kind: 'layout_force' as const, mode: effect.mode };
+  }
+  if (effect.kind === 'reel_lock_cells') {
+    const carried = ctx.lockedCellsSymbols ?? [];
+    if (carried.length === 0) return null;
+    return { kind: 'lock_cells' as const, symbols: carried.slice(0, effect.cells) as SlotSymbol[] };
   }
   return null;
 }
