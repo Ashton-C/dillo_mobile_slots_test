@@ -19,6 +19,7 @@ import {
 } from '@/services/FirestoreService';
 import { CombatResolutionChip } from '@/components/CombatResolutionChip';
 import { auth } from '@/lib/firebase';
+import { getMiniGameMods } from '@/services/CardService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 type BetType = 'EVEN' | 'SECTOR' | 'JACKPOT';
@@ -51,6 +52,22 @@ function segAngle(i: number): number {
   return -Math.PI / 2 + (i / SEG_COUNT) * Math.PI * 2;
 }
 
+// stabilizer card: returns the indices of the N first MISS slots to skip.
+// Picked in array order so the same N slots are removed every time —
+// the wheel renders them greyed-out so the player can see what's gone.
+function stabilizerSkipSet(count: number): Set<number> {
+  const skip = new Set<number>();
+  if (count <= 0) return skip;
+  let removed = 0;
+  for (let i = 0; i < SEGMENT_ZONES.length && removed < count; i++) {
+    if (SEGMENT_ZONES[i] === MISS) {
+      skip.add(i);
+      removed++;
+    }
+  }
+  return skip;
+}
+
 interface Props {
   visible: boolean;
   target: PlayerIndexEntry | null;
@@ -70,10 +87,12 @@ function WheelView({
   ballAngle,
   activeBet,
   landedIdx,
+  skipSlots,
 }: {
   ballAngle: SharedValue<number>;
   activeBet: BetType | null;
   landedIdx: number | null;
+  skipSlots: Set<number>;
 }) {
   const ballStyle = useAnimatedStyle(() => {
     const x = WHEEL_CENTER + Math.cos(ballAngle.value) * BALL_ORBIT - 6;
@@ -90,8 +109,9 @@ function WheelView({
         const x = WHEEL_CENTER + Math.cos(a) * DOT_RADIUS - DOT_SIZE / 2;
         const y = WHEEL_CENTER + Math.sin(a) * DOT_RADIUS - DOT_SIZE / 2;
         const isLanded = landedIdx === i;
+        const isSkipped = skipSlots.has(i);
         const color = zone === MISS ? Colors.textMuted : BET_CONFIGS[zone].color;
-        const isHighlighted = zone !== MISS && activeBet === zone;
+        const isHighlighted = zone !== MISS && activeBet === zone && !isSkipped;
         return (
           <View
             key={i}
@@ -100,13 +120,14 @@ function WheelView({
               {
                 left: x,
                 top: y,
+                opacity: isSkipped ? 0.18 : 1,
                 backgroundColor: isLanded
                   ? color
                   : isHighlighted
                   ? color + 'AA'
                   : color + '33',
-                borderColor: isLanded || isHighlighted ? color : 'transparent',
-                borderWidth: isLanded || isHighlighted ? 1 : 0,
+                borderColor: isLanded || isHighlighted ? color : isSkipped ? Colors.danger : 'transparent',
+                borderWidth: isLanded || isHighlighted || isSkipped ? 1 : 0,
                 transform: [{ scale: isLanded ? 1.35 : 1 }],
               },
             ]}
@@ -284,11 +305,30 @@ export function RouletteGame({ visible, target, combatType, cardId, onClose, onR
     setPhase('SPINNING');
 
     const cfg = BET_CONFIGS[activeBet];
-    const didWin = Math.random() < cfg.segments / SEG_COUNT;
+    const mods = getMiniGameMods(cardId);
+
+    // triple_threat: take the best of (1 + extraRolls) silent rolls. The
+    // wheel animates to the BEST outcome; intermediate rolls are hidden.
+    const totalRolls = 1 + mods.rouletteExtraRolls;
+    let didWin = false;
+    for (let i = 0; i < totalRolls; i++) {
+      if (Math.random() < cfg.segments / SEG_COUNT) {
+        didWin = true;
+        break;
+      }
+    }
+
+    // stabilizer: when LOSING, exclude the N lowest-power MISS slots from
+    // the candidate pool. Effectively makes lower-power outcomes rarer.
+    const skipIndices = stabilizerSkipSet(mods.rouletteRemoveSlots);
 
     const pool = SEGMENT_ZONES
       .map((zone, i) => ({ zone, i }))
-      .filter((s) => (didWin ? s.zone === activeBet : s.zone !== activeBet));
+      .filter((s) => {
+        if (didWin) return s.zone === activeBet;
+        if (s.zone === activeBet) return false;
+        return !skipIndices.has(s.i);
+      });
     const chosen = pool[Math.floor(Math.random() * pool.length)];
     const jitter = (Math.random() - 0.5) * (Math.PI / 12);
     const targetRad = segAngle(chosen.i) + jitter;
@@ -379,8 +419,20 @@ export function RouletteGame({ visible, target, combatType, cardId, onClose, onR
           </Text>
 
           <View style={styles.wheelWrap}>
-            <WheelView ballAngle={ballAngle} activeBet={activeBet} landedIdx={landedIdx} />
+            <WheelView
+              ballAngle={ballAngle}
+              activeBet={activeBet}
+              landedIdx={landedIdx}
+              skipSlots={stabilizerSkipSet(getMiniGameMods(cardId).rouletteRemoveSlots)}
+            />
           </View>
+          {(getMiniGameMods(cardId).rouletteExtraRolls > 0 || getMiniGameMods(cardId).rouletteRemoveSlots > 0) && (
+            <Text style={styles.cardActiveLabel}>
+              {getMiniGameMods(cardId).rouletteExtraRolls > 0
+                ? `▶ TRIPLE THREAT · best of ${1 + getMiniGameMods(cardId).rouletteExtraRolls}`
+                : `◇ STABILIZER · ${getMiniGameMods(cardId).rouletteRemoveSlots} slot${getMiniGameMods(cardId).rouletteRemoveSlots === 1 ? '' : 's'} dropped`}
+            </Text>
+          )}
 
           {phase !== 'SPINNING' && (
             <BetButtons
@@ -476,6 +528,21 @@ const styles = StyleSheet.create({
   wheelWrap: {
     alignItems: 'center',
     paddingVertical: Spacing.md,
+  },
+  cardActiveLabel: {
+    alignSelf: 'center',
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    backgroundColor: Colors.accent + '22',
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    color: Colors.accent,
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
   },
   powerRow: {
     flexDirection: 'row',

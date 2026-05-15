@@ -18,6 +18,7 @@ import {
   totalCardCount,
 } from '@/services/CardService';
 import type { CardDrop } from '@/services/CardService';
+import { logCardEvent } from '@/services/CardTelemetry';
 import { auth } from '@/lib/firebase';
 
 export interface SpinHistoryEntry {
@@ -339,6 +340,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         const cardId = cardDrop.card.id;
         nextCards = { ...cards, [cardId]: (cards[cardId] ?? 0) + 1 };
       }
+      void logCardEvent({
+        kind: 'DROP',
+        cardId: cardDrop.card.id,
+        tier: cardDrop.card.tier,
+        rarity: cardDrop.card.rarity,
+        autoShredded: cardDrop.autoShredded,
+      });
     }
 
     const nextState: Partial<Resources> = {
@@ -428,6 +436,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
     set(next);
     persistResources(next);
+    void logCardEvent({ kind: 'ACTIVATE_REEL', cardId, spinDuration });
   },
 
   deactivateReelCard() {
@@ -464,6 +473,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
     set(next);
     persistResources(next);
+    void logCardEvent({ kind: 'SHRED', cardId, refundCredits: refund });
     return true;
   },
 

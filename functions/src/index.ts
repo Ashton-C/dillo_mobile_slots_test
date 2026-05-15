@@ -448,6 +448,29 @@ async function writeEvent(
   });
 }
 
+// Server-side card telemetry. Mirrors src/services/CardTelemetry.ts on the
+// client; only RAID activations are logged here (the client logs reel
+// drops + activations + shred refunds).
+async function logRaidCardActivation(
+  uid: string,
+  cardId: string,
+  outcome: 'ATTACKER_WON' | 'DEFENDER_WON' | 'BLOCKED_BY_TURRET' | 'BLOCKED_BY_COOLDOWN',
+  data: { creditsGained?: number; vengeance?: boolean; sectorMatch?: boolean } = {},
+): Promise<void> {
+  try {
+    await db.collection('cardTelemetry').add({
+      uid,
+      kind: 'ACTIVATE_RAID',
+      cardId,
+      outcome,
+      ...data,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    functions.logger.warn('logRaidCardActivation failed', { err: String(err) });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // resolveCombat — triggered on combatRequest create
 // ---------------------------------------------------------------------------
@@ -634,6 +657,9 @@ export const resolveCombat = functions.firestore
           ),
         ]);
         await requestRef.update({ status: 'RESOLVED', outcome: 'BLOCKED_BY_TURRET' });
+        if (effectiveCardId) {
+          void logRaidCardActivation(attackerUid, effectiveCardId, 'BLOCKED_BY_TURRET');
+        }
         return;
       }
 
@@ -842,6 +868,13 @@ export const resolveCombat = functions.firestore
           vengeance: isVengeance,
           cardId: effectiveCardId ?? null,
         });
+        if (effectiveCardId) {
+          void logRaidCardActivation(attackerUid, effectiveCardId, 'ATTACKER_WON', {
+            creditsGained: transferred,
+            vengeance: isVengeance,
+            sectorMatch: request.sectorMatch ?? false,
+          });
+        }
       } else {
         // Defender won. Refund the token if mirror_shield says to; consume
         // it normally otherwise. No-consume-on-bust beats no-consume-on-loss
@@ -932,6 +965,12 @@ export const resolveCombat = functions.firestore
           outcome: 'DEFENDER_WON',
           cardId: effectiveCardId ?? null,
         });
+        if (effectiveCardId) {
+          void logRaidCardActivation(attackerUid, effectiveCardId, 'DEFENDER_WON', {
+            vengeance: isVengeance,
+            sectorMatch: request.sectorMatch ?? false,
+          });
+        }
       }
     } catch (err) {
       functions.logger.error('resolveCombat error', { requestId: context.params.requestId, err });

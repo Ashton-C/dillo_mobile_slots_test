@@ -163,10 +163,19 @@ synergies); **Raid cards** are picked pre-raid and applied server-side inside
       reel vs raid cards, shred, and inventory. SectorMap target cards
       now surface a `⚡ VENGEANCE` badge when the player has an
       unexpired vengeance window against that target.
-- [ ] **Phase E — animation pass + telemetry**: roulette/blackjack
-      changes for the 3 parked card effects (mini_game_rerolls,
-      reroll_mini_game, remove_wheel_slot); log card activations +
-      outcomes; tune drop rates with real data
+- [x] **Phase E — mini-game effects + telemetry**: wired the 3 parked
+      raid cards. RouletteGame's `startSpin` rolls best-of-N for
+      `mini_game_rerolls` (triple_threat) and excludes MISS slots
+      visually + in the landing pool for `remove_wheel_slot`
+      (stabilizer). BlackjackMiniGame tracks `rerollsLeft` and
+      auto-redeals on a loss for `reroll_mini_game` (reroll_module),
+      surfaced with a banner. `CardTelemetry` writes a single Firestore
+      doc per event (drop / activate_reel / shred / activate_raid) to
+      a new `cardTelemetry` collection — rules updated to allow client
+      writes scoped to their own uid. Server-side raid activations are
+      logged from `resolveCombat` for win/loss/turret outcomes.
+      `IMPLEMENTED_RAID_EFFECT_KINDS` opens up the final 3 raid effects,
+      so all 30 raid card baseIds × 2 tiers now drop.
 
 ### Also shipped in Phase 5 session
 - [x] **Multiline slot machine** — 3×3 / 5×5 reel windows; 1/3/5/10 paylines gated by Outpost Level (`getGridConfig`); `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay

@@ -80,6 +80,10 @@ const IMPLEMENTED_RAID_EFFECT_KINDS = new Set<string>([
   'raid_sector_specialist',
   'raid_vengeance_bonus',
   'raid_wager',
+  // Phase E: mini-game effects wired in RouletteGame / BlackjackMiniGame.
+  'raid_mini_game_rerolls',
+  'raid_remove_wheel_slot',
+  'raid_reroll_mini_game',
 ]);
 
 function isCardImplemented(card: CardDefinition): boolean {
@@ -320,4 +324,44 @@ export function cardSpinDuration(cardId: string): number {
   if (!eff) return 1;
   if ('spins' in eff && typeof eff.spins === 'number') return eff.spins;
   return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Mini-game card effects (Phase E)
+//
+// Some raid cards modify the client-side mini-game itself rather than the
+// resolveCombat math. The server is intentionally agnostic — it only sees
+// the final attackerPower in the combat request. This helper returns the
+// shape the Roulette/Blackjack components need to apply the effect.
+// ---------------------------------------------------------------------------
+
+export interface MiniGameMods {
+  // Roulette: take the best of (1 + rerolls) silent spins. Used by
+  // triple_threat. The wheel animates to the BEST outcome; the player
+  // never sees the discarded rolls.
+  rouletteExtraRolls: number;
+  // Roulette: forbid landing on the N lowest-power (MISS) slots. Used by
+  // stabilizer. The wheel still renders those slots but greyed out.
+  rouletteRemoveSlots: number;
+  // Blackjack: free redeal on a loss, up to N times. Used by reroll_module.
+  blackjackRerolls: number;
+}
+
+export function getMiniGameMods(cardId: string | null | undefined): MiniGameMods {
+  const def = cardId ? getCardDefinition(cardId) : null;
+  const eff = def?.effects[0];
+  const empty: MiniGameMods = { rouletteExtraRolls: 0, rouletteRemoveSlots: 0, blackjackRerolls: 0 };
+  if (!eff) return empty;
+  switch (eff.kind) {
+    case 'raid_mini_game_rerolls':
+      return { ...empty, rouletteExtraRolls: eff.extraSpins };
+    case 'raid_remove_wheel_slot':
+      return { ...empty, rouletteRemoveSlots: eff.count };
+    case 'raid_reroll_mini_game':
+      // 'next' (minor) = 1 retry; 'best_of_2' (major) = 2 retries so the
+      // player effectively gets 3 chances against the dealer.
+      return { ...empty, blackjackRerolls: eff.takes === 'next' ? 1 : 2 };
+    default:
+      return empty;
+  }
 }
