@@ -55,6 +55,9 @@ interface Props {
   visible: boolean;
   target: PlayerIndexEntry | null;
   combatType: 'INTRUSION' | 'EXTRACTION';
+  // Optional pre-raid card id. The Cloud Function validates ownership and
+  // applies the effect server-side; client just passes it through.
+  cardId?: string | null;
   onClose: () => void;
   onResult: (won: boolean) => void;
 }
@@ -245,7 +248,7 @@ const betStyles = StyleSheet.create({
 // RouletteGame
 // ---------------------------------------------------------------------------
 
-export function RouletteGame({ visible, target, combatType, onClose, onResult }: Props) {
+export function RouletteGame({ visible, target, combatType, cardId, onClose, onResult }: Props) {
   const [phase, setPhase] = useState<Phase>('BET');
   const [activeBet, setActiveBet] = useState<BetType | null>(null);
   const [landedIdx, setLandedIdx] = useState<number | null>(null);
@@ -314,6 +317,7 @@ export function RouletteGame({ visible, target, combatType, onClose, onResult }:
         defenderUid: target.uid,
         type: combatType,
         attackerPower: power,
+        cardId: cardId ?? undefined,
       }).then((requestId) => {
         requestUnsubRef.current?.();
         requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {

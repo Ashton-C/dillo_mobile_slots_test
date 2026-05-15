@@ -23,6 +23,9 @@ interface Props {
   visible: boolean;
   target: PlayerIndexEntry | null;
   combatType: 'INTRUSION' | 'EXTRACTION';
+  // Optional pre-raid card id. Validated + applied server-side in
+  // resolveCombat; the client only passes it through.
+  cardId?: string | null;
   onClose: () => void;
   onResult: (won: boolean) => void;
 }
@@ -93,7 +96,7 @@ function blackjackPower(playerCards: Card[], dealerCards: Card[]): { power: 8 | 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function BlackjackMiniGame({ visible, target, combatType, onClose, onResult }: Props) {
+export function BlackjackMiniGame({ visible, target, combatType, cardId, onClose, onResult }: Props) {
   const [phase, setPhase] = useState<Phase>('DEAL');
   const [deck, setDeck] = useState<Card[]>([]);
   const [player, setPlayer] = useState<Card[]>([]);
@@ -193,6 +196,7 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
         defenderUid: target.uid,
         type: combatType,
         attackerPower: power,
+        cardId: cardId ?? undefined,
       }).then((requestId) => {
         requestUnsubRef.current?.();
         requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {

@@ -41,14 +41,16 @@ export interface UserResourceSnapshot {
   // Daily streak — written by the claimDailyReward Cloud Function.
   lastDailyClaimAt: number;
   dailyClaimStreak: number;
-  // Card system — Phase A data plumbing. `cards` is a sparse map of card id
-  // → count; `activeReelCard` is the id queued for the next spin (cleared by
-  // the server on consumption in Phase B). `activeReelCardSpinsLeft` is the
-  // remaining spin count for multi-spin effects (Hot Streak, Tier Lock, etc.);
-  // 0 or missing means consume on the next spin.
+  // Card system. `cards` is a sparse map of card id → count;
+  // `activeReelCard` is the id queued for the next spin (cleared on
+  // consumption in spin()). `activeReelCardSpinsLeft` tracks multi-spin
+  // effects (Hot Streak, Tier Lock, etc.); 0 or missing = consume next spin.
   cards: Record<string, number>;
   activeReelCard: string | null;
   activeReelCardSpinsLeft: number;
+  // 15-minute vengeance window — written by the server when an attacker
+  // wins a raid against you. Map of attackerUid → expiry timestamp.
+  vengeanceTargets: Record<string, number>;
   // IAP-granted cosmetic IDs from the RevenueCat webhook. Server-authoritative
   // ownership; the client merges these into useCosmeticsStore on subscribe.
   ownedCosmetics?: string[];
@@ -112,6 +114,7 @@ export function subscribeToUser(
         cards:                     (d.cards && typeof d.cards === 'object') ? (d.cards as Record<string, number>) : {},
         activeReelCard:            typeof d.activeReelCard === 'string' ? d.activeReelCard : null,
         activeReelCardSpinsLeft:   typeof d.activeReelCardSpinsLeft === 'number' ? d.activeReelCardSpinsLeft : 0,
+        vengeanceTargets:          (d.vengeanceTargets && typeof d.vengeanceTargets === 'object') ? (d.vengeanceTargets as Record<string, number>) : {},
         ownedCosmetics:    Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
       });
     },
@@ -203,6 +206,10 @@ export async function writeCombatRequest(data: {
   defenderUid: string;
   type: 'INTRUSION' | 'EXTRACTION';
   attackerPower: number;
+  // Optional pre-raid card id. The Cloud Function validates that the
+  // attacker has the card in inventory, decrements it, and applies the
+  // effect inside resolveCombat.
+  cardId?: string;
 }): Promise<string> {
   const ref = collection(db, 'combatRequests');
   const doc_ = await addDoc(ref, {
@@ -215,12 +222,17 @@ export async function writeCombatRequest(data: {
 
 export interface CombatRequestResolution {
   status: 'PENDING' | 'PROCESSING' | 'RESOLVED' | 'ERROR';
-  outcome?: 'ATTACKER_WON' | 'DEFENDER_WON' | 'BLOCKED_BY_TURRET';
+  outcome?: 'ATTACKER_WON' | 'DEFENDER_WON' | 'BLOCKED_BY_TURRET' | 'BLOCKED_BY_COOLDOWN';
   creditsGained?: number;
   creditsLost?: number;
   vaultReduction?: number;
   anomalyBonus?: number;
   droneBonus?: number;
+  // Phase C: vengeance bonus applied when the attacker had vengeance against
+  // this defender. +50% loot, cooldown bypass.
+  vengeance?: boolean;
+  // Phase C: name of the raid card consumed for this raid (for receipt UI).
+  cardId?: string;
   error?: string;
 }
 

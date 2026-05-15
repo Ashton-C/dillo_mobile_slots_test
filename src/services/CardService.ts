@@ -27,7 +27,7 @@ import type { SpinResult, WinLine } from '@/services/SlotsEngine';
 // multi-spin / cascade / layout effects come online.
 // ---------------------------------------------------------------------------
 
-const IMPLEMENTED_EFFECT_KINDS: ReelEffect['kind'][] = [
+const IMPLEMENTED_REEL_EFFECT_KINDS: ReelEffect['kind'][] = [
   'reel_weight_multiplier',
   'reel_empty_reduction',
   'reel_payout_multiplier',
@@ -45,12 +45,38 @@ const IMPLEMENTED_EFFECT_KINDS: ReelEffect['kind'][] = [
   'reel_tier_echo',
 ];
 
-// Raid cards aren't applied yet (Phase C) but the catalog needs to *drop*
-// them so the inventory builds up over playtest. Drop all raid cards; Phase C
-// will gate application.
+// Phase C raid effects wired in functions/src/index.ts:resolveCombat. Cards
+// whose effects aren't in this list never drop so players don't see no-ops.
+const IMPLEMENTED_RAID_EFFECT_KINDS = new Set<string>([
+  'raid_power_delta',
+  'raid_defender_power_delta',
+  'raid_bust_to_power',
+  'raid_vault_ignore',
+  'raid_tax_collector',
+  'raid_smash_grab',
+  'raid_token_refund_on_win',
+  'raid_token_refund_on_loss_pct',
+  'raid_no_consume_on_bust',
+  'raid_no_consume_on_loss',
+  'raid_disable_turret_on_jackpot',
+  'raid_sabotage_spins_on_win',
+  'raid_power_per_turret_charge',
+  'raid_ignore_turret_charges',
+  'raid_all_in',
+  'raid_lucky_range',
+  'raid_loss_penalty_bonus',
+  'raid_threat_index',
+  'raid_cooldown_bypass',
+  'raid_drone_synergy',
+  'raid_drone_disrupt',
+]);
+
 function isCardImplemented(card: CardDefinition): boolean {
-  if (card.category === 'RAID') return true;
-  return card.effects.every((e) => IMPLEMENTED_EFFECT_KINDS.includes(e.kind as ReelEffect['kind']));
+  if (card.category === 'REEL') {
+    return card.effects.every((e) => IMPLEMENTED_REEL_EFFECT_KINDS.includes(e.kind as ReelEffect['kind']));
+  }
+  // Raid cards: drop only when every effect kind is wired server-side.
+  return card.effects.every((e) => IMPLEMENTED_RAID_EFFECT_KINDS.has(e.kind));
 }
 
 // Rarity drop weights. RARE/EPIC cards are correspondingly rarer within their

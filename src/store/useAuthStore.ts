@@ -203,11 +203,13 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     xp: 0,
     level: 1,
     habitatId: null,
-    // Card system — Phase B seed fields. activeReelCardSpinsLeft tracks the
-    // remaining spins for multi-spin reel effects (Hot Streak, Tier Lock).
+    // Card system — Phase B/C seed fields. activeReelCardSpinsLeft tracks
+    // multi-spin reel effects; vengeanceTargets is the 15-min retaliation
+    // map (written by the resolveCombat CF on successful incoming raids).
     cards: {},
     activeReelCard: null,
     activeReelCardSpinsLeft: 0,
+    vengeanceTargets: {},
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

@@ -82,6 +82,10 @@ interface Resources {
   cards: Record<string, number>;
   activeReelCard: string | null;
   activeReelCardSpinsLeft: number;
+  // Vengeance window — server writes these on successful incoming raids.
+  // Map of attackerUid → expiry ms. The UI uses this to surface
+  // "VENGEANCE READY" hints in the RADAR scan against eligible targets.
+  vengeanceTargets: Record<string, number>;
 }
 
 interface SpinState {
@@ -153,6 +157,7 @@ const INITIAL_RESOURCES: Resources = {
   cards: {},
   activeReelCard: null,
   activeReelCardSpinsLeft: 0,
+  vengeanceTargets: {},
 };
 
 const XP_PER_SPIN = 5;
