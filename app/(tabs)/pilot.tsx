@@ -195,6 +195,22 @@ export default function PilotScreen() {
             </View>
             <Text style={styles.inventoryArrow}>›</Text>
           </Pressable>
+
+          <Pressable
+            onPress={() => router.push('/(tabs)/dev')}
+            style={[styles.inventoryBtn, { marginTop: Spacing.sm, borderColor: Colors.warning }]}
+          >
+            <View style={styles.inventoryLeft}>
+              <Text style={[styles.inventoryIcon, { color: Colors.warning }]}>⚙</Text>
+              <View>
+                <Text style={[styles.inventoryLabel, { color: Colors.warning }]}>DEV TOOLS</Text>
+                <Text style={styles.inventoryHint}>
+                  Force outcomes, seed resources, view build info
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.inventoryArrow}>›</Text>
+          </Pressable>
         </View>
 
         {/* Combat log */}

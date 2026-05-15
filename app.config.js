@@ -21,6 +21,38 @@ const TEST_IOS_APP_ID     = 'ca-app-pub-3940256099942544~1458002511';
 const USER_TRACKING_COPY =
   'We use this to show you ads relevant to your interests, which keeps the game free.';
 
+// Build info — captured at config-eval time (i.e. when the dev server starts
+// or when EAS evaluates app.config.js for a release build). Surfaced via
+// extra.buildInfo so the dev menu can show "you're running commit X from
+// branch Y" — useful for confirming Metro / EAS picked up the latest push.
+function captureBuildInfo() {
+  const now = new Date();
+  const info = {
+    sha: 'unknown',
+    shortSha: 'unknown',
+    branch: 'unknown',
+    commitDate: 'unknown',
+    commitMessage: 'unknown',
+    dirty: false,
+    configEvaluatedAt: now.toISOString(),
+  };
+  try {
+    const { execSync } = require('child_process');
+    const run = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    info.sha           = run('git rev-parse HEAD');
+    info.shortSha      = run('git rev-parse --short HEAD');
+    info.branch        = run('git rev-parse --abbrev-ref HEAD');
+    info.commitDate    = run('git log -1 --format=%cI');
+    info.commitMessage = run('git log -1 --format=%s');
+    info.dirty         = run('git status --porcelain').length > 0;
+  } catch {
+    // Not in a git repo or git not available — leave defaults.
+  }
+  return info;
+}
+
+const BUILD_INFO = captureBuildInfo();
+
 module.exports = ({ config }) => ({
   ...config,
   plugins: [
@@ -55,5 +87,6 @@ module.exports = ({ config }) => ({
     eas: {
       projectId: '643f084a-afb7-4ef8-9336-f483460387de',
     },
+    buildInfo: BUILD_INFO,
   },
 });

@@ -3,6 +3,8 @@ import { Colors, Typography, Spacing } from '@/constants/theme';
 import { CreditCounter } from '@/components/CreditCounter';
 import { HUD_SKIN_TOKENS, EMBLEM_GLYPHS, TITLE_LABELS, SUIT_COLOR_MAP } from '@/services/CosmeticsService';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
+import { useGameStore } from '@/store/useGameStore';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface ResourcePillProps {
   label: string;
@@ -29,21 +31,46 @@ function CreditPill({ credits }: { credits: number }) {
 }
 
 interface Props {
-  credits: number;
-  // Premium build-skip currency (✦). Defaults to 0 if omitted; the pill
-  // still renders so the player can see they have none and tap into the
-  // store, mirroring how shields/boost behave.
+  // All values are optional — when omitted, the bar pulls live values from
+  // useGameStore directly. This makes the bar drop-in for the global tabs
+  // layout while still allowing per-screen overrides if needed.
+  credits?: number;
   stardust?: number;
-  attacks: number;
-  raids: number;
-  shields: number;
-  spinsRemaining: number;
+  attacks?: number;
+  raids?: number;
+  shields?: number;
+  spinsRemaining?: number;
   displayName?: string;
   level?: number;
   style?: ViewStyle;
+  // Compact mode trims the pilot row + pill padding for places where the
+  // bar is rendered globally above a tab navigator.
+  compact?: boolean;
 }
 
-export function ResourceBar({ credits, stardust = 0, attacks, raids, shields, spinsRemaining, displayName, level, style }: Props) {
+export function ResourceBar(props: Props) {
+  // Subscribe to the store fields the bar actually renders. We use one
+  // `useGameStore(s => ...)` call per field so renders are scoped to the
+  // values that change, not every store action.
+  const storeCredits        = useGameStore((s) => s.credits);
+  const storeStardust       = useGameStore((s) => s.stardust);
+  const storeAttacks        = useGameStore((s) => s.attacks);
+  const storeRaids          = useGameStore((s) => s.raids);
+  const storeShields        = useGameStore((s) => s.shields);
+  const storeSpinsRemaining = useGameStore((s) => s.spinsRemaining);
+  const storeLevel          = useGameStore((s) => s.level);
+  const storeDisplayName    = useAuthStore((s) => s.displayName);
+
+  const credits        = props.credits        ?? storeCredits;
+  const stardust       = props.stardust       ?? storeStardust;
+  const attacks        = props.attacks        ?? storeAttacks;
+  const raids          = props.raids          ?? storeRaids;
+  const shields        = props.shields        ?? storeShields;
+  const spinsRemaining = props.spinsRemaining ?? storeSpinsRemaining;
+  const level          = props.level          ?? storeLevel;
+  const displayName    = props.displayName    ?? storeDisplayName ?? undefined;
+  const { style, compact } = props;
+
   const activeHudId    = useCosmeticsStore((s) => s.active['HUD_SKIN']   ?? 'hud_default');
   const activeEmblemId = useCosmeticsStore((s) => s.active['EMBLEM']     ?? 'emblem_none');
   const activeTitleId  = useCosmeticsStore((s) => s.active['TITLE']      ?? 'title_none');
@@ -55,10 +82,11 @@ export function ResourceBar({ credits, stardust = 0, attacks, raids, shields, sp
   const suitColor = SUIT_COLOR_MAP[activeSuitId]  ?? Colors.primary;
 
   const spinsColor = spinsRemaining <= 5 ? Colors.warning : Colors.accent;
+  const showPilotRow = !compact && !!displayName;
 
   return (
     <View style={[styles.container, { backgroundColor: hud.backgroundColor, borderBottomColor: hud.borderColor }, style]}>
-      {displayName ? (
+      {showPilotRow && (
         <View style={styles.pilotRow}>
           {emblem ? (
             <View style={[styles.emblemBadge, { borderColor: suitColor + 'AA', backgroundColor: suitColor + '1A' }]}>
@@ -78,8 +106,8 @@ export function ResourceBar({ credits, stardust = 0, attacks, raids, shields, sp
             </View>
           ) : null}
         </View>
-      ) : null}
-      <View style={styles.pillsRow}>
+      )}
+      <View style={[styles.pillsRow, compact && styles.pillsRowCompact]}>
         <CreditPill credits={credits} />
         <ResourcePill label="✦ DUST" value={stardust}       color={Colors.warning} />
         <ResourcePill label="FUEL"    value={attacks}        color={Colors.attack}  />
@@ -156,6 +184,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: Spacing.sm,
+  },
+  pillsRowCompact: {
+    paddingVertical: 4,
   },
   pill: {
     alignItems: 'center',

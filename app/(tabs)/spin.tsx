@@ -382,21 +382,8 @@ export default function SpinScreen() {
         }
       />
 
-      <LinearGradient
-        colors={bgTokens.gradientColors as [string, string, string]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      >
-        <ResourceBar
-          credits={credits}
-          stardust={stardust}
-          attacks={attacks}
-          raids={raids}
-          shields={shields}
-          spinsRemaining={spinsRemaining}
-          style={styles.resourceBarTransparent}
-        />
-      </LinearGradient>
+      {/* ResourceBar is now rendered globally in (tabs)/_layout.tsx so the
+          currency strip stays visible across every screen. */}
 
       <ModifierPanel />
       <View style={styles.cardStrip}>

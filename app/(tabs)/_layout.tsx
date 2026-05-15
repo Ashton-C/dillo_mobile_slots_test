@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { StyleSheet, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEventStore } from '@/store/useEventStore';
+import { ResourceBar } from '@/components/ResourceBar';
 import { Colors, Typography } from '@/constants/theme';
 
 function TabIcon({ label, focused, dot }: { label: string; focused: boolean; dot?: boolean }) {
@@ -29,12 +30,25 @@ function PilotTabIcon({ focused }: { focused: boolean }) {
   return <TabIcon label="PILOT" focused={focused} dot={hasUnread} />;
 }
 
+// Global resource header rendered on every tab via screenOptions.header.
+// React Navigation calculates the header's safe-area inset itself, so the
+// inner SafeAreaViews in each screen don't need to double-pad.
+function GlobalResourceHeader() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.headerWrap, { paddingTop: insets.top }]}>
+      <ResourceBar compact />
+    </View>
+  );
+}
+
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <GlobalResourceHeader />,
         tabBarStyle: [
           styles.tabBar,
           { height: 68 + insets.bottom, paddingBottom: 8 + insets.bottom },
@@ -98,6 +112,9 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
+  headerWrap: {
+    backgroundColor: Colors.background,
+  },
   tabBar: {
     backgroundColor: Colors.surface,
     borderTopColor: Colors.border,
