@@ -355,21 +355,43 @@ export const refillSpins = functions.pubsub
 
 type AnomalyId =
   | 'SOLAR_SURGE'
-  | 'VOID_STORM'
   | 'CREDIT_BLOOM'
-  | 'SHIELD_PULSE'
   | 'RAID_SHADOW'
-  | 'CALM';
+  | 'CHRONO_BLOOM'
+  | 'FUEL_FLOOD'
+  | 'RIFT_TIDES'
+  | 'OUTPOST_ECLIPSE'
+  | 'DRONE_SURGE'
+  | 'MARKED_PILOT'
+  | 'MIRROR_REELS'
+  | 'STARDUST_WAKE'
+  | 'SCRAMBLE_FIELD'
+  | 'HARVEST_MOON';
 
 const ANOMALY_IDS: AnomalyId[] = [
   'SOLAR_SURGE',
-  'VOID_STORM',
   'CREDIT_BLOOM',
-  'SHIELD_PULSE',
   'RAID_SHADOW',
-  'CALM',
+  'CHRONO_BLOOM',
+  'FUEL_FLOOD',
+  'RIFT_TIDES',
+  'OUTPOST_ECLIPSE',
+  'DRONE_SURGE',
+  'MARKED_PILOT',
+  'MIRROR_REELS',
+  'STARDUST_WAKE',
+  'SCRAMBLE_FIELD',
+  'HARVEST_MOON',
 ];
 const ANOMALY_DURATION_MS = 4 * 60 * 60 * 1000;
+
+// High-drama events appear half as often as the rest so they stay special.
+const RARE_ANOMALIES = new Set<AnomalyId>([
+  'OUTPOST_ECLIPSE',
+  'MARKED_PILOT',
+  'MIRROR_REELS',
+  'SOLAR_SURGE',
+]);
 
 export const seedAnomaly = functions.pubsub
   .schedule('every 4 hours')
@@ -378,10 +400,9 @@ export const seedAnomaly = functions.pubsub
     const existing = await ref.get();
     const previousId = existing.exists ? (existing.data()?.id as AnomalyId | undefined) ?? null : null;
 
-    // CALM is half-weighted vs the others.
     const pool: AnomalyId[] = ANOMALY_IDS.flatMap((id) => {
       if (id === previousId) return [];
-      return id === 'CALM' ? [id] : [id, id];
+      return RARE_ANOMALIES.has(id) ? [id] : [id, id];
     });
     const id = pool[Math.floor(Math.random() * pool.length)];
     const now = Date.now();

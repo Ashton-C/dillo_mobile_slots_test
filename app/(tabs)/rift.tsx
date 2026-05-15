@@ -11,16 +11,19 @@ import { anomalyService, ANOMALIES, AnomalyId } from '@/services/AnomalyService'
 import { SectorTrailMap } from '@/components/SectorTrailMap';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
-// Weighted pool: CALM × 1, all others × 2 → 11 total
-const ANOMALY_ORDER: AnomalyId[] = ['SOLAR_SURGE', 'VOID_STORM', 'CREDIT_BLOOM', 'SHIELD_PULSE', 'RAID_SHADOW', 'CALM'];
-const ANOMALY_CHANCE: Record<AnomalyId, string> = {
-  SOLAR_SURGE:  '18%',
-  VOID_STORM:   '18%',
-  CREDIT_BLOOM: '18%',
-  SHIELD_PULSE: '18%',
-  RAID_SHADOW:  '18%',
-  CALM:          '9%',
-};
+// Pool weights mirror seedAnomaly: rare events ×1, regular ×2. 4 rare + 9
+// regular → 4 + 18 = 22 total, so rare ≈ 4.5%, regular ≈ 9% pre-exclusion.
+const ANOMALY_ORDER: AnomalyId[] = [
+  'SOLAR_SURGE', 'CREDIT_BLOOM', 'RAID_SHADOW',
+  'CHRONO_BLOOM', 'FUEL_FLOOD', 'RIFT_TIDES', 'DRONE_SURGE',
+  'STARDUST_WAKE', 'HARVEST_MOON', 'SCRAMBLE_FIELD',
+  'MIRROR_REELS', 'OUTPOST_ECLIPSE', 'MARKED_PILOT',
+];
+const RARE_IDS = new Set<AnomalyId>(['SOLAR_SURGE', 'MIRROR_REELS', 'OUTPOST_ECLIPSE', 'MARKED_PILOT']);
+const ANOMALY_CHANCE: Record<AnomalyId, string> = ANOMALY_ORDER.reduce((acc, id) => {
+  acc[id] = RARE_IDS.has(id) ? '~4.5%' : '~9%';
+  return acc;
+}, {} as Record<AnomalyId, string>);
 
 const RIFT_DETAILS: Record<TemporalRiftTier, { label: string; effect: string; weights: string; penalty: string; color: string }> = {
   0: {
@@ -243,9 +246,6 @@ export default function RiftScreen() {
                   <Text style={[styles.anomalyMod, { color: Colors.accent }]}>
                     RIFT cost ×{def.riftCostMultiplier}
                   </Text>
-                )}
-                {def.id === 'CALM' && (
-                  <Text style={[styles.anomalyMod, { color: Colors.textMuted }]}>No modifiers</Text>
                 )}
               </View>
             </View>
