@@ -180,7 +180,12 @@ export default function PilotScreen() {
           {events.length === 0 ? (
             <Text style={styles.logEmpty}>No combat activity yet</Text>
           ) : (
-            events.slice(0, 20).map((e) => <CombatLogRow key={e.id} event={e} />)
+            events
+              // smoke_screen card: hide raids tagged with `hideUntil` until
+              // their cloak expires. Once expired, the event resurfaces.
+              .filter((e) => !e.hideUntil || e.hideUntil <= Date.now())
+              .slice(0, 20)
+              .map((e) => <CombatLogRow key={e.id} event={e} />)
           )}
         </View>
 

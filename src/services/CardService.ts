@@ -45,8 +45,11 @@ const IMPLEMENTED_REEL_EFFECT_KINDS: ReelEffect['kind'][] = [
   'reel_tier_echo',
 ];
 
-// Phase C raid effects wired in functions/src/index.ts:resolveCombat. Cards
-// whose effects aren't in this list never drop so players don't see no-ops.
+// Phase C/C.2 raid effects wired in functions/src/index.ts:resolveCombat.
+// Cards whose effects aren't in this list never drop so players don't see
+// no-ops. Mini-game-touching effects (mini_game_rerolls, reroll_mini_game,
+// remove_wheel_slot) stay off the drop pool until the roulette/blackjack
+// components get their animation passes in Phase E.
 const IMPLEMENTED_RAID_EFFECT_KINDS = new Set<string>([
   'raid_power_delta',
   'raid_defender_power_delta',
@@ -69,6 +72,14 @@ const IMPLEMENTED_RAID_EFFECT_KINDS = new Set<string>([
   'raid_cooldown_bypass',
   'raid_drone_synergy',
   'raid_drone_disrupt',
+  // C.2 additions
+  'raid_smoke_screen',
+  'raid_pursuit_beacon',
+  'raid_extra_token_cost',
+  'raid_anomaly_shift',
+  'raid_sector_specialist',
+  'raid_vengeance_bonus',
+  'raid_wager',
 ]);
 
 function isCardImplemented(card: CardDefinition): boolean {

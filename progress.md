@@ -142,20 +142,18 @@ synergies); **Raid cards** are picked pre-raid and applied server-side inside
 - [x] **Phase C — raid integration + vengeance**: `PreRaidCardModal` after
       target lock; `combatRequests.cardId` validated + decremented +
       applied server-side in `resolveCombat`. 21 raid-effect kinds wired
-      (power deltas, vault ignore, tax collector, smash & grab, token
-      refund on win/loss, no-consume on bust/loss, turret disable on
-      jackpot, sabotage, power per turret charge, ignore turret charges,
-      all-in, lucky range, threat index, cooldown bypass, drone synergy,
-      drone disrupt, smash & grab combo, loss penalty bonus, bust to
-      power). 15-min vengeance window via `vengeanceTargets` map on the
-      user doc — server writes on each successful incoming raid; clients
-      can retaliate within the window at +50% loot, bypassing the 10-min
-      attack cooldown, still costing 1 token. Mini-games (`RouletteGame`,
-      `BlackjackMiniGame`) thread `cardId` into `writeCombatRequest`.
-      Drop filter (`IMPLEMENTED_RAID_EFFECT_KINDS`) excludes the 10
-      effects still parked for C.2 (smoke screen, pursuit beacon, wager,
-      anomaly shift, mini-game rerolls, sector specialist, extra token
-      cost, reroll mini-game, remove wheel slot, vengeance-bonus card).
+      in C, +7 more in C.2 (smoke screen, pursuit beacon, wager, anomaly
+      shift, sector specialist, extra token cost, vengeance bonus card).
+      15-min vengeance window via `vengeanceTargets` map on the user
+      doc — server writes on each successful incoming raid; clients can
+      retaliate within the window at +50% loot, bypassing the 10-min
+      attack cooldown, still costing 1 token. 24h `recentAttackers` map
+      backs the vengeance_cast card. Mini-games (`RouletteGame`,
+      `BlackjackMiniGame`) thread `cardId` + `sectorMatch` into
+      `writeCombatRequest`. Combat log filters `hideUntil` for
+      smoke-screened raids. Drop filter still excludes the 3 mini-game
+      effects (mini_game_rerolls, reroll_mini_game, remove_wheel_slot)
+      pending Phase E animation work.
 - [ ] **Phase D — inventory tab + tutorial**: `InventoryScreen` under pilot
       tab, first-drop tutorial diagram, shred-for-CR flow
 - [ ] **Phase E — telemetry / balance pass**: log activations + outcomes,

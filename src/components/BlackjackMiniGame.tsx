@@ -197,6 +197,7 @@ export function BlackjackMiniGame({ visible, target, combatType, cardId, onClose
         type: combatType,
         attackerPower: power,
         cardId: cardId ?? undefined,
+        sectorMatch: true,
       }).then((requestId) => {
         requestUnsubRef.current?.();
         requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {

@@ -206,6 +206,27 @@ export default function RadarScreen() {
   }
 
   function handleCardPick(cardId: string | null) {
+    if (cardId) {
+      // twin_strike (raid_extra_token_cost): deduct the extra token cost
+      // upfront and validate the player can afford it. If not, silently
+      // refuse the card and let them pick again.
+      const def = getCardDefinition(cardId);
+      const extraEffect = def?.effects.find((e) => e.kind === 'raid_extra_token_cost');
+      if (extraEffect && extraEffect.kind === 'raid_extra_token_cost') {
+        const extra = extraEffect.extraTokens;
+        const have =
+          combatType === 'INTRUSION'
+            ? useGameStore.getState().intrusions
+            : useGameStore.getState().extractions;
+        if (have < extra) {
+          // Not enough tokens — keep the picker open. A tiny UX gap; toast
+          // hookup is Phase D polish.
+          return;
+        }
+        const cost = combatType === 'INTRUSION' ? { intrusions: extra } : { extractions: extra };
+        useGameStore.getState().subtractResources(cost);
+      }
+    }
     setSelectedCardId(cardId);
     setCardPickerVisible(false);
     setMiniGameVisible(true);

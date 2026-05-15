@@ -318,6 +318,7 @@ export function RouletteGame({ visible, target, combatType, cardId, onClose, onR
         type: combatType,
         attackerPower: power,
         cardId: cardId ?? undefined,
+        sectorMatch: true,
       }).then((requestId) => {
         requestUnsubRef.current?.();
         requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {

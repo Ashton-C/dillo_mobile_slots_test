@@ -75,6 +75,10 @@ export interface GameEvent {
   attackerWon?: boolean;
   timestamp: number;
   read: boolean;
+  // smoke_screen card: when set, the combat log filters this event out
+  // until the timestamp passes. The event still exists server-side so
+  // server-derived stats (raidsSuffered) stay accurate.
+  hideUntil?: number;
 }
 
 // Write resource deltas back to Firestore after a spin or action.
@@ -210,6 +214,10 @@ export async function writeCombatRequest(data: {
   // attacker has the card in inventory, decrements it, and applies the
   // effect inside resolveCombat.
   cardId?: string;
+  // sector_specialist card flag — true when the defender was discovered
+  // via the player's current SectorMap scan (which is always the case in
+  // the current flow). Server applies the card's bonus when this is true.
+  sectorMatch?: boolean;
 }): Promise<string> {
   const ref = collection(db, 'combatRequests');
   const doc_ = await addDoc(ref, {
@@ -278,6 +286,7 @@ export function subscribeToEvents(
             attackerWon:      d.attackerWon,
             timestamp:        d.timestamp ?? Date.now(),
             read:             d.read ?? false,
+            hideUntil:        typeof d.hideUntil === 'number' ? d.hideUntil : undefined,
           }, isInitial);
         }
       });
