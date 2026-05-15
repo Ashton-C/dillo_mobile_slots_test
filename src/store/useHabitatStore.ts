@@ -9,6 +9,7 @@ import {
 } from '@/models/Habitat';
 import { writeHabitatState, writePlayerIndexPartial, HabitatSnapshot } from '@/services/FirestoreService';
 import { auth } from '@/lib/firebase';
+import { anomalyService } from '@/services/AnomalyService';
 
 interface HabitatState {
   habitatId: string | null;
@@ -24,6 +25,9 @@ interface HabitatState {
   // Reduces the active build's remaining time. `'instant'` completes the
   // build on the next tick. Used by SkipBuildModal (CR / rewarded-ad / IAP).
   applyBuildSkip: (skip: number | 'instant') => void;
+  // One-shot jump fired by CHRONO_BLOOM activation. Idempotent: subscriber
+  // tracks the anomaly id that has been applied.
+  jumpActiveJob: (skipMs: number) => void;
   tick: () => void;
   syncFromFirestore: (data: HabitatSnapshot) => void;
   clearCompletedBuilding: () => void;
@@ -119,10 +123,27 @@ export const useHabitatStore = create<HabitatState>((set, get) => ({
     persist(habitatId, { activeBuildJob: job });
   },
 
+  jumpActiveJob(skipMs) {
+    const { activeBuildJob, habitatId } = get();
+    if (!activeBuildJob || skipMs <= 0) return;
+    const newCompletesAt = Math.max(Date.now(), activeBuildJob.completesAt - skipMs);
+    const job: ActiveBuildJob = { ...activeBuildJob, completesAt: newCompletesAt };
+    set({ activeBuildJob: job, msUntilComplete: Math.max(0, newCompletesAt - Date.now()) });
+    persist(habitatId, { activeBuildJob: job });
+  },
+
   tick() {
     const { activeBuildJob, buildingLevels, outpostLevel, habitatId } = get();
     if (!activeBuildJob) return;
 
+    const speedMult = anomalyService.getDefinition()?.buildSpeedMultiplier ?? 1;
+    if (speedMult > 1) {
+      // Apply continuous build acceleration by pulling completesAt forward
+      // by the extra (speedMult - 1) × tick-elapsed each second. Tick runs
+      // every 1s, so subtract (speedMult - 1) × 1000ms per tick.
+      const delta = (speedMult - 1) * 1_000;
+      activeBuildJob.completesAt = Math.max(Date.now(), activeBuildJob.completesAt - delta);
+    }
     const ms = Math.max(0, activeBuildJob.completesAt - Date.now());
 
     if (ms === 0) {

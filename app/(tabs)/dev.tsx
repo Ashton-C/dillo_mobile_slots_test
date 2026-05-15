@@ -19,7 +19,10 @@ import { DEBUG_PLAYERS, loadActiveDebugUids, saveActiveDebugUids } from '@/const
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const ANOMALY_IDS: AnomalyId[] = [
-  'SOLAR_SURGE', 'VOID_STORM', 'CREDIT_BLOOM', 'SHIELD_PULSE', 'RAID_SHADOW', 'CALM',
+  'SOLAR_SURGE', 'CREDIT_BLOOM', 'RAID_SHADOW',
+  'CHRONO_BLOOM', 'FUEL_FLOOD', 'RIFT_TIDES', 'OUTPOST_ECLIPSE',
+  'DRONE_SURGE', 'MARKED_PILOT', 'MIRROR_REELS', 'STARDUST_WAKE',
+  'SCRAMBLE_FIELD', 'HARVEST_MOON',
 ];
 const DRONE_TYPES: DroneType[] = ['SENTINEL', 'SCRAMBLER', 'HARVESTER', 'RAIDER'];
 const RIFT_TIERS: TemporalRiftTier[] = [0, 1, 2, 3];

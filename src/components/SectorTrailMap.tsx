@@ -16,20 +16,33 @@ import { HexFrame } from '@/components/HexFrame';
 // ── Anomaly helpers ───────────────────────────────────────────────────────────
 
 const ANOMALY_IDS: AnomalyId[] = [
-  'SOLAR_SURGE', 'VOID_STORM', 'CREDIT_BLOOM', 'SHIELD_PULSE', 'RAID_SHADOW', 'CALM',
+  'SOLAR_SURGE', 'CREDIT_BLOOM', 'RAID_SHADOW',
+  'CHRONO_BLOOM', 'FUEL_FLOOD', 'RIFT_TIDES', 'OUTPOST_ECLIPSE',
+  'DRONE_SURGE', 'MARKED_PILOT', 'MIRROR_REELS', 'STARDUST_WAKE',
+  'SCRAMBLE_FIELD', 'HARVEST_MOON',
 ];
+const RARE_ANOMALIES = new Set<AnomalyId>([
+  'OUTPOST_ECLIPSE', 'MARKED_PILOT', 'MIRROR_REELS', 'SOLAR_SURGE',
+]);
 const ANOMALY_POOL: AnomalyId[] = ANOMALY_IDS.flatMap(id =>
-  id === 'CALM' ? [id] : [id, id],
+  RARE_ANOMALIES.has(id) ? [id] : [id, id],
 );
 const ANOMALY_DURATION_MS = 4 * 60 * 60 * 1000;
 
 const ANOMALY_SHORT: Record<AnomalyId, string> = {
-  SOLAR_SURGE:  'SURGE',
-  VOID_STORM:   'STORM',
-  CREDIT_BLOOM: 'BLOOM',
-  SHIELD_PULSE: 'PULSE',
-  RAID_SHADOW:  'SHADOW',
-  CALM:         'CALM',
+  SOLAR_SURGE:    'SURGE',
+  CREDIT_BLOOM:   'BLOOM',
+  RAID_SHADOW:    'SHADOW',
+  CHRONO_BLOOM:   'CHRONO',
+  FUEL_FLOOD:     'FUEL',
+  RIFT_TIDES:     'TIDES',
+  OUTPOST_ECLIPSE:'ECLIPSE',
+  DRONE_SURGE:    'DRONE',
+  MARKED_PILOT:   'MARKED',
+  MIRROR_REELS:   'MIRROR',
+  STARDUST_WAKE:  'WAKE',
+  SCRAMBLE_FIELD: 'SCRAMBLE',
+  HARVEST_MOON:   'HARVEST',
 };
 
 function mixSeed(ts: number): number {

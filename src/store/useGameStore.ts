@@ -9,6 +9,7 @@ import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
 import { getMaxSpins } from '@/models/Habitat';
 import { auth } from '@/lib/firebase';
+import { AppState } from 'react-native';
 
 export interface SpinHistoryEntry {
   reels: [SlotSymbol, SlotSymbol, SlotSymbol];
@@ -39,6 +40,11 @@ const SPIN_REFILL_MS = 5 * 60_000; // 1 spin every 5 minutes
 function getSpinCap(): number {
   const barracksLevel = useHabitatStore.getState().buildingLevels['BARRACKS'] ?? 0;
   return getMaxSpins(barracksLevel);
+}
+
+function getEffectiveRefillMs(): number {
+  const mult = anomalyService.getDefinition()?.spinRefillMultiplier ?? 1;
+  return Math.max(1_000, Math.floor(SPIN_REFILL_MS / mult));
 }
 export const SPIN_ANIM_MS = 2200;  // reel animation duration — must match ReelDisplay
 
@@ -78,11 +84,13 @@ interface SpinState {
   spinHistory: SpinHistoryEntry[];
   sessionSpins: number;
   sessionCreditsEarned: number;
+  spinsSinceStardustWake: number;
 }
 
 interface GameState extends Resources, SpinState {
   spin: () => SpinResult | null;
   setRiftTier: (tier: TemporalRiftTier) => void;
+  resetStardustWakeCounter: () => void;
   consumeAttack: () => boolean;
   consumeRaid: () => boolean;
   consumeShield: () => boolean;
@@ -177,6 +185,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   spinHistory: [],
   sessionSpins: 0,
   sessionCreditsEarned: 0,
+  spinsSinceStardustWake: 0,
 
   spin() {
     const {
@@ -189,13 +198,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (spinsRemaining <= 0 || get().isSpinning) return null;
 
-    const riftCost = RIFT_COSTS[riftTier];
+    const anomalyDef = anomalyService.getDefinition();
+    const riftDisabled = anomalyDef?.riftDisabled ?? false;
+    const effectiveTier: TemporalRiftTier = riftDisabled ? 0 : riftTier;
+    const riftCost = riftDisabled ? 0 : anomalyService.applyToRiftCost(RIFT_COSTS[riftTier]);
     if (riftCost > credits) return null;
 
     const outpostLevel = useHabitatStore.getState().outpostLevel;
     const grid = getGridConfig(outpostLevel);
 
-    slotsEngine.setRiftTier(riftTier);
+    slotsEngine.setRiftTier(effectiveTier);
     if (signalBoostActive) slotsEngine.setSignalBoost(true);
     const multi = grid.size === '5x5'
       ? slotsEngine.spinGrid(5, 5, ACTIVE_LINES_5X5)
@@ -221,8 +233,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
     const overclockBonus = overclockActive ? genLevel * 40 + 100 : 0;
     const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
+    // Marked pilots take 3× the hit if successfully raided — small upside is
+    // a +25% credit yield while marked so the role isn't pure punishment.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useAnomalyStore } = require('@/store/useAnomalyStore') as typeof import('@/store/useAnomalyStore');
+    const markedUntil = useAnomalyStore.getState().myMarkedUntil;
+    const markedBuff = markedUntil > Date.now() ? 1.25 : 1;
     const boostedCreditsWon = Math.floor(
-      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier,
+      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier * markedBuff,
     ) + overclockBonus;
 
     // Pre-calculate all resource changes using values captured at spin time
@@ -234,7 +252,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Stardust earn drip: jackpots are the F2P-earnable trickle for the
     // build-skip currency. Every other resource is unaffected by the JP flag.
-    const stardustGain = result.isJackpot ? 5 : 0;
+    const wakeInterval = anomalyDef?.stardustGrantInterval;
+    const wakeAmount   = anomalyDef?.stardustGrantAmount ?? 0;
+    const wakeCounter  = get().spinsSinceStardustWake + 1;
+    const wakeAwards   = (wakeInterval && wakeCounter >= wakeInterval) ? wakeAmount : 0;
+    const nextWakeCounter = (wakeInterval && wakeCounter >= wakeInterval) ? 0 : wakeCounter;
+    const stardustGain = (result.isJackpot ? 5 : 0) + wakeAwards;
 
     const nextState: Partial<Resources> = {
       credits: newCredits,
@@ -295,6 +318,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         spinHistory: newHistory,
         sessionSpins: sessionSpins + 1,
         sessionCreditsEarned: sessionCreditsEarned + boostedCreditsWon,
+        spinsSinceStardustWake: nextWakeCounter,
         totalSpins: totalSpins + 1,
         totalCreditsEarned: totalCreditsEarned + boostedCreditsWon,
         totalJackpots: totalJackpots + (result.isJackpot ? 1 : 0),
@@ -315,13 +339,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
 
+    const refillMs = getEffectiveRefillMs();
     const now = Date.now();
     const elapsed = now - spinRefillStart;
-    const earned = Math.floor(elapsed / SPIN_REFILL_MS);
+    const earned = Math.floor(elapsed / refillMs);
 
     if (earned > 0) {
       const newSpins = Math.min(spinCap, spinsRemaining + earned);
-      const newRefillStart = spinRefillStart + earned * SPIN_REFILL_MS;
+      const newRefillStart = spinRefillStart + earned * refillMs;
 
       if (newSpins >= spinCap) {
         const update = { spinsRemaining: newSpins, spinRefillStart: 0 };
@@ -329,17 +354,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         persistResourcesCoalesced(update);
       } else {
         const msInCycle = now - newRefillStart;
-        const msUntilNextSpin = SPIN_REFILL_MS - msInCycle;
+        const msUntilNextSpin = refillMs - msInCycle;
         const spinsNeeded = spinCap - newSpins;
-        const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
+        const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * refillMs;
         const update = { spinsRemaining: newSpins, spinRefillStart: newRefillStart };
         set({ ...update, msUntilNextSpin, msUntilFull });
         persistResourcesCoalesced(update);
       }
     } else {
-      const msUntilNextSpin = SPIN_REFILL_MS - (elapsed % SPIN_REFILL_MS);
+      const msUntilNextSpin = refillMs - (elapsed % refillMs);
       const spinsNeeded = spinCap - spinsRemaining;
-      const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * SPIN_REFILL_MS;
+      const msUntilFull = msUntilNextSpin + (spinsNeeded - 1) * refillMs;
       set({ msUntilNextSpin, msUntilFull });
     }
   },
@@ -377,7 +402,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   tickGeneratorIncome() {
     const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
     if (genLevel === 0) return;
-    const income = genLevel * 20;
+    const def = anomalyService.getDefinition();
+    const foregrounded = AppState.currentState === 'active';
+    if (def?.generatorIdleDisabled && !foregrounded) return;
+    const moonMult = (def?.generatorForegroundMultiplier && foregrounded) ? def.generatorForegroundMultiplier : 1;
+    const income = Math.floor(genLevel * 20 * moonMult);
     const next = { credits: get().credits + income };
     set(next);
     persistResourcesCoalesced(next);
@@ -385,6 +414,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setRiftTier(tier) {
     set({ riftTier: tier });
+  },
+
+  resetStardustWakeCounter() {
+    set({ spinsSinceStardustWake: 0 });
   },
 
   consumeAttack() {

@@ -1,6 +1,29 @@
 import { create } from 'zustand';
-import { ActiveDrone, DroneType, DRONE_CONTRACTS } from '@/models/Drone';
+import { ActiveDrone, DroneContract, DroneType, DRONE_CONTRACTS } from '@/models/Drone';
 import { droneService, DroneEffects } from '@/services/DroneMercenaryService';
+import { anomalyService } from '@/services/AnomalyService';
+
+// Apply anomaly discount/duration mods to a contract at the point of deploy.
+// Idempotent — never mutates the static DRONE_CONTRACTS entry.
+function effectiveContract(type: DroneType): DroneContract {
+  const base = DRONE_CONTRACTS[type];
+  const def = anomalyService.getDefinition();
+  const costMult = def?.droneCostMultiplier ?? 1;
+  const durMult  = def?.droneDurationMultiplier ?? 1;
+  if (costMult === 1 && durMult === 1) return base;
+  return {
+    ...base,
+    duration: Math.max(1, Math.round(base.duration * durMult)),
+    cost: {
+      credits: Math.ceil(base.cost.credits * costMult),
+      attacks: Math.ceil(base.cost.attacks * costMult),
+      raids:   Math.ceil(base.cost.raids   * costMult),
+      shields: Math.ceil(base.cost.shields * costMult),
+    },
+  };
+}
+
+export { effectiveContract as effectiveDroneContract };
 
 interface Resources {
   credits: number;
@@ -30,13 +53,13 @@ export const useDroneStore = create<DroneState>((set, get) => ({
   activeDrones: [],
 
   deployDrone(type, resources) {
-    const contract = DRONE_CONTRACTS[type];
+    const contract = effectiveContract(type);
 
     if (!droneService.canAfford(contract, resources)) {
       return { success: false, reason: 'Insufficient resources', costPaid: {} };
     }
 
-    const result = droneService.deploy(type, get().activeDrones);
+    const result = droneService.deployFromContract(contract, get().activeDrones);
     if (!result.success || !result.drone) {
       return { success: false, reason: result.reason, costPaid: {} };
     }

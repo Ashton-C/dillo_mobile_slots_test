@@ -50,6 +50,9 @@ export interface PlayerIndexEntry {
   outpostLevel: number;
   level: number;
   updatedAt: unknown;
+  // Set by the markRandomPilot cloud function while MARKED_PILOT is the
+  // active anomaly. Unix ms when the mark expires; absent or past = not marked.
+  markedUntil?: number;
 }
 
 export interface GameEvent {

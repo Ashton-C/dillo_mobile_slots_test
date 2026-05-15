@@ -119,7 +119,7 @@ export function ModifierPanel() {
     totalCreditMult !== 1 ||
     riftTier > 0 ||
     activeDrones.length > 0 ||
-    (definition && definition.id !== 'CALM');
+    definition !== null;
 
   if (!hasAnyModifier) return null;
 
@@ -180,7 +180,7 @@ export function ModifierPanel() {
         />
       )}
 
-      {definition && definition.id !== 'CALM' && (
+      {definition && (
         <ModifierRow
           label={definition.name}
           value={msRemaining > 0 ? formatMs(msRemaining) : 'FADING'}

@@ -1,11 +1,17 @@
 import { create } from 'zustand';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { anomalyService, ActiveAnomaly, AnomalyDefinition, AnomalyId, ANOMALIES } from '@/services/AnomalyService';
 
 interface AnomalyState {
   activeAnomaly: ActiveAnomaly | null;
   definition: AnomalyDefinition | null;
   msRemaining: number;
+  // markedUntil for the local player. Server-written by markRandomPilot CF.
+  // 0 = not marked; future ms = marked until that time.
+  myMarkedUntil: number;
   subscribe: () => () => void;
+  subscribeToMyMark: (uid: string) => () => void;
   tick: () => void;
   debugForceAnomaly: (id: AnomalyId) => void;
 }
@@ -16,6 +22,7 @@ export const useAnomalyStore = create<AnomalyState>((set, get) => ({
   activeAnomaly: null,
   definition: null,
   msRemaining: 0,
+  myMarkedUntil: 0,
 
   subscribe() {
     const unsub = anomalyService.subscribe((anomaly, def) => {
@@ -26,6 +33,15 @@ export const useAnomalyStore = create<AnomalyState>((set, get) => ({
       });
     });
     return unsub;
+  },
+
+  subscribeToMyMark(uid) {
+    const ref = doc(db, 'playerIndex', uid);
+    return onSnapshot(ref, (snap) => {
+      const data = snap.data();
+      const markedUntil = (data?.markedUntil as number | undefined) ?? 0;
+      set({ myMarkedUntil: markedUntil });
+    });
   },
 
   tick() {

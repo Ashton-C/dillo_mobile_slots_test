@@ -22,8 +22,11 @@ export class DroneMercenaryService {
   // --- Deployment ---
 
   deploy(type: DroneType, activeDrones: ActiveDrone[]): DeployResult {
-    const contract = DRONE_CONTRACTS[type];
-    const currentCount = activeDrones.filter((d) => d.type === type).length;
+    return this.deployFromContract(DRONE_CONTRACTS[type], activeDrones);
+  }
+
+  deployFromContract(contract: DroneContract, activeDrones: ActiveDrone[]): DeployResult {
+    const currentCount = activeDrones.filter((d) => d.type === contract.type).length;
 
     if (currentCount >= contract.maxDeployed) {
       return { success: false, reason: `Max ${contract.maxDeployed} ${contract.label} deployed` };
@@ -31,7 +34,7 @@ export class DroneMercenaryService {
 
     const drone: ActiveDrone = {
       id: generateId(),
-      type,
+      type: contract.type,
       deployedAt: Date.now(),
       spinsRemaining: contract.trigger === 'ON_SPIN' ? contract.duration : null,
     };
