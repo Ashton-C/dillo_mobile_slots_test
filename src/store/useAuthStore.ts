@@ -203,9 +203,11 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     xp: 0,
     level: 1,
     habitatId: null,
-    // Card system — Phase A seed fields. Apply logic lands in Phase B/C.
+    // Card system — Phase B seed fields. activeReelCardSpinsLeft tracks the
+    // remaining spins for multi-spin reel effects (Hot Streak, Tier Lock).
     cards: {},
     activeReelCard: null,
+    activeReelCardSpinsLeft: 0,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

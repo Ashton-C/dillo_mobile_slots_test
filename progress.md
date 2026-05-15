@@ -128,9 +128,17 @@ synergies); **Raid cards** are picked pre-raid and applied server-side inside
   - `users/{uid}.cards: Record<cardId, count>` and `activeReelCard` fields
     plumbed through `UserResourceSnapshot`, `useGameStore.Resources`,
     `ensureUserDoc`, and the CF `UserDoc` / `CombatRequest` types
-- [ ] **Phase B — slot integration**: card drop roll inside `useGameStore.spin`,
-      `CardDropModal`, `activateReelCard` callable CF, effect application
-      inside SlotsEngine
+- [x] **Phase B — slot integration**: card drop roll inside `useGameStore.spin`
+      with auto-shred to CR over inventory cap; `CardDropModal` (add/shred
+      choice); `ReelCardChip` armed-card chip + picker drawer on the spin
+      tab; `CardService.ts` houses drop weighting and `computePostSpinModifiers`;
+      SlotsEngine gains `setActiveCardWeightEffect` for weight / Rift-tier
+      effects; 15 single-spin reel-effect kinds wired (multiplier, jackpot
+      mult, line mult, extra lines, anomaly amplify/gated, rift free / gate /
+      boost, quartermaster, guarantee drop, stardust on big win, tier echo,
+      weight shifts, empty reduction). Drop filter restricts the catalog to
+      implemented effect kinds (raid cards always drop; their apply path is
+      Phase C). `activeReelCardSpinsLeft` field added for multi-spin cards.
 - [ ] **Phase C — raid integration + vengeance**: `PreRaidCardModal`,
       `combatRequests.cardId` apply in `resolveCombat`, 15-min vengeance
       window (still costs 1 token, bypasses cooldown), `vengeanceTargets`

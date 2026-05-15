@@ -158,18 +158,42 @@ export const ACTIVE_LINES_5X5: WinLineId[] = [
   'D5_DOWN', 'D5_UP', 'V_DOWN', 'V_UP', 'W_SHAPE',
 ];
 
+// --- Card effect hook ---
+//
+// `setActiveCardEffect` configures a single reel-card effect that mutates the
+// next draw cycle. Effects that touch *draw weights* or the *effective Rift
+// tier* live here; effects that touch *post-evaluate payouts* are applied by
+// useGameStore.spin so the resulting credit number can flow through the
+// existing drone/anomaly/prestige multipliers cleanly. The engine clears
+// per-cell effects after one spin; multi-spin lifecycle is the caller's job.
+
+type CardWeightEffect =
+  | { kind: 'weight_multiplier'; symbols: SlotSymbol[]; multiplier: number }
+  | { kind: 'empty_reduction';   ratio: number }
+  | { kind: 'rift_tier_boost';   delta: 1 | 2 };
+
 // --- Core Engine ---
 
 export class SlotsEngine {
   private riftTier: TemporalRiftTier = 0;
   private signalBoost = false;
   private forcedOutcome: Partial<SpinResult> | null = null;
+  private activeCardWeightEffect: CardWeightEffect | null = null;
 
   setRiftTier(tier: TemporalRiftTier): void { this.riftTier = tier; }
   getRiftTier(): TemporalRiftTier { return this.riftTier; }
   setSignalBoost(active: boolean): void { this.signalBoost = active; }
   setForcedOutcome(override: Partial<SpinResult> | null): void { this.forcedOutcome = override; }
   hasForcedOutcome(): boolean { return this.forcedOutcome !== null; }
+  setActiveCardWeightEffect(effect: CardWeightEffect | null): void { this.activeCardWeightEffect = effect; }
+
+  private effectiveRiftTier(): TemporalRiftTier {
+    const e = this.activeCardWeightEffect;
+    if (e?.kind === 'rift_tier_boost') {
+      return Math.min(3, this.riftTier + e.delta) as TemporalRiftTier;
+    }
+    return this.riftTier;
+  }
 
   spin(): SpinResult {
     if (this.forcedOutcome) {
@@ -348,13 +372,23 @@ export class SlotsEngine {
   }
 
   private buildEffectiveWeights(): Record<SlotSymbol, number> {
-    const mods = RIFT_MODIFIERS[this.riftTier];
+    const mods = RIFT_MODIFIERS[this.effectiveRiftTier()];
     const result = { ...BASE_WEIGHTS };
 
     if (this.signalBoost) {
       result.CREDIT_SMALL  = Math.round(result.CREDIT_SMALL  * 1.5);
       result.CREDIT_MEDIUM = Math.round(result.CREDIT_MEDIUM * 1.5);
       result.CREDIT_LARGE  = Math.round(result.CREDIT_LARGE  * 1.5);
+    }
+
+    const eff = this.activeCardWeightEffect;
+    if (eff?.kind === 'weight_multiplier') {
+      for (const sym of eff.symbols) {
+        result[sym] = Math.max(1, Math.round(result[sym] * eff.multiplier));
+      }
+    } else if (eff?.kind === 'empty_reduction') {
+      // ratio of 0 = guaranteed non-EMPTY (weight clamped to 0, never picked).
+      result.EMPTY = Math.max(0, Math.round(result.EMPTY * eff.ratio));
     }
 
     for (const [sym, delta] of Object.entries(mods) as [SlotSymbol, number][]) {

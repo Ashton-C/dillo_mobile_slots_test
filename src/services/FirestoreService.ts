@@ -43,9 +43,12 @@ export interface UserResourceSnapshot {
   dailyClaimStreak: number;
   // Card system — Phase A data plumbing. `cards` is a sparse map of card id
   // → count; `activeReelCard` is the id queued for the next spin (cleared by
-  // the server on consumption in Phase B).
+  // the server on consumption in Phase B). `activeReelCardSpinsLeft` is the
+  // remaining spin count for multi-spin effects (Hot Streak, Tier Lock, etc.);
+  // 0 or missing means consume on the next spin.
   cards: Record<string, number>;
   activeReelCard: string | null;
+  activeReelCardSpinsLeft: number;
   // IAP-granted cosmetic IDs from the RevenueCat webhook. Server-authoritative
   // ownership; the client merges these into useCosmeticsStore on subscribe.
   ownedCosmetics?: string[];
@@ -106,8 +109,9 @@ export function subscribeToUser(
         level:             d.level             ?? 1,
         lastDailyClaimAt:  d.lastDailyClaimAt  ?? 0,
         dailyClaimStreak:  d.dailyClaimStreak  ?? 0,
-        cards:             (d.cards && typeof d.cards === 'object') ? (d.cards as Record<string, number>) : {},
-        activeReelCard:    typeof d.activeReelCard === 'string' ? d.activeReelCard : null,
+        cards:                     (d.cards && typeof d.cards === 'object') ? (d.cards as Record<string, number>) : {},
+        activeReelCard:            typeof d.activeReelCard === 'string' ? d.activeReelCard : null,
+        activeReelCardSpinsLeft:   typeof d.activeReelCardSpinsLeft === 'number' ? d.activeReelCardSpinsLeft : 0,
         ownedCosmetics:    Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
       });
     },

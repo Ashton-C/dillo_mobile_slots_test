@@ -30,11 +30,12 @@ interface UserDoc {
   activeDrones?: { type?: string }[];
   expoPushToken?: string;
   lastAttackedAt?: number;
-  // Card system inventory + active reel queue. Phase A reserves the shape;
-  // Phase B writes activeReelCard from the activateReelCard CF, Phase C reads
+  // Card system inventory + active reel queue. Phase B writes activeReelCard
+  // + activeReelCardSpinsLeft from the activateReelCard CF; Phase C reads
   // cards[cardId] inside resolveCombat to validate raid-card consumption.
   cards?: Record<string, number>;
   activeReelCard?: string | null;
+  activeReelCardSpinsLeft?: number;
 }
 
 interface HabitatDoc {
