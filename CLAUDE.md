@@ -114,6 +114,7 @@ All Firestore reads and writes must go through `src/services/FirestoreService.ts
 | `src/services/NotificationService.ts` | Expo push registration + token persistence (lazy-required for Expo Go safety) |
 | `src/services/DailyRewardService.ts` | Daily-streak claim wrapper + reward preview |
 | `src/models/Drone.ts` | `DRONE_CONTRACTS` — drone definitions, costs, durations, effects |
+| `src/models/Card.ts` | `CARD_CATALOG` — 60-entry reel + raid card catalog with discriminated-union effect descriptors |
 | `src/models/User.ts` | Player profile + resource schema (Zod) |
 | `src/constants/theme.ts` | Design tokens — Colors, Typography, Spacing, BorderRadius |
 | `app/_layout.tsx` | Root layout — auth init, global intervals (anomaly, habitat tick, spin refill, generator income), EventBanner, onboarding |

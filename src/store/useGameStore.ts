@@ -66,6 +66,10 @@ interface Resources {
   // Daily login streak — written by the claimDailyReward Cloud Function.
   lastDailyClaimAt: number;
   dailyClaimStreak: number;
+  // Card system — Phase A data only. `cards` is the sparse inventory; the
+  // reel/raid apply logic lands in Phase B/C respectively.
+  cards: Record<string, number>;
+  activeReelCard: string | null;
 }
 
 interface SpinState {
@@ -126,6 +130,8 @@ const INITIAL_RESOURCES: Resources = {
   totalRaidsSuffered: 0,
   lastDailyClaimAt: 0,
   dailyClaimStreak: 0,
+  cards: {},
+  activeReelCard: null,
 };
 
 const XP_PER_SPIN = 5;

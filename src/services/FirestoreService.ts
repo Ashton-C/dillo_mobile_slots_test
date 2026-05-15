@@ -41,6 +41,11 @@ export interface UserResourceSnapshot {
   // Daily streak — written by the claimDailyReward Cloud Function.
   lastDailyClaimAt: number;
   dailyClaimStreak: number;
+  // Card system — Phase A data plumbing. `cards` is a sparse map of card id
+  // → count; `activeReelCard` is the id queued for the next spin (cleared by
+  // the server on consumption in Phase B).
+  cards: Record<string, number>;
+  activeReelCard: string | null;
   // IAP-granted cosmetic IDs from the RevenueCat webhook. Server-authoritative
   // ownership; the client merges these into useCosmeticsStore on subscribe.
   ownedCosmetics?: string[];
@@ -101,6 +106,8 @@ export function subscribeToUser(
         level:             d.level             ?? 1,
         lastDailyClaimAt:  d.lastDailyClaimAt  ?? 0,
         dailyClaimStreak:  d.dailyClaimStreak  ?? 0,
+        cards:             (d.cards && typeof d.cards === 'object') ? (d.cards as Record<string, number>) : {},
+        activeReelCard:    typeof d.activeReelCard === 'string' ? d.activeReelCard : null,
         ownedCosmetics:    Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
       });
     },

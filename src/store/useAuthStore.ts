@@ -203,6 +203,9 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     xp: 0,
     level: 1,
     habitatId: null,
+    // Card system — Phase A seed fields. Apply logic lands in Phase B/C.
+    cards: {},
+    activeReelCard: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

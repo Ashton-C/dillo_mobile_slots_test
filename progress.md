@@ -111,6 +111,35 @@ Hard currency, IAP, and rewarded ads. Built the social loop fully before turning
 - [x] **Personalized-ads gating** — `AdsService` now honors the ATT permission state instead of always forcing `requestNonPersonalizedAdsOnly: true`
 - [ ] App Store / Play Store submission (see `DEPLOY_CHECKLIST.md`)
 
+### Card system — in progress (Phase A complete)
+
+Roguelike-style consumable cards that drop from slot wins. Two categories:
+**Reel cards** mutate the next spin (weight shifts, payout multipliers, Rift
+synergies); **Raid cards** are picked pre-raid and applied server-side inside
+`resolveCombat`. Each baseId has a MINOR (common) and MAJOR (rare) tier.
+
+- [x] **Phase A — data model + catalog** (`src/models/Card.ts`)
+  - 60 distinct cards (30 baseIds × 2 tiers) covering raid power/loot/risk
+    play and reel weight/multiplier/Rift/anomaly synergies
+  - Discriminated-union `CardEffect` so the Phase B/C apply sites get
+    exhaustive-switch safety from the compiler
+  - Drop tuning constants (1.5% drop rate, 75/25 minor-major split,
+    60/40 reel-raid split, 30-card inventory cap, shred values)
+  - `users/{uid}.cards: Record<cardId, count>` and `activeReelCard` fields
+    plumbed through `UserResourceSnapshot`, `useGameStore.Resources`,
+    `ensureUserDoc`, and the CF `UserDoc` / `CombatRequest` types
+- [ ] **Phase B — slot integration**: card drop roll inside `useGameStore.spin`,
+      `CardDropModal`, `activateReelCard` callable CF, effect application
+      inside SlotsEngine
+- [ ] **Phase C — raid integration + vengeance**: `PreRaidCardModal`,
+      `combatRequests.cardId` apply in `resolveCombat`, 15-min vengeance
+      window (still costs 1 token, bypasses cooldown), `vengeanceTargets`
+      map on user doc
+- [ ] **Phase D — inventory tab + tutorial**: `InventoryScreen` under pilot
+      tab, first-drop tutorial diagram, shred-for-CR flow
+- [ ] **Phase E — telemetry / balance pass**: log activations + outcomes,
+      tune drop rates with real data
+
 ### Also shipped in Phase 5 session
 - [x] **Multiline slot machine** — 3×3 / 5×5 reel windows; 1/3/5/10 paylines gated by Outpost Level (`getGridConfig`); `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay
 - [x] **Roulette + Blackjack PvP mini-games** — replaced the 3-reel CombatMiniGame for raid resolution; thematically distinct outcomes for BREACH (roulette wheel) vs EXTRACT (blackjack hand)

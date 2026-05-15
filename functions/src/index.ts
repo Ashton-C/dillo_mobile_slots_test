@@ -15,6 +15,10 @@ interface CombatRequest {
   attackerPower: number;
   status: 'PENDING' | 'RESOLVED';
   createdAt: admin.firestore.Timestamp;
+  // Card system — Phase A reserves the field. The Phase C apply path will
+  // read `cardId`, validate it lives in the attacker's `cards` map, decrement
+  // the inventory, and run the card's effect descriptors inside resolveCombat.
+  cardId?: string;
 }
 
 interface UserDoc {
@@ -26,6 +30,11 @@ interface UserDoc {
   activeDrones?: { type?: string }[];
   expoPushToken?: string;
   lastAttackedAt?: number;
+  // Card system inventory + active reel queue. Phase A reserves the shape;
+  // Phase B writes activeReelCard from the activateReelCard CF, Phase C reads
+  // cards[cardId] inside resolveCombat to validate raid-card consumption.
+  cards?: Record<string, number>;
+  activeReelCard?: string | null;
 }
 
 interface HabitatDoc {
