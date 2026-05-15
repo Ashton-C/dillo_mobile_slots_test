@@ -51,6 +51,10 @@ interface UserDoc {
   // writes an entry on every successful incoming raid against this user.
   recentAttackers?: Record<string, number>;
   spinsRemaining?: number;
+  // Combat-token pools mirrored from the client model. Declared here so the
+  // CF can compose dot-path / refund-field updates without a type-cast.
+  intrusions?: number;
+  extractions?: number;
 }
 
 interface HabitatDoc {
@@ -59,6 +63,8 @@ interface HabitatDoc {
   // TURRET daily charge tracking
   turretCharges?: number;
   turretResetAt?: number; // unix ms
+  // hostile_takeover card: turret offline until this timestamp.
+  turretDisabledUntil?: number;
   ownerUid?: string;
   activeBuildJob?: { type: string; targetLevel: number; completesAt: number; isOutpost?: boolean } | null;
 }
@@ -208,8 +214,6 @@ const RAID_CARD_EFFECTS: Record<string, RaidEffect> = {
   sector_specialist_major: { kind: 'raid_sector_specialist', powerBonus: 30, lootBonusPct: 0.20 },
   vengeance_cast_minor:    { kind: 'raid_vengeance_bonus', powerBonus: 20, windowMs: 24 * 3_600_000 },
   vengeance_cast_major:    { kind: 'raid_vengeance_bonus', powerBonus: 40, windowMs: 24 * 3_600_000 },
-  wager_minor:             { kind: 'raid_wager', stake: 500,  payoutMultiplier: 1.5 },
-  wager_major:             { kind: 'raid_wager', stake: 2000, payoutMultiplier: 2 },
 };
 
 // adrenal_spike majors stack a +power bonus on top of the loss penalty —
