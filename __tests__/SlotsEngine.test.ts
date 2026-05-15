@@ -336,6 +336,79 @@ describe('SlotsEngine forced outcome', () => {
   });
 });
 
+// --- Anomaly hooks: RIFT_TIDES, SCRAMBLE_FIELD, MIRROR_REELS ---
+
+describe('SlotsEngine anomaly hooks', () => {
+  const SAMPLES = 5_000;
+
+  test('riftTierBoost lifts effective tier by N (tier 1 + boost 1 ≈ tier 2 weights)', () => {
+    const tier2 = new SlotsEngine();
+    tier2.setRiftTier(2);
+    const boosted = new SlotsEngine();
+    boosted.setRiftTier(1);
+    boosted.setAnomalyHooks({ riftTierBoost: 1, scrambleWeights: false, mirrorReels: false });
+
+    let baseMed = 0, boostMed = 0;
+    for (let i = 0; i < SAMPLES; i++) {
+      if (tier2.spin().reels[0]   === 'CREDIT_MEDIUM') baseMed++;
+      if (boosted.spin().reels[0] === 'CREDIT_MEDIUM') boostMed++;
+    }
+    // Same distribution → within 20% of each other.
+    const ratio = boostMed / Math.max(1, baseMed);
+    expect(ratio).toBeGreaterThan(0.8);
+    expect(ratio).toBeLessThan(1.25);
+  });
+
+  test('riftTierBoost clamps at tier 3 (no out-of-bounds)', () => {
+    const engine = new SlotsEngine();
+    engine.setRiftTier(3);
+    engine.setAnomalyHooks({ riftTierBoost: 5, scrambleWeights: false, mirrorReels: false });
+    expect(() => { for (let i = 0; i < 100; i++) engine.spin(); }).not.toThrow();
+  });
+
+  test('scrambleWeights ignores rift modifier — tier 3 + scramble distribution ≠ tier 3 alone', () => {
+    const SYMBOLS: SlotSymbol[] = ['CREDIT_LARGE', 'EMPTY'];
+    const tier3 = new SlotsEngine();
+    tier3.setRiftTier(3);
+    const scrambled = new SlotsEngine();
+    scrambled.setRiftTier(3);
+    scrambled.setAnomalyHooks({ scrambleWeights: true, riftTierBoost: 0, mirrorReels: false });
+
+    function count(engine: SlotsEngine, sym: SlotSymbol): number {
+      let n = 0;
+      for (let i = 0; i < SAMPLES; i++) if (engine.spin().reels[0] === sym) n++;
+      return n;
+    }
+    // Tier 3 heavily biases toward CREDIT_LARGE; scrambled should be much closer
+    // to baseline (no consistent direction). Strict assertion: scramble shows
+    // less CREDIT_LARGE bias than tier 3.
+    expect(count(scrambled, SYMBOLS[0])).toBeLessThan(count(tier3, SYMBOLS[0]));
+  });
+
+  test('mirrorReels awards bonus credits when row 0 and row 4 match on a column', () => {
+    const engine = new SlotsEngine();
+    engine.setAnomalyHooks({ mirrorReels: true, riftTierBoost: 0, scrambleWeights: false });
+    // Run a batch and confirm at least some 5x5 spins produce extra creditsWon
+    // beyond what active lines alone yield. Mathematical near-certainty in 200 spins.
+    let mirrorSawBonus = 0;
+    for (let i = 0; i < 200; i++) {
+      const r = engine.spinGrid(5, 5, ['HR0', 'HR1', 'HR2', 'HR3', 'HR4']);
+      const lineSum = r.winLines.reduce((s, l) => s + l.result.creditsWon, 0);
+      if (r.creditsWon > lineSum) { mirrorSawBonus++; break; }
+    }
+    expect(mirrorSawBonus).toBeGreaterThan(0);
+  });
+
+  test('mirrorReels off → totals equal sum of active line payouts (no bonus)', () => {
+    const engine = new SlotsEngine();
+    for (let i = 0; i < 50; i++) {
+      const r = engine.spinGrid(5, 5, ['HR0', 'HR1', 'HR2', 'HR3', 'HR4']);
+      const lineSum = r.winLines.reduce((s, l) => s + l.result.creditsWon, 0);
+      expect(r.creditsWon).toBe(lineSum);
+    }
+  });
+});
+
 // --- RIFT_COSTS ---
 
 describe('RIFT_COSTS', () => {

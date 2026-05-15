@@ -33,6 +33,7 @@ import { OnboardingCarousel, ONBOARDING_KEY } from '@/components/OnboardingCarou
 import { soundService } from '@/services/SoundService';
 import { adsService } from '@/services/AdsService';
 import { iapService } from '@/services/IapService';
+import { slotsEngine } from '@/services/SlotsEngine';
 
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
@@ -100,6 +101,20 @@ export default function RootLayout() {
     const unsub = subscribeToEvents(user.uid);
     return unsub;
   }, [user?.uid]);
+
+  // Anomaly → engine hook sync. Pushes slot-engine-relevant flags into the
+  // singleton on every snapshot so spin() reads the current effective state.
+  useEffect(() => {
+    const unsub = useAnomalyStore.subscribe((state) => {
+      const def = state.definition;
+      slotsEngine.setAnomalyHooks({
+        riftTierBoost:   def?.riftTierBoost ?? 0,
+        scrambleWeights: def?.scrambleWeightsEnabled ?? false,
+        mirrorReels:     def?.mirrorReelsEnabled ?? false,
+      });
+    });
+    return unsub;
+  }, []);
 
   // Configure RevenueCat with the Firebase UID once we have it. Requesting
   // App Tracking Transparency on iOS is best done shortly after launch and

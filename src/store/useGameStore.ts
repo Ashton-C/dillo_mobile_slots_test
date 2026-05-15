@@ -189,13 +189,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (spinsRemaining <= 0 || get().isSpinning) return null;
 
-    const riftCost = RIFT_COSTS[riftTier];
+    const anomalyDef = anomalyService.getDefinition();
+    const riftDisabled = anomalyDef?.riftDisabled ?? false;
+    const effectiveTier: TemporalRiftTier = riftDisabled ? 0 : riftTier;
+    const riftCost = riftDisabled ? 0 : anomalyService.applyToRiftCost(RIFT_COSTS[riftTier]);
     if (riftCost > credits) return null;
 
     const outpostLevel = useHabitatStore.getState().outpostLevel;
     const grid = getGridConfig(outpostLevel);
 
-    slotsEngine.setRiftTier(riftTier);
+    slotsEngine.setRiftTier(effectiveTier);
     if (signalBoostActive) slotsEngine.setSignalBoost(true);
     const multi = grid.size === '5x5'
       ? slotsEngine.spinGrid(5, 5, ACTIVE_LINES_5X5)

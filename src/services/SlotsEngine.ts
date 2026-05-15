@@ -160,16 +160,40 @@ export const ACTIVE_LINES_5X5: WinLineId[] = [
 
 // --- Core Engine ---
 
+// Anomaly hooks read by the engine. Set externally each time the anomaly
+// snapshot changes so the engine stays a pure data class (no firestore import).
+export interface SlotsAnomalyHooks {
+  riftTierBoost: number;
+  scrambleWeights: boolean;
+  mirrorReels: boolean;
+}
+
+const DEFAULT_HOOKS: SlotsAnomalyHooks = {
+  riftTierBoost: 0,
+  scrambleWeights: false,
+  mirrorReels: false,
+};
+
 export class SlotsEngine {
   private riftTier: TemporalRiftTier = 0;
   private signalBoost = false;
   private forcedOutcome: Partial<SpinResult> | null = null;
+  private anomalyHooks: SlotsAnomalyHooks = { ...DEFAULT_HOOKS };
 
   setRiftTier(tier: TemporalRiftTier): void { this.riftTier = tier; }
   getRiftTier(): TemporalRiftTier { return this.riftTier; }
   setSignalBoost(active: boolean): void { this.signalBoost = active; }
   setForcedOutcome(override: Partial<SpinResult> | null): void { this.forcedOutcome = override; }
   hasForcedOutcome(): boolean { return this.forcedOutcome !== null; }
+
+  setAnomalyHooks(hooks: Partial<SlotsAnomalyHooks>): void {
+    this.anomalyHooks = { ...DEFAULT_HOOKS, ...hooks };
+  }
+  getAnomalyHooks(): SlotsAnomalyHooks { return this.anomalyHooks; }
+
+  private effectiveTier(): TemporalRiftTier {
+    return Math.min(3, this.riftTier + this.anomalyHooks.riftTierBoost) as TemporalRiftTier;
+  }
 
   spin(): SpinResult {
     if (this.forcedOutcome) {
@@ -235,6 +259,25 @@ export class SlotsEngine {
         intrusionsWon  += lineResult.intrusionsWon;
         extractionsWon += lineResult.extractionsWon;
         if (lineResult.isJackpot) isJackpot = true;
+      }
+    }
+
+    if (this.anomalyHooks.mirrorReels && reelWindow.length === 5) {
+      const cols = reelWindow[0]?.length ?? 0;
+      const pairs: [number, number][] = [[0, 4], [1, 3]];
+      for (const [r1, r2] of pairs) {
+        for (let c = 0; c < cols; c++) {
+          const sym = reelWindow[r1][c];
+          if (sym !== reelWindow[r2][c]) continue;
+          const payout = PAIR_PAYOUTS[sym];
+          if (!payout) continue;
+          creditsWon     += payout.creditsWon     ?? 0;
+          attacksWon     += payout.attacksWon     ?? 0;
+          raidsWon       += payout.raidsWon       ?? 0;
+          shieldsWon     += payout.shieldsWon     ?? 0;
+          intrusionsWon  += payout.intrusionsWon  ?? 0;
+          extractionsWon += payout.extractionsWon ?? 0;
+        }
       }
     }
 
@@ -342,7 +385,15 @@ export class SlotsEngine {
   }
 
   private buildEffectiveWeights(): Record<SlotSymbol, number> {
-    const mods = RIFT_MODIFIERS[this.riftTier];
+    if (this.anomalyHooks.scrambleWeights) {
+      const scrambled = { ...BASE_WEIGHTS };
+      for (const sym of Object.keys(scrambled) as SlotSymbol[]) {
+        scrambled[sym] = Math.max(1, scrambled[sym] + Math.floor((Math.random() - 0.5) * 16));
+      }
+      return scrambled;
+    }
+
+    const mods = RIFT_MODIFIERS[this.effectiveTier()];
     const result = { ...BASE_WEIGHTS };
 
     if (this.signalBoost) {
