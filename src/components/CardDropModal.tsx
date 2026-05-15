@@ -1,13 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Modal, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useGameStore } from '@/store/useGameStore';
 import { SHRED_VALUE_CR } from '@/models/Card';
 import type { CardDefinition, CardRarity } from '@/models/Card';
 import type { CardDrop } from '@/services/CardService';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 import { hapticBuildStart } from '@/constants/haptics';
+
+const TUTORIAL_KEY = '@card_tutorial_seen';
 
 const RARITY_COLOR: Record<CardRarity, string> = {
   COMMON:   Colors.textMuted,
@@ -32,16 +35,28 @@ export function CardDropModal({ drop, onClose }: Props) {
   const cards = useGameStore((s) => s.cards);
   const scale = useSharedValue(0.85);
   const opacity = useSharedValue(0);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
     if (drop) {
       scale.value = withSpring(1, { damping: 14, stiffness: 180 });
       opacity.value = withTiming(1, { duration: 220 });
+      // First-drop tutorial: pop the overlay once on the player's first
+      // card win, gated by AsyncStorage so subsequent drops are clean.
+      AsyncStorage.getItem(TUTORIAL_KEY).then((seen) => {
+        if (!seen) setShowTutorial(true);
+      });
     } else {
       scale.value = 0.85;
       opacity.value = 0;
+      setShowTutorial(false);
     }
   }, [drop]);
+
+  function dismissTutorial() {
+    AsyncStorage.setItem(TUTORIAL_KEY, '1').catch(() => {});
+    setShowTutorial(false);
+  }
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -106,6 +121,34 @@ export function CardDropModal({ drop, onClose }: Props) {
             </LinearGradient>
           </Pressable>
         </Animated.View>
+
+        {showTutorial && (
+          <Pressable onPress={dismissTutorial} style={styles.tutorialBackdrop}>
+            <View style={styles.tutorialCard}>
+              <Text style={styles.tutorialEyebrow}>NEW: CARD SYSTEM</Text>
+              <Text style={styles.tutorialTitle}>You just won your first card.</Text>
+              <View style={styles.tutorialBullet}>
+                <Text style={styles.tutorialBulletIcon}>◇</Text>
+                <Text style={styles.tutorialBulletText}>
+                  <Text style={styles.tutorialBold}>Reel cards</Text> arm before a spin and change the next reel — weight bumps, payout multipliers, Rift synergies.
+                </Text>
+              </View>
+              <View style={styles.tutorialBullet}>
+                <Text style={styles.tutorialBulletIcon}>⚔</Text>
+                <Text style={styles.tutorialBulletText}>
+                  <Text style={styles.tutorialBold}>Raid cards</Text> are picked before launching a raid. Power, loot, and tactical effects against your target.
+                </Text>
+              </View>
+              <View style={styles.tutorialBullet}>
+                <Text style={styles.tutorialBulletIcon}>○</Text>
+                <Text style={styles.tutorialBulletText}>
+                  <Text style={styles.tutorialBold}>Shred</Text> any card for credits. View everything in your inventory on the Pilot tab.
+                </Text>
+              </View>
+              <Text style={styles.tutorialFootnote}>Tap anywhere to continue.</Text>
+            </View>
+          </Pressable>
+        )}
       </Pressable>
     </Modal>
   );
@@ -148,4 +191,29 @@ const styles = StyleSheet.create({
   },
   autoLabel: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 2 },
   autoValue: { fontSize: Typography.sizes.md, fontWeight: Typography.weights.bold, color: Colors.credits },
+
+  tutorialBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  tutorialCard: {
+    width: '100%',
+    maxWidth: 360,
+    padding: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    gap: Spacing.md,
+  },
+  tutorialEyebrow: { fontSize: Typography.sizes.xs, color: Colors.accent, letterSpacing: 3, fontWeight: Typography.weights.bold },
+  tutorialTitle: { fontSize: Typography.sizes.lg, fontWeight: Typography.weights.bold, color: Colors.text, letterSpacing: 1 },
+  tutorialBullet: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' },
+  tutorialBulletIcon: { fontSize: 18, color: Colors.accent, width: 22, textAlign: 'center', marginTop: 1 },
+  tutorialBulletText: { flex: 1, fontSize: Typography.sizes.sm, color: Colors.textSecondary, lineHeight: 20 },
+  tutorialBold: { color: Colors.text, fontWeight: Typography.weights.bold },
+  tutorialFootnote: { fontSize: Typography.sizes.xs, color: Colors.textMuted, letterSpacing: 2, textAlign: 'center', marginTop: 4 },
 });

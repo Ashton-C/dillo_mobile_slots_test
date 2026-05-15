@@ -154,10 +154,19 @@ synergies); **Raid cards** are picked pre-raid and applied server-side inside
       smoke-screened raids. Drop filter still excludes the 3 mini-game
       effects (mini_game_rerolls, reroll_mini_game, remove_wheel_slot)
       pending Phase E animation work.
-- [ ] **Phase D — inventory tab + tutorial**: `InventoryScreen` under pilot
-      tab, first-drop tutorial diagram, shred-for-CR flow
-- [ ] **Phase E — telemetry / balance pass**: log activations + outcomes,
-      tune drop rates with real data
+- [x] **Phase D — inventory + tutorial + UI hints**: new `/inventory`
+      drill-down route (entry button on the Pilot tab) showing all owned
+      cards with filter chips, rarity dots, ARM/UNARM for reel cards,
+      shred-for-CR action, "ARMED" banner for the currently-queued reel
+      card. First-drop tutorial overlay layered on the `CardDropModal`
+      (one-shot, AsyncStorage-gated via `@card_tutorial_seen`) explaining
+      reel vs raid cards, shred, and inventory. SectorMap target cards
+      now surface a `⚡ VENGEANCE` badge when the player has an
+      unexpired vengeance window against that target.
+- [ ] **Phase E — animation pass + telemetry**: roulette/blackjack
+      changes for the 3 parked card effects (mini_game_rerolls,
+      reroll_mini_game, remove_wheel_slot); log card activations +
+      outcomes; tune drop rates with real data
 
 ### Also shipped in Phase 5 session
 - [x] **Multiline slot machine** — 3×3 / 5×5 reel windows; 1/3/5/10 paylines gated by Outpost Level (`getGridConfig`); `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay

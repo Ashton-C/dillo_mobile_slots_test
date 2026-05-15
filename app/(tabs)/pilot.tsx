@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -49,6 +49,10 @@ const CUSTOMIZE_CATEGORIES: { category: CosmeticCategory; label: string }[] = [
 function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
+  const router = useRouter();
+  const cardCount = useGameStore((s) =>
+    Object.values(s.cards ?? {}).reduce((n, c) => n + c, 0),
+  );
   const { displayName, avatarColor, avatarAccessory, outpostColor, setDisplayName, setOutpostColor } = useAuthStore();
   const activeNameplate = useCosmeticsStore((s) => s.active.NAMEPLATE);
   const activeEmblem    = useCosmeticsStore((s) => s.active.EMBLEM);
@@ -172,6 +176,25 @@ export default function PilotScreen() {
             <StatCard label="EXTRACTIONS"   value={totalExtractionsAttempted.toLocaleString()} color={Colors.accent} />
             <StatCard label="RAIDS TAKEN"   value={totalRaidsSuffered.toLocaleString()}        color={Colors.shield} />
           </View>
+        </View>
+
+        {/* Card inventory entry */}
+        <View style={styles.section}>
+          <Pressable
+            onPress={() => router.push('/inventory')}
+            style={styles.inventoryBtn}
+          >
+            <View style={styles.inventoryLeft}>
+              <Text style={styles.inventoryIcon}>◇</Text>
+              <View>
+                <Text style={styles.inventoryLabel}>CARD INVENTORY</Text>
+                <Text style={styles.inventoryHint}>
+                  {cardCount === 0 ? 'No cards yet — win drops from spins' : `${cardCount} card${cardCount === 1 ? '' : 's'} in stash`}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.inventoryArrow}>›</Text>
+          </Pressable>
         </View>
 
         {/* Combat log */}
@@ -661,4 +684,19 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     paddingVertical: 6,
   },
+  inventoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  inventoryLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  inventoryIcon: { fontSize: 22, color: Colors.accent },
+  inventoryLabel: { fontSize: Typography.sizes.sm, fontWeight: Typography.weights.bold, color: Colors.text, letterSpacing: 2 },
+  inventoryHint: { fontSize: Typography.sizes.xs, color: Colors.textMuted, marginTop: 2 },
+  inventoryArrow: { fontSize: 22, color: Colors.textMuted, fontWeight: Typography.weights.bold },
 });

@@ -51,9 +51,12 @@ interface TargetCardProps {
   extractions: number;
   onAttack: (target: PlayerIndexEntry, type: CombatType) => void;
   dimmed?: boolean;
+  // True when the player has an unexpired vengeance window against this
+  // target — shown as a "VENGEANCE" badge in the threat row.
+  vengeanceReady?: boolean;
 }
 
-function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, dimmed }: TargetCardProps) {
+function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, dimmed, vengeanceReady }: TargetCardProps) {
   const threatDiff = outpostLevel - target.outpostLevel;
   const threatColor = threatDiff >= 2 ? Colors.success : threatDiff >= 0 ? Colors.warning : Colors.danger;
   const threatLabel = threatDiff >= 2 ? 'WEAK' : threatDiff >= 0 ? 'EVEN' : 'STRONG';
@@ -82,6 +85,11 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
             <View style={[styles.threatBadge, { borderColor: threatColor }]}>
               <Text style={[styles.threatText, { color: threatColor }]}>{threatLabel}</Text>
             </View>
+            {vengeanceReady && (
+              <View style={[styles.threatBadge, { borderColor: Colors.accent, backgroundColor: Colors.accent + '22' }]}>
+                <Text style={[styles.threatText, { color: Colors.accent }]}>⚡ VENGEANCE</Text>
+              </View>
+            )}
             {dimmed && <Text style={styles.recentBadge}>RECENT</Text>}
           </View>
           <Text style={styles.targetMeta}>
@@ -149,6 +157,12 @@ export default function RadarScreen() {
     (n, [id, c]) => n + (getCardDefinition(id)?.category === 'RAID' ? c : 0),
     0,
   );
+
+  const vengeanceTargets = useGameStore((s) => s.vengeanceTargets);
+  const isVengeanceReady = (uid: string): boolean => {
+    const expiry = vengeanceTargets[uid];
+    return typeof expiry === 'number' && expiry > Date.now();
+  };
 
   async function scan() {
     if (!user) return;
@@ -340,6 +354,7 @@ export default function RadarScreen() {
                 extractions={extractions}
                 onAttack={launchAttack}
                 dimmed
+                vengeanceReady={isVengeanceReady(target.uid)}
               />
             ))}
             <View style={styles.divider} />
@@ -385,6 +400,7 @@ export default function RadarScreen() {
             intrusions={intrusions}
             extractions={extractions}
             onAttack={launchAttack}
+            vengeanceReady={isVengeanceReady(target.uid)}
           />
         ))}
 
