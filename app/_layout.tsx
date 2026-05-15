@@ -35,6 +35,8 @@ import { adsService } from '@/services/AdsService';
 import { iapService } from '@/services/IapService';
 import { slotsEngine } from '@/services/SlotsEngine';
 
+const APPLIED_ANOMALY_KEY = 'anomaly:lastAppliedOneShot';
+
 export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initialize);
   const user = useAuthStore((s) => s.user);
@@ -103,7 +105,9 @@ export default function RootLayout() {
   }, [user?.uid]);
 
   // Anomaly → engine hook sync. Pushes slot-engine-relevant flags into the
-  // singleton on every snapshot so spin() reads the current effective state.
+  // singleton on every snapshot, plus one-shot side effects (CHRONO_BLOOM
+  // jump, STARDUST_WAKE counter reset) keyed on activeAnomaly.startedAt so
+  // a re-mount or onSnapshot replay doesn't double-fire.
   useEffect(() => {
     const unsub = useAnomalyStore.subscribe((state) => {
       const def = state.definition;
@@ -111,6 +115,16 @@ export default function RootLayout() {
         riftTierBoost:   def?.riftTierBoost ?? 0,
         scrambleWeights: def?.scrambleWeightsEnabled ?? false,
         mirrorReels:     def?.mirrorReelsEnabled ?? false,
+      });
+
+      const active = state.activeAnomaly;
+      if (!active || !def) return;
+      const fingerprint = `${active.id}:${active.startedAt}`;
+      AsyncStorage.getItem(APPLIED_ANOMALY_KEY).then((prev) => {
+        if (prev === fingerprint) return;
+        AsyncStorage.setItem(APPLIED_ANOMALY_KEY, fingerprint);
+        if (def.buildJumpMs) useHabitatStore.getState().jumpActiveJob(def.buildJumpMs);
+        if (def.stardustGrantInterval) useGameStore.getState().resetStardustWakeCounter();
       });
     });
     return unsub;
