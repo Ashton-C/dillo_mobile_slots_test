@@ -60,12 +60,9 @@ function vaultReduction(vaultLevel: number): number {
   return Math.min(0.75, vaultLevel * VAULT_REDUCTION_PER_LEVEL);
 }
 
-// Anomaly raid-loot bonus: only RAID_SHADOW (+50%) and VOID_STORM (+20%)
-// touch raid math today. Read here so the bonus moves from "client UI flavor"
-// to actually-applied combat math.
+// Anomaly raid-loot bonus: only RAID_SHADOW touches raid math today.
 function anomalyRaidBonus(anomalyId: string | undefined): number {
   if (anomalyId === 'RAID_SHADOW') return 0.5;
-  if (anomalyId === 'VOID_STORM')  return 0.2;
   return 0;
 }
 
@@ -159,15 +156,22 @@ export const resolveCombat = functions.firestore
       const attacker = attackerSnap.data() as UserDoc;
       const defender = defenderSnap.data() as UserDoc;
 
+      // --- Load current anomaly once for ECLIPSE check + raid-bonus reuse ---
+      const anomalySnap = await db.doc('anomalies/current').get();
+      const anomaly = anomalySnap.exists ? anomalySnap.data() as { id?: string; endsAt?: number } : undefined;
+      const anomalyId = anomaly?.id;
+      const anomalyActive = (anomaly?.endsAt ?? 0) > Date.now();
+      const eclipseActive = anomalyActive && anomalyId === 'OUTPOST_ECLIPSE';
+
       // --- Load defender's habitat for TURRET + VAULT levels ---
       const defenderHabitat = await getHabitatForUser(defenderUid);
       const defBuildingLevels = defenderHabitat?.data.buildingLevels ?? {};
       const turretLevel = defBuildingLevels['TURRET'] ?? 0;
       const vaultLevel  = defBuildingLevels['VAULT']  ?? 0;
 
-      // --- TURRET check (auto-block) ---
+      // --- TURRET check (auto-block) — disabled during OUTPOST_ECLIPSE ---
       let blockedByTurret = false;
-      if (turretLevel > 0 && defenderHabitat) {
+      if (!eclipseActive && turretLevel > 0 && defenderHabitat) {
         blockedByTurret = await consumeTurretCharge(
           defenderHabitat.id,
           defenderHabitat.data,
@@ -212,11 +216,6 @@ export const resolveCombat = functions.firestore
         const tier = powerToTier(attackerPower);
         const { pct, floor, ceil } = LOOT_TIER[tier];
 
-        // Anomaly + drone bonuses come from server-authoritative reads.
-        const [anomalySnap] = await Promise.all([
-          db.doc('anomalies/current').get(),
-        ]);
-        const anomalyId = anomalySnap.exists ? (anomalySnap.data()?.id as string | undefined) : undefined;
         const totalRaidBonus = Math.min(
           1.0,
           anomalyRaidBonus(anomalyId) + attackerDroneRaidBonus(attacker.activeDrones),
@@ -226,7 +225,7 @@ export const resolveCombat = functions.firestore
         const baseClamped    = Math.max(floor, Math.min(ceil, baseFromWallet));
         const baseBonused    = Math.floor(baseClamped * (1 + totalRaidBonus));
 
-        const reduction   = vaultReduction(vaultLevel);
+        const reduction   = eclipseActive ? 0 : vaultReduction(vaultLevel);
         const creditsLost = Math.floor(baseBonused * (1 - reduction));
         // Closed loop: attacker receives exactly what defender lost. No minting.
         // Cap the actual transfer at the defender's wallet so we never withdraw
@@ -246,6 +245,7 @@ export const resolveCombat = functions.firestore
             fromDisplayName: attacker.displayName,
             attackerWon: true,
             creditsLost: transferred,
+            eclipseActive,
           }),
           writeEvent(attackerUid, {
             type: 'COMBAT_RESULT',
@@ -253,6 +253,7 @@ export const resolveCombat = functions.firestore
             fromDisplayName: defender.displayName,
             attackerWon: true,
             creditsGained: transferred,
+            eclipseActive,
           }),
         ]);
 
@@ -264,6 +265,7 @@ export const resolveCombat = functions.firestore
           vaultReduction: reduction,
           anomalyBonus: anomalyRaidBonus(anomalyId),
           droneBonus: attackerDroneRaidBonus(attacker.activeDrones),
+          eclipseActive,
         });
       } else {
         // Attacker lost — no credit change
