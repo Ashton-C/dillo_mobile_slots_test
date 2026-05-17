@@ -8,6 +8,19 @@ import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
 import { writeUserResources } from '@/services/FirestoreService';
 import { anomalyService } from '@/services/AnomalyService';
 import { getMaxSpins, getOutpostPrestigeMultiplier } from '@/models/Habitat';
+import { getCardDefinition, SHRED_VALUE_CR } from '@/models/Card';
+import {
+  computePostSpinModifiers,
+  defaultPostSpinModifiers,
+  getActiveReelEffect,
+  pickEngineLayoutEffect,
+  pickEngineWeightEffect,
+  rollCardDrop,
+  totalCardCount,
+  cardSpinDuration,
+} from '@/services/CardService';
+import type { CardDrop } from '@/services/CardService';
+import { logCardEvent } from '@/services/CardTelemetry';
 import { auth } from '@/lib/firebase';
 
 export interface SpinHistoryEntry {
@@ -66,6 +79,23 @@ interface Resources {
   // Daily login streak — written by the claimDailyReward Cloud Function.
   lastDailyClaimAt: number;
   dailyClaimStreak: number;
+  // Card system. `cards` is the sparse inventory map; `activeReelCard` is
+  // armed for the next spin; `activeReelCardSpinsLeft` is the remaining
+  // spin count for multi-spin effects (drained each spin, cleared at 0).
+  cards: Record<string, number>;
+  activeReelCard: string | null;
+  activeReelCardSpinsLeft: number;
+  // Per-card-session state. Snapshotted at activate, mutated during spin,
+  // cleared on consumption. See FirestoreService.UserResourceSnapshot for
+  // the full contract.
+  lockedAnomalyId: string | null;
+  lastWinningSymbol: string | null;
+  cardWinStreak: number;
+  lockedCellsSymbols: string[];
+  // Vengeance window — server writes these on successful incoming raids.
+  // Map of attackerUid → expiry ms. The UI uses this to surface
+  // "VENGEANCE READY" hints in the RADAR scan against eligible targets.
+  vengeanceTargets: Record<string, number>;
 }
 
 interface SpinState {
@@ -81,6 +111,9 @@ interface SpinState {
   spinHistory: SpinHistoryEntry[];
   sessionSpins: number;
   sessionCreditsEarned: number;
+  // Surfaced for the post-spin CardDropModal. Set by spin() when the drop
+  // roll lands; cleared by clearLastCardDrop() once the modal closes.
+  lastCardDrop: CardDrop | null;
 }
 
 interface GameState extends Resources, SpinState {
@@ -104,6 +137,11 @@ interface GameState extends Resources, SpinState {
   setIsSpinning: (spinning: boolean) => void;
   debugSetResources: (delta: Partial<Resources>) => void;
   recordRaidSuffered: () => void;
+  // Card-system actions (Phase B).
+  activateReelCard: (cardId: string, spinDuration: number) => void;
+  deactivateReelCard: () => void;
+  clearLastCardDrop: () => void;
+  shredCard: (cardId: string) => boolean;
 }
 
 const INITIAL_RESOURCES: Resources = {
@@ -126,6 +164,14 @@ const INITIAL_RESOURCES: Resources = {
   totalRaidsSuffered: 0,
   lastDailyClaimAt: 0,
   dailyClaimStreak: 0,
+  cards: {},
+  activeReelCard: null,
+  activeReelCardSpinsLeft: 0,
+  lockedAnomalyId: null,
+  lastWinningSymbol: null,
+  cardWinStreak: 0,
+  lockedCellsSymbols: [],
+  vengeanceTargets: {},
 };
 
 const XP_PER_SPIN = 5;
@@ -145,6 +191,16 @@ export function flushPendingPersist() {
   pendingPersist = {};
   lastPersistAt = Date.now();
 }
+
+// Echo / cascade chain tracker. Module-level (not persisted) — represents
+// "free spins owed to the player from a chain-card trigger". Each free spin
+// drains one count. A losing spin during the chain terminates it early
+// (cascade semantics: "cascade until no win").
+let pendingChainSpins = 0;
+let chainCardId: string | null = null;
+// True for the duration of a single chain spin so spin() knows to skip the
+// spinsRemaining decrement.
+let consumingChainSpin = false;
 
 function persistResources(data: Partial<Resources>) {
   pendingPersist = { ...pendingPersist, ...data };
@@ -182,6 +238,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   spinHistory: [],
   sessionSpins: 0,
   sessionCreditsEarned: 0,
+  lastCardDrop: null,
 
   spin() {
     const {
@@ -190,22 +247,59 @@ export const useGameStore = create<GameState>((set, get) => ({
       xp, level, attacks, raids, shields, intrusions, extractions,
       spinHistory, sessionSpins, sessionCreditsEarned,
       totalSpins, totalCreditsEarned, totalJackpots,
+      activeReelCard, activeReelCardSpinsLeft, cards,
+      lockedAnomalyId, lastWinningSymbol, cardWinStreak, lockedCellsSymbols,
     } = get();
 
-    if (spinsRemaining <= 0 || get().isSpinning) return null;
+    const isChainSpin = consumingChainSpin;
+    if (!isChainSpin && (spinsRemaining <= 0 || get().isSpinning)) return null;
+    if (isChainSpin && get().isSpinning) return null;
 
-    const riftCost = RIFT_COSTS[riftTier];
+    // Active reel card: resolve before any cost is charged so a freeRift /
+    // riftRefund effect can adjust the rift spend.
+    const reelEffect = getActiveReelEffect(activeReelCard);
+    const cardTotalSpins = activeReelCard ? cardSpinDuration(activeReelCard) : 0;
+    const spinsConsumedSoFar = activeReelCard
+      ? Math.max(0, cardTotalSpins - activeReelCardSpinsLeft)
+      : 0;
+    const preBoosted = computePostSpinModifiers(reelEffect, {
+      riftTier, anomalyId: null, result: {
+        reels: ['EMPTY', 'EMPTY', 'EMPTY'], outcomeType: 'NOTHING',
+        creditsWon: 0, attacksWon: 0, raidsWon: 0, shieldsWon: 0,
+        intrusionsWon: 0, extractionsWon: 0, isJackpot: false,
+      },
+      winLines: [], numActiveLines: 1,
+      spinsConsumedSoFar, cardWinStreak, lockedAnomalyId,
+    });
+    const rawRiftCost = RIFT_COSTS[riftTier];
+    const riftRefund = Math.floor(rawRiftCost * preBoosted.riftRefundPct);
+    const riftCost = preBoosted.freeRift ? 0 : Math.max(0, rawRiftCost - riftRefund);
     if (riftCost > credits) return null;
+    // void_tap fuel gate — refuse the spin if the player can't pay.
+    if (preBoosted.fuelCost > attacks) return null;
 
     const outpostLevel = useHabitatStore.getState().outpostLevel;
     const grid = getGridConfig(outpostLevel);
+    // Extra lines from reel_extra_lines round up to the next supported tier
+    // (1 / 3 / 5). The engine only registers ACTIVE_LINES for these three.
+    const extraLines = reelEffect?.kind === 'reel_extra_lines' ? reelEffect.count : 0;
+    const linesForRows: 1 | 3 | 5 = (() => {
+      const target = grid.numLines + extraLines;
+      if (target >= 5) return 5;
+      if (target >= 3) return 3;
+      return 1;
+    })();
 
     slotsEngine.setRiftTier(riftTier);
+    slotsEngine.setActiveCardWeightEffect(pickEngineWeightEffect(reelEffect, { lastWinningSymbol }));
+    slotsEngine.setActiveCardLayoutEffect(pickEngineLayoutEffect(reelEffect, { lockedCellsSymbols }));
     if (signalBoostActive) slotsEngine.setSignalBoost(true);
     const multi = grid.size === '5x5'
       ? slotsEngine.spinGrid(5, 5, ACTIVE_LINES_5X5)
-      : slotsEngine.spinRows(grid.numLines as 1 | 3 | 5);
+      : slotsEngine.spinRows(linesForRows);
     if (signalBoostActive) slotsEngine.setSignalBoost(false);
+    slotsEngine.setActiveCardWeightEffect(null);
+    slotsEngine.setActiveCardLayoutEffect(null);
 
     const midRowIdx = Math.floor(multi.reelWindow.length / 2);
     const midRow = multi.reelWindow[midRowIdx];
@@ -225,11 +319,37 @@ export const useGameStore = create<GameState>((set, get) => ({
     useDroneStore.getState().tickSpins();
     const genLevel = useHabitatStore.getState().buildingLevels['GENERATOR'] ?? 0;
     const overclockBonus = overclockActive ? genLevel * 40 + 100 : 0;
-    const anomalyMultiplier = anomalyService.getDefinition()?.creditMultiplier ?? 1;
+    // reel_anomaly_lock: substitute the snapshotted anomaly id for this
+    // spin's anomaly reads.
+    const liveAnomalyDef = anomalyService.getDefinition();
+    const lockedAnomalyDef = preBoosted.anomalyIdOverride
+      ? anomalyService.getDefinitionForId(preBoosted.anomalyIdOverride) ?? liveAnomalyDef
+      : liveAnomalyDef;
+    const baseAnomalyMultiplier = lockedAnomalyDef?.creditMultiplier ?? 1;
+    const anomalyId = lockedAnomalyDef?.id ?? null;
     const prestigeMultiplier = getOutpostPrestigeMultiplier(outpostLevel);
-    const boostedCreditsWon = Math.floor(
-      result.creditsWon * droneEffects.creditMultiplier * anomalyMultiplier * prestigeMultiplier,
-    ) + overclockBonus;
+
+    // Post-spin card modifiers — computed once we have the real result so
+    // gates like reel_stardust_on_big_win can inspect the credit total.
+    const cardMods = reelEffect
+      ? computePostSpinModifiers(reelEffect, {
+          riftTier, anomalyId, result, winLines: multi.winLines, numActiveLines: linesForRows,
+          spinsConsumedSoFar, cardWinStreak, lockedAnomalyId,
+        })
+      : defaultPostSpinModifiers();
+    const effectiveAnomaly = baseAnomalyMultiplier * cardMods.anomalyAmplifier;
+    const jackpotFactor = result.isJackpot ? cardMods.jackpotMultiplier : 1;
+    const boostedCreditsWon =
+      Math.floor(
+        result.creditsWon
+          * droneEffects.creditMultiplier
+          * effectiveAnomaly
+          * prestigeMultiplier
+          * cardMods.payoutMultiplier
+          * jackpotFactor,
+      )
+      + cardMods.flatCreditBonus
+      + overclockBonus;
 
     // Pre-calculate all resource changes using values captured at spin time
     const newCredits = Math.max(0, credits - riftCost + boostedCreditsWon);
@@ -238,22 +358,85 @@ export const useGameStore = create<GameState>((set, get) => ({
     const leveledUp = newXp >= xpNeeded;
     const newRefillStart = spinRefillStart === 0 ? Date.now() : spinRefillStart;
 
-    // Stardust earn drip: jackpots are the F2P-earnable trickle for the
-    // build-skip currency. Every other resource is unaffected by the JP flag.
-    const stardustGain = result.isJackpot ? 5 : 0;
+    // Stardust drip: jackpots → 5 ✦; reel_stardust_on_big_win adds on top.
+    const stardustGain = (result.isJackpot ? 5 : 0) + cardMods.stardustGain;
+
+    // Track per-card-session state for hot_streak / streak_bonus / compound.
+    const didWin = result.outcomeType !== 'NOTHING';
+    const winningSymbol = didWin && multi.winLines[0]
+      ? multi.winLines[0].result.reels[0]
+      : lastWinningSymbol;
+    const nextCardWinStreak = activeReelCard
+      ? (didWin ? cardWinStreak + 1 : 0)
+      : cardWinStreak;
+
+    // lock_cells: snapshot the first N cells of the current mid row so the
+    // NEXT spin can pin them via pickEngineLayoutEffect. We capture this
+    // unconditionally — the layout effect only fires when the card stays
+    // armed for the next spin.
+    let nextLockedCellsSymbols = lockedCellsSymbols;
+    if (reelEffect?.kind === 'reel_lock_cells') {
+      nextLockedCellsSymbols = midRow.slice(0, reelEffect.cells);
+    }
+
+    // Drain the active reel card's spin counter; clear when exhausted.
+    // Echo / cascade re-spins re-arm the same card for one more spin
+    // without consuming spinsLeft (handled below via the queued echo).
+    let nextActiveCard: string | null = activeReelCard;
+    let nextActiveCardSpinsLeft = activeReelCardSpinsLeft;
+    let nextLockedAnomalyId: string | null = lockedAnomalyId;
+    if (activeReelCard) {
+      nextActiveCardSpinsLeft = Math.max(0, activeReelCardSpinsLeft - 1);
+      if (nextActiveCardSpinsLeft <= 0) {
+        nextActiveCard = null;
+        nextActiveCardSpinsLeft = 0;
+        nextLockedCellsSymbols = []; // session ended; clear locked cells
+        nextLockedAnomalyId = null;
+      }
+    }
+
+    // Card drop roll. The drop applies after the animation completes (Phase
+    // 2 below) so the modal pops over the resolved reel state.
+    const cardDrop = rollCardDrop(totalCardCount(cards));
+    let nextCards = cards;
+    let dropCreditBonus = 0;
+    if (cardDrop) {
+      if (cardDrop.autoShredded) {
+        dropCreditBonus = cardDrop.shredCredits;
+      } else {
+        const cardId = cardDrop.card.id;
+        nextCards = { ...cards, [cardId]: (cards[cardId] ?? 0) + 1 };
+      }
+      void logCardEvent({
+        kind: 'DROP',
+        cardId: cardDrop.card.id,
+        tier: cardDrop.card.tier,
+        rarity: cardDrop.card.rarity,
+        autoShredded: cardDrop.autoShredded,
+      });
+    }
 
     const nextState: Partial<Resources> = {
-      credits: newCredits,
+      credits: newCredits + dropCreditBonus,
       stardust: get().stardust + stardustGain,
-      attacks:     Math.min(MAX_SPINS, attacks     + result.attacksWon),
-      raids:       Math.min(MAX_SPINS, raids       + result.raidsWon),
-      shields:     Math.min(MAX_SPINS, shields     + result.shieldsWon),
+      // void_tap fuel cost is paid out of the ATTACK token pool.
+      attacks:     Math.min(MAX_SPINS, Math.max(0, attacks - cardMods.fuelCost) + result.attacksWon + cardMods.tokenBumps.attacks),
+      raids:       Math.min(MAX_SPINS, raids       + result.raidsWon       + cardMods.tokenBumps.raids),
+      shields:     Math.min(MAX_SPINS, shields     + result.shieldsWon     + cardMods.tokenBumps.shields),
       intrusions:  Math.min(MAX_SPINS, intrusions  + result.intrusionsWon),
       extractions: Math.min(MAX_SPINS, extractions + result.extractionsWon),
-      spinsRemaining: spinsRemaining - 1,
+      // Chain spins (echo / cascade follow-ups) don't drain energy.
+      spinsRemaining: isChainSpin ? spinsRemaining : spinsRemaining - 1,
       spinRefillStart: newRefillStart,
       xp: leveledUp ? newXp - xpNeeded : newXp,
       level: leveledUp ? level + 1 : level,
+      cards: nextCards,
+      activeReelCard: nextActiveCard,
+      activeReelCardSpinsLeft: nextActiveCardSpinsLeft,
+      lastWinningSymbol: winningSymbol,
+      cardWinStreak: nextCardWinStreak,
+      lockedCellsSymbols: nextLockedCellsSymbols,
+      lockedAnomalyId: nextLockedAnomalyId,
     };
 
     const historyEntry: SpinHistoryEntry = {
@@ -273,7 +456,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       overclockBonus,
       signalBoostUsed: signalBoostActive,
       droneMultiplier: droneEffects.creditMultiplier,
-      anomalyMultiplier,
+      anomalyMultiplier: effectiveAnomaly,
       timestamp: Date.now(),
       reelWindow: multi.reelWindow,
       winLineIds: multi.winLines.map((wl) => wl.id),
@@ -290,6 +473,27 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastResult: null,
     });
 
+    // Echo / cascade chain queuing. The original spin (not isChainSpin)
+    // *starts* the chain; subsequent chain spins drain pendingChainSpins
+    // and re-arm the same card so the card's effects apply again. A
+    // losing spin during the chain terminates it early.
+    const echoesToQueue = cardMods.echoSpinsToQueue;
+    const willStartChain = !isChainSpin && echoesToQueue > 0 && activeReelCard !== null;
+    const willContinueChain = isChainSpin && didWin && pendingChainSpins > 0;
+    if (willStartChain) {
+      pendingChainSpins = echoesToQueue;
+      chainCardId = activeReelCard;
+    }
+    if (willStartChain || willContinueChain) {
+      // Re-arm the card so the next chain spin sees it active.
+      nextState.activeReelCard = chainCardId;
+      nextState.activeReelCardSpinsLeft = 1;
+    } else if (isChainSpin) {
+      // Chain ended (no win, or no budget remaining). Tear down.
+      pendingChainSpins = 0;
+      chainCardId = null;
+    }
+
     // Phase 2: reveal result and apply resources after animation completes
     setTimeout(() => {
       set({
@@ -304,11 +508,113 @@ export const useGameStore = create<GameState>((set, get) => ({
         totalSpins: totalSpins + 1,
         totalCreditsEarned: totalCreditsEarned + boostedCreditsWon,
         totalJackpots: totalJackpots + (result.isJackpot ? 1 : 0),
+        lastCardDrop: cardDrop,
       });
       persistResources(nextState);
+
+      // Schedule the next chain spin if appropriate.
+      const shouldChain = (willStartChain || willContinueChain) && pendingChainSpins > 0;
+      if (shouldChain) {
+        pendingChainSpins -= 1;
+        setTimeout(() => {
+          const next = get();
+          if (next.activeReelCard === chainCardId && !next.isSpinning) {
+            consumingChainSpin = true;
+            try {
+              next.spin();
+            } finally {
+              consumingChainSpin = false;
+            }
+          } else {
+            // Card was deactivated mid-chain; abort.
+            pendingChainSpins = 0;
+            chainCardId = null;
+          }
+        }, 80);
+      }
     }, SPIN_ANIM_MS);
 
     return result;
+  },
+
+  activateReelCard(cardId, spinDuration) {
+    const { cards } = get();
+    const count = cards[cardId] ?? 0;
+    if (count <= 0) return;
+    const nextCards = { ...cards };
+    if (count === 1) delete nextCards[cardId];
+    else nextCards[cardId] = count - 1;
+    // Per-card-session state snapshots.
+    //   reel_anomaly_lock — snapshots the currently-active anomaly id.
+    //   reel_lock_cells   — snapshots the LAST spin's mid-row cells so the
+    //                       next spin can pin them. Without this trick the
+    //                       1-spin card would have nothing to pin.
+    const def = getCardDefinition(cardId);
+    const eff = def?.effects[0];
+    const lockedAnomalyId = eff?.kind === 'reel_anomaly_lock'
+      ? (anomalyService.getDefinition()?.id ?? null)
+      : null;
+    let lockedCellsSymbols: string[] = [];
+    if (eff?.kind === 'reel_lock_cells') {
+      const prevWindow = get().reelWindow;
+      const midRow = prevWindow?.[Math.floor(prevWindow.length / 2)];
+      if (midRow) lockedCellsSymbols = midRow.slice(0, eff.cells);
+    }
+    const next: Partial<Resources> = {
+      cards: nextCards,
+      activeReelCard: cardId,
+      activeReelCardSpinsLeft: Math.max(1, spinDuration),
+      lockedAnomalyId,
+      cardWinStreak: 0,
+      lockedCellsSymbols,
+    };
+    set(next);
+    persistResources(next);
+    void logCardEvent({ kind: 'ACTIVATE_REEL', cardId, spinDuration });
+  },
+
+  deactivateReelCard() {
+    const { activeReelCard, cards } = get();
+    if (!activeReelCard) return;
+    // Refund the card to inventory so deactivation isn't punitive.
+    const nextCards = { ...cards, [activeReelCard]: (cards[activeReelCard] ?? 0) + 1 };
+    const next: Partial<Resources> = {
+      cards: nextCards,
+      activeReelCard: null,
+      activeReelCardSpinsLeft: 0,
+      lockedAnomalyId: null,
+      cardWinStreak: 0,
+      lockedCellsSymbols: [],
+    };
+    set(next);
+    persistResources(next);
+    // Cancel any pending chain spins from echo/cascade.
+    pendingChainSpins = 0;
+    chainCardId = null;
+  },
+
+  clearLastCardDrop() {
+    set({ lastCardDrop: null });
+  },
+
+  shredCard(cardId) {
+    const { cards } = get();
+    const count = cards[cardId] ?? 0;
+    if (count <= 0) return false;
+    const def = getCardDefinition(cardId);
+    if (!def) return false;
+    const refund = SHRED_VALUE_CR[def.tier];
+    const nextCards = { ...cards };
+    if (count === 1) delete nextCards[cardId];
+    else nextCards[cardId] = count - 1;
+    const next: Partial<Resources> = {
+      cards: nextCards,
+      credits: get().credits + refund,
+    };
+    set(next);
+    persistResources(next);
+    void logCardEvent({ kind: 'SHRED', cardId, refundCredits: refund });
+    return true;
   },
 
   tickSpinRefill() {

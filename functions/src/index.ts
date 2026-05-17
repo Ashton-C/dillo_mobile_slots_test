@@ -15,6 +15,14 @@ interface CombatRequest {
   attackerPower: number;
   status: 'PENDING' | 'RESOLVED';
   createdAt: admin.firestore.Timestamp;
+  // Card system — Phase A reserves the field. The Phase C apply path will
+  // read `cardId`, validate it lives in the attacker's `cards` map, decrement
+  // the inventory, and run the card's effect descriptors inside resolveCombat.
+  cardId?: string;
+  // C.2 sector_specialist: the client passes whether the target is in the
+  // attacker's currently-selected SectorMap sector. Cheatable like all
+  // client state, but the bonus is modest.
+  sectorMatch?: boolean;
 }
 
 interface UserDoc {
@@ -26,6 +34,27 @@ interface UserDoc {
   activeDrones?: { type?: string }[];
   expoPushToken?: string;
   lastAttackedAt?: number;
+  // Card system inventory + active reel queue. Phase B writes activeReelCard
+  // + activeReelCardSpinsLeft; Phase C reads cards[cardId] in resolveCombat
+  // and writes vengeanceTargets on the defender after a winning raid.
+  cards?: Record<string, number>;
+  activeReelCard?: string | null;
+  activeReelCardSpinsLeft?: number;
+  // Map of attacker UID → unix ms when the 15-min vengeance window expires.
+  // The server sets it on a successful incoming raid and clears entries on
+  // consumption (or natural expiry on read).
+  vengeanceTargets?: Record<string, number>;
+  // C.2: pursuit_beacon stores the next-raid bonus against a specific target
+  // here. Single-use; cleared on consumption or natural expiry.
+  pursuitTargets?: Record<string, { expiresAt: number; bonusPct: number }>;
+  // C.2: vengeance_cast card reads this 24h map of recent attackers. Server
+  // writes an entry on every successful incoming raid against this user.
+  recentAttackers?: Record<string, number>;
+  spinsRemaining?: number;
+  // Combat-token pools mirrored from the client model. Declared here so the
+  // CF can compose dot-path / refund-field updates without a type-cast.
+  intrusions?: number;
+  extractions?: number;
 }
 
 interface HabitatDoc {
@@ -34,6 +63,8 @@ interface HabitatDoc {
   // TURRET daily charge tracking
   turretCharges?: number;
   turretResetAt?: number; // unix ms
+  // hostile_takeover card: turret offline until this timestamp.
+  turretDisabledUntil?: number;
   ownerUid?: string;
   activeBuildJob?: { type: string; targetLevel: number; completesAt: number; isOutpost?: boolean } | null;
 }
@@ -83,6 +114,252 @@ async function pushToUser(
   if (!token) return;
   await sendPush({ to: token, title, body, data, sound: 'default', priority: 'high' });
 }
+
+// ---------------------------------------------------------------------------
+// Raid card effects (Phase C) — kept in sync with src/models/Card.ts.
+//
+// Only card ids in this map are actually applied; cards whose effect kinds
+// the apply switch doesn't handle (multi-step / mini-game / smoke-screen
+// stuff) live in the client catalog but never drop because
+// CardService.IMPLEMENTED_RAID_EFFECT_KINDS filters them out.
+//
+// MUST stay in sync with src/models/Card.ts. If you add a raid card or
+// change its effect, mirror it here.
+// ---------------------------------------------------------------------------
+
+type RaidEffect =
+  | { kind: 'raid_power_delta'; delta: number }
+  | { kind: 'raid_defender_power_delta'; delta: number }
+  | { kind: 'raid_bust_to_power'; power: number }
+  | { kind: 'raid_loot_multiplier'; multiplier: number }
+  | { kind: 'raid_vault_ignore'; pct: number }
+  | { kind: 'raid_tax_collector'; perVaultLevelPct: number }
+  | { kind: 'raid_smash_grab'; lootBonusPct: number; powerPenalty: number }
+  | { kind: 'raid_token_refund_on_win'; tokens: number }
+  | { kind: 'raid_token_refund_on_loss_pct'; pct: number }
+  | { kind: 'raid_no_consume_on_bust' }
+  | { kind: 'raid_no_consume_on_loss' }
+  | { kind: 'raid_disable_turret_on_jackpot'; hours: number }
+  | { kind: 'raid_sabotage_spins_on_win'; pct: number }
+  | { kind: 'raid_power_per_turret_charge'; perCharge: number }
+  | { kind: 'raid_ignore_turret_charges'; count: number }
+  | { kind: 'raid_all_in'; multiplier: number }
+  | { kind: 'raid_wager'; stake: number; payoutMultiplier: number }
+  | { kind: 'raid_lucky_range'; range: [number, number]; lootBonusPct: number }
+  | { kind: 'raid_loss_penalty_bonus'; extraPct: number }
+  | { kind: 'raid_threat_index'; perLevel: number }
+  | { kind: 'raid_cooldown_bypass'; lootPenaltyPct: number }
+  | { kind: 'raid_drone_synergy'; perDronePct: number }
+  | { kind: 'raid_drone_disrupt'; scope: 'raider_only' | 'all' }
+  | { kind: 'raid_smoke_screen'; hours: number }
+  | { kind: 'raid_pursuit_beacon'; minutes: number; lootBonusPct: number }
+  | { kind: 'raid_extra_token_cost'; extraTokens: number; powerBonus: number }
+  | { kind: 'raid_anomaly_shift'; mode: 'previous' | 'best' }
+  | { kind: 'raid_sector_specialist'; powerBonus: number; lootBonusPct: number }
+  | { kind: 'raid_vengeance_bonus'; powerBonus: number; windowMs: number };
+
+const RAID_CARD_EFFECTS: Record<string, RaidEffect> = {
+  surge_core_minor:        { kind: 'raid_power_delta', delta: 15 },
+  surge_core_major:        { kind: 'raid_power_delta', delta: 30 },
+  wildfire_minor:          { kind: 'raid_bust_to_power', power: 40 },
+  wildfire_major:          { kind: 'raid_bust_to_power', power: 80 },
+  power_drain_minor:       { kind: 'raid_defender_power_delta', delta: -10 },
+  power_drain_major:       { kind: 'raid_defender_power_delta', delta: -20 },
+  vault_cracker_minor:     { kind: 'raid_vault_ignore', pct: 0.25 },
+  vault_cracker_major:     { kind: 'raid_vault_ignore', pct: 0.5 },
+  smash_grab_minor:        { kind: 'raid_smash_grab', lootBonusPct: 0.15, powerPenalty: 0 },
+  smash_grab_major:        { kind: 'raid_smash_grab', lootBonusPct: 0.35, powerPenalty: 5 },
+  tax_collector_minor:     { kind: 'raid_tax_collector', perVaultLevelPct: 0.05 },
+  tax_collector_major:     { kind: 'raid_tax_collector', perVaultLevelPct: 0.10 },
+  hostile_takeover_minor:  { kind: 'raid_disable_turret_on_jackpot', hours: 4 },
+  hostile_takeover_major:  { kind: 'raid_disable_turret_on_jackpot', hours: 6 },
+  sabotage_minor:          { kind: 'raid_sabotage_spins_on_win', pct: 0.05 },
+  sabotage_major:          { kind: 'raid_sabotage_spins_on_win', pct: 0.10 },
+  mirror_shield_minor:     { kind: 'raid_token_refund_on_loss_pct', pct: 0.5 },
+  mirror_shield_major:     { kind: 'raid_token_refund_on_loss_pct', pct: 1.0 },
+  phantom_strike_minor:    { kind: 'raid_no_consume_on_bust' },
+  phantom_strike_major:    { kind: 'raid_no_consume_on_loss' },
+  drone_disruptor_minor:   { kind: 'raid_drone_disrupt', scope: 'raider_only' },
+  drone_disruptor_major:   { kind: 'raid_drone_disrupt', scope: 'all' },
+  power_sponge_minor:      { kind: 'raid_power_per_turret_charge', perCharge: 5 },
+  power_sponge_major:      { kind: 'raid_power_per_turret_charge', perCharge: 10 },
+  cloak_jammer_minor:      { kind: 'raid_ignore_turret_charges', count: 1 },
+  cloak_jammer_major:      { kind: 'raid_ignore_turret_charges', count: 2 },
+  all_in_minor:            { kind: 'raid_all_in', multiplier: 2 },
+  all_in_major:            { kind: 'raid_all_in', multiplier: 3 },
+  wager_minor:             { kind: 'raid_wager', stake: 500,  payoutMultiplier: 1.5 },
+  wager_major:             { kind: 'raid_wager', stake: 2000, payoutMultiplier: 2 },
+  lucky_seven_minor:       { kind: 'raid_lucky_range', range: [70, 79], lootBonusPct: 0.5 },
+  lucky_seven_major:       { kind: 'raid_lucky_range', range: [60, 89], lootBonusPct: 1.0 },
+  adrenal_spike_minor:     { kind: 'raid_loss_penalty_bonus', extraPct: 0.5 },
+  adrenal_spike_major:     { kind: 'raid_loss_penalty_bonus', extraPct: 0.75 },
+  threat_index_minor:      { kind: 'raid_threat_index', perLevel: 10 },
+  threat_index_major:      { kind: 'raid_threat_index', perLevel: 20 },
+  cooldown_cracker_minor:  { kind: 'raid_cooldown_bypass', lootPenaltyPct: 0.25 },
+  cooldown_cracker_major:  { kind: 'raid_cooldown_bypass', lootPenaltyPct: 0 },
+  synergy_link_minor:      { kind: 'raid_drone_synergy', perDronePct: 0.10 },
+  synergy_link_major:      { kind: 'raid_drone_synergy', perDronePct: 0.20 },
+  skim_off_minor:          { kind: 'raid_token_refund_on_win', tokens: 1 },
+  skim_off_major:          { kind: 'raid_token_refund_on_win', tokens: 2 },
+  // C.2 additions
+  smoke_screen_minor:      { kind: 'raid_smoke_screen', hours: 1 },
+  smoke_screen_major:      { kind: 'raid_smoke_screen', hours: 4 },
+  pursuit_beacon_minor:    { kind: 'raid_pursuit_beacon', minutes: 30, lootBonusPct: 0.20 },
+  pursuit_beacon_major:    { kind: 'raid_pursuit_beacon', minutes: 60, lootBonusPct: 0.20 },
+  twin_strike_minor:       { kind: 'raid_extra_token_cost', extraTokens: 1, powerBonus: 15 },
+  twin_strike_major:       { kind: 'raid_extra_token_cost', extraTokens: 2, powerBonus: 35 },
+  anomaly_shift_minor:     { kind: 'raid_anomaly_shift', mode: 'previous' },
+  anomaly_shift_major:     { kind: 'raid_anomaly_shift', mode: 'best' },
+  sector_specialist_minor: { kind: 'raid_sector_specialist', powerBonus: 15, lootBonusPct: 0 },
+  sector_specialist_major: { kind: 'raid_sector_specialist', powerBonus: 30, lootBonusPct: 0.20 },
+  vengeance_cast_minor:    { kind: 'raid_vengeance_bonus', powerBonus: 20, windowMs: 24 * 3_600_000 },
+  vengeance_cast_major:    { kind: 'raid_vengeance_bonus', powerBonus: 40, windowMs: 24 * 3_600_000 },
+};
+
+// adrenal_spike majors stack a +power bonus on top of the loss penalty —
+// represented as a second entry in the catalog. The server applies both via
+// SECONDARY_RAID_EFFECTS where present.
+const SECONDARY_RAID_EFFECTS: Record<string, RaidEffect> = {
+  adrenal_spike_minor: { kind: 'raid_power_delta', delta: 25 },
+  adrenal_spike_major: { kind: 'raid_power_delta', delta: 50 },
+  skim_off_minor:      { kind: 'raid_power_delta', delta: -10 },
+  skim_off_major:      { kind: 'raid_power_delta', delta: -20 },
+};
+
+interface CombatModifiers {
+  attackerPowerDelta: number;
+  defenderPowerDelta: number;
+  bustToPower: number;             // 0 = no replacement
+  lootMultiplier: number;
+  vaultIgnorePct: number;
+  taxPerVaultLevelPct: number;
+  refundTokensOnWin: number;
+  refundTokenPctOnLoss: number;
+  noConsumeOnBust: boolean;
+  noConsumeOnLoss: boolean;
+  disableTurretOnJackpotHours: number;
+  sabotageSpinsOnWinPct: number;
+  powerPerTurretCharge: number;
+  ignoreTurretCharges: number;
+  allInMultiplier: number;
+  wager: { stake: number; payoutMultiplier: number } | null;
+  luckyRange: [number, number] | null;
+  luckyLootBonus: number;
+  lossPenaltyExtraPct: number;
+  threatIndexPerLevel: number;
+  cooldownBypass: boolean;
+  cooldownLootPenalty: number;
+  droneSynergyPerDronePct: number;
+  droneDisruptScope: 'raider_only' | 'all' | null;
+  // C.2 additions
+  smokeScreenHours: number;
+  pursuitBeacon: { minutes: number; lootBonusPct: number } | null;
+  extraTokenPowerBonus: number;
+  anomalyShiftMode: 'previous' | 'best' | null;
+  sectorSpecialistPower: number;
+  sectorSpecialistLootBonus: number;
+  vengeanceBonus: { powerBonus: number; windowMs: number } | null;
+}
+
+function defaultCombatModifiers(): CombatModifiers {
+  return {
+    attackerPowerDelta: 0,
+    defenderPowerDelta: 0,
+    bustToPower: 0,
+    lootMultiplier: 1,
+    vaultIgnorePct: 0,
+    taxPerVaultLevelPct: 0,
+    refundTokensOnWin: 0,
+    refundTokenPctOnLoss: 0,
+    noConsumeOnBust: false,
+    noConsumeOnLoss: false,
+    disableTurretOnJackpotHours: 0,
+    sabotageSpinsOnWinPct: 0,
+    powerPerTurretCharge: 0,
+    ignoreTurretCharges: 0,
+    allInMultiplier: 1,
+    wager: null,
+    luckyRange: null,
+    luckyLootBonus: 0,
+    lossPenaltyExtraPct: 0,
+    threatIndexPerLevel: 0,
+    cooldownBypass: false,
+    cooldownLootPenalty: 0,
+    droneSynergyPerDronePct: 0,
+    droneDisruptScope: null,
+    smokeScreenHours: 0,
+    pursuitBeacon: null,
+    extraTokenPowerBonus: 0,
+    anomalyShiftMode: null,
+    sectorSpecialistPower: 0,
+    sectorSpecialistLootBonus: 0,
+    vengeanceBonus: null,
+  };
+}
+
+function applyRaidEffect(mods: CombatModifiers, effect: RaidEffect): void {
+  switch (effect.kind) {
+    case 'raid_power_delta':              mods.attackerPowerDelta += effect.delta; break;
+    case 'raid_defender_power_delta':     mods.defenderPowerDelta += effect.delta; break;
+    case 'raid_bust_to_power':            mods.bustToPower = effect.power; break;
+    case 'raid_loot_multiplier':          mods.lootMultiplier *= effect.multiplier; break;
+    case 'raid_vault_ignore':             mods.vaultIgnorePct = effect.pct; break;
+    case 'raid_tax_collector':            mods.taxPerVaultLevelPct = effect.perVaultLevelPct; break;
+    case 'raid_smash_grab':
+      mods.lootMultiplier *= (1 + effect.lootBonusPct);
+      mods.attackerPowerDelta -= effect.powerPenalty;
+      break;
+    case 'raid_token_refund_on_win':      mods.refundTokensOnWin = effect.tokens; break;
+    case 'raid_token_refund_on_loss_pct': mods.refundTokenPctOnLoss = effect.pct; break;
+    case 'raid_no_consume_on_bust':       mods.noConsumeOnBust = true; break;
+    case 'raid_no_consume_on_loss':       mods.noConsumeOnLoss = true; break;
+    case 'raid_disable_turret_on_jackpot': mods.disableTurretOnJackpotHours = effect.hours; break;
+    case 'raid_sabotage_spins_on_win':    mods.sabotageSpinsOnWinPct = effect.pct; break;
+    case 'raid_power_per_turret_charge':  mods.powerPerTurretCharge = effect.perCharge; break;
+    case 'raid_ignore_turret_charges':    mods.ignoreTurretCharges = effect.count; break;
+    case 'raid_all_in':                   mods.allInMultiplier = effect.multiplier; break;
+    case 'raid_wager':                    mods.wager = { stake: effect.stake, payoutMultiplier: effect.payoutMultiplier }; break;
+    case 'raid_lucky_range':
+      mods.luckyRange = effect.range;
+      mods.luckyLootBonus = effect.lootBonusPct;
+      break;
+    case 'raid_loss_penalty_bonus':       mods.lossPenaltyExtraPct = effect.extraPct; break;
+    case 'raid_threat_index':             mods.threatIndexPerLevel = effect.perLevel; break;
+    case 'raid_cooldown_bypass':
+      mods.cooldownBypass = true;
+      mods.cooldownLootPenalty = effect.lootPenaltyPct;
+      break;
+    case 'raid_drone_synergy':            mods.droneSynergyPerDronePct = effect.perDronePct; break;
+    case 'raid_drone_disrupt':            mods.droneDisruptScope = effect.scope; break;
+    case 'raid_smoke_screen':             mods.smokeScreenHours = effect.hours; break;
+    case 'raid_pursuit_beacon':           mods.pursuitBeacon = { minutes: effect.minutes, lootBonusPct: effect.lootBonusPct }; break;
+    case 'raid_extra_token_cost':         mods.extraTokenPowerBonus = effect.powerBonus; break;
+    case 'raid_anomaly_shift':            mods.anomalyShiftMode = effect.mode; break;
+    case 'raid_sector_specialist':
+      mods.sectorSpecialistPower = effect.powerBonus;
+      mods.sectorSpecialistLootBonus = effect.lootBonusPct;
+      break;
+    case 'raid_vengeance_bonus':          mods.vengeanceBonus = { powerBonus: effect.powerBonus, windowMs: effect.windowMs }; break;
+  }
+}
+
+function resolveRaidCardModifiers(cardId: string | undefined): CombatModifiers {
+  const mods = defaultCombatModifiers();
+  if (!cardId) return mods;
+  const primary = RAID_CARD_EFFECTS[cardId];
+  if (!primary) return mods;
+  applyRaidEffect(mods, primary);
+  const secondary = SECONDARY_RAID_EFFECTS[cardId];
+  if (secondary) applyRaidEffect(mods, secondary);
+  return mods;
+}
+
+// 15-minute vengeance window. Stored as a map on the defender's user doc
+// (`vengeanceTargets: { [attackerUid]: expiresAt }`) when an attack wins.
+// The next time the original defender raids the original attacker within
+// the window, the cooldown is bypassed and loot is bumped +50%.
+const VENGEANCE_WINDOW_MS = 15 * 60 * 1000;
+const VENGEANCE_LOOT_BONUS = 0.5;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -175,6 +452,29 @@ async function writeEvent(
   });
 }
 
+// Server-side card telemetry. Mirrors src/services/CardTelemetry.ts on the
+// client; only RAID activations are logged here (the client logs reel
+// drops + activations + shred refunds).
+async function logRaidCardActivation(
+  uid: string,
+  cardId: string,
+  outcome: 'ATTACKER_WON' | 'DEFENDER_WON' | 'BLOCKED_BY_TURRET' | 'BLOCKED_BY_COOLDOWN',
+  data: { creditsGained?: number; vengeance?: boolean; sectorMatch?: boolean } = {},
+): Promise<void> {
+  try {
+    await db.collection('cardTelemetry').add({
+      uid,
+      kind: 'ACTIVATE_RAID',
+      cardId,
+      outcome,
+      ...data,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    functions.logger.warn('logRaidCardActivation failed', { err: String(err) });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // resolveCombat — triggered on combatRequest create
 // ---------------------------------------------------------------------------
@@ -183,7 +483,8 @@ export const resolveCombat = functions.firestore
   .document('combatRequests/{requestId}')
   .onCreate(async (snap, context) => {
     const request = snap.data() as CombatRequest;
-    const { attackerUid, defenderUid, type, attackerPower } = request;
+    const { attackerUid, defenderUid, type } = request;
+    let attackerPower = request.attackerPower;
     const requestRef = snap.ref;
 
     if (!VALID_POWERS.has(attackerPower)) {
@@ -209,13 +510,79 @@ export const resolveCombat = functions.firestore
       const attacker = attackerSnap.data() as UserDoc;
       const defender = defenderSnap.data() as UserDoc;
 
-      // --- Attack cooldown: refund attack-cost if defender was hit recently ---
+      // --- Resolve raid card modifiers + validate inventory ---
+      // The cardId on the request is optimistic — the client may have written
+      // it without actually owning the card. We validate against the server
+      // copy of the attacker's inventory before applying any effect.
+      const requestCardId = request.cardId;
+      const ownsRequestedCard =
+        !!requestCardId && (attacker.cards?.[requestCardId] ?? 0) > 0;
+      const effectiveCardId = ownsRequestedCard ? requestCardId : undefined;
+      const cardMods = resolveRaidCardModifiers(effectiveCardId);
+      // Track this attacker's card-consumption write here so every outcome
+      // branch flushes the decrement atomically with its credit/spin writes.
+      const cardDecrementUpdate = (): admin.firestore.UpdateData<UserDoc> => {
+        if (!effectiveCardId) return {};
+        return ({ [`cards.${effectiveCardId}`]: admin.firestore.FieldValue.increment(-1) } as admin.firestore.UpdateData<UserDoc>);
+      };
+
+      // wildfire / bust_to_power: convert a 8-power bust into a real number.
+      if (attackerPower === 8 && cardMods.bustToPower > 0) {
+        attackerPower = cardMods.bustToPower;
+      }
+      attackerPower += cardMods.attackerPowerDelta;
+      // twin_strike: client deducts the extra tokens at pick time; server
+      // just applies the bonus.
+      attackerPower += cardMods.extraTokenPowerBonus;
+      // sector_specialist: client tags the request when target's sector
+      // matches the player's currently-selected SectorMap sector.
+      if (request.sectorMatch && cardMods.sectorSpecialistPower > 0) {
+        attackerPower += cardMods.sectorSpecialistPower;
+      }
+      // vengeance_cast (card): +power vs anyone who raided you in the
+      // window. Distinct from the global 15-min vengeance bypass.
+      if (cardMods.vengeanceBonus) {
+        const lastRaidedMeAt =
+          (attacker.recentAttackers as Record<string, number> | undefined)?.[defenderUid] ?? 0;
+        if (lastRaidedMeAt > 0 && Date.now() - lastRaidedMeAt < cardMods.vengeanceBonus.windowMs) {
+          attackerPower += cardMods.vengeanceBonus.powerBonus;
+        }
+      }
+
+      // --- Wager (raid_wager): pre-deduct stake from attacker credits.
+      // Stake is forfeit on any non-cooldown outcome (turret-block, loss,
+      // even win — though win adds it back × payoutMultiplier). If the
+      // attacker can't afford the stake, the wager silently no-ops but
+      // the card is still consumed.
+      const wagerActive =
+        !!cardMods.wager && attacker.credits >= cardMods.wager.stake;
+      const wagerStake = wagerActive ? cardMods.wager!.stake : 0;
+      const wagerPayoutMultiplier = wagerActive ? cardMods.wager!.payoutMultiplier : 0;
+      const effectiveAttackerCredits = attacker.credits - wagerStake;
+
+      // --- Vengeance check (consumed regardless of outcome) ---
+      const vengeanceExpiry =
+        (attacker.vengeanceTargets as Record<string, number> | undefined)?.[defenderUid] ?? 0;
+      const isVengeance = vengeanceExpiry > Date.now();
+      // After consumption the entry is dropped from the attacker's map so it
+      // can't be reused — even a failed vengeance raid burns the window.
+      const consumeVengeanceUpdate: admin.firestore.UpdateData<UserDoc> = isVengeance
+        ? ({ [`vengeanceTargets.${defenderUid}`]: admin.firestore.FieldValue.delete() } as admin.firestore.UpdateData<UserDoc>)
+        : {};
+
+      // --- Attack cooldown ---
       const lastAttackedAt = defender.lastAttackedAt ?? 0;
-      if (lastAttackedAt > 0 && Date.now() - lastAttackedAt < ATTACK_COOLDOWN_MS) {
+      const inCooldown = lastAttackedAt > 0 && Date.now() - lastAttackedAt < ATTACK_COOLDOWN_MS;
+      const cooldownBypass = isVengeance || cardMods.cooldownBypass;
+      if (inCooldown && !cooldownBypass) {
         const refundField = type === 'INTRUSION' ? 'intrusions' : 'extractions';
         const refundedValue = ((attackerSnap.data()?.[refundField] as number | undefined) ?? 0) + 1;
         await Promise.all([
-          db.doc(`users/${attackerUid}`).update({ [refundField]: refundedValue }),
+          db.doc(`users/${attackerUid}`).update({
+            [refundField]: refundedValue,
+            // Cooldown-blocked raids don't consume the raid card — refund it
+            // by simply NOT decrementing here.
+          }),
           writeEvent(attackerUid, {
             type: 'COMBAT_RESULT',
             fromUid: defenderUid,
@@ -228,27 +595,49 @@ export const resolveCombat = functions.firestore
         return;
       }
 
-      // --- Load defender's habitat for TURRET + VAULT levels ---
+      // --- Defender habitat (TURRET + VAULT + outpost level) ---
       const defenderHabitat = await getHabitatForUser(defenderUid);
       const defBuildingLevels = defenderHabitat?.data.buildingLevels ?? {};
       const turretLevel = defBuildingLevels['TURRET'] ?? 0;
       const vaultLevel  = defBuildingLevels['VAULT']  ?? 0;
 
-      // --- TURRET check (auto-block) ---
+      // --- TURRET check ---
+      // Hostile takeover card writes turretDisabledUntil on the habitat — if
+      // that timer is still active the turret is offline regardless of charges.
+      const turretDisabledUntil =
+        (defenderHabitat?.data.turretDisabledUntil as number | undefined) ?? 0;
+      const turretDisabled = turretDisabledUntil > Date.now();
       let blockedByTurret = false;
-      if (turretLevel > 0 && defenderHabitat) {
+      if (
+        turretLevel > 0
+        && defenderHabitat
+        && !turretDisabled
+        && cardMods.ignoreTurretCharges <= 0
+      ) {
         blockedByTurret = await consumeTurretCharge(
           defenderHabitat.id,
           defenderHabitat.data,
           turretLevel,
         );
       }
+      // power_sponge: each charge the defender DID burn fuels the attacker.
+      // We currently only know if THIS attack triggered a charge; sum the
+      // gain for that single charge (good enough for v1).
+      if (blockedByTurret) {
+        attackerPower += cardMods.powerPerTurretCharge;
+      }
 
       if (blockedByTurret) {
-        // Attacker is blocked — no credit change, both get notified. Start the
-        // cooldown so failed attacks can't be retried in a tight loop.
+        // wager: stake is forfeit on any non-cooldown outcome (including
+        // turret-block). effectiveAttackerCredits had the stake deducted.
+        const turretAttackerUpdate: admin.firestore.UpdateData<UserDoc> = ({
+          ...cardDecrementUpdate(),
+          ...consumeVengeanceUpdate,
+        } as admin.firestore.UpdateData<UserDoc>);
+        if (wagerActive) turretAttackerUpdate.credits = effectiveAttackerCredits;
         await Promise.all([
           db.doc(`users/${defenderUid}`).update({ lastAttackedAt: Date.now() }),
+          db.doc(`users/${attackerUid}`).update(turretAttackerUpdate),
           writeEvent(defenderUid, {
             type: 'ATTACK_RESOLVED',
             fromUid: attackerUid,
@@ -262,6 +651,7 @@ export const resolveCombat = functions.firestore
             fromDisplayName: defender.displayName,
             attackerWon: false,
             blockedByTurret: true,
+            cardId: effectiveCardId ?? null,
           }),
           pushToUser(
             defenderUid,
@@ -271,72 +661,204 @@ export const resolveCombat = functions.firestore
           ),
         ]);
         await requestRef.update({ status: 'RESOLVED', outcome: 'BLOCKED_BY_TURRET' });
+        if (effectiveCardId) {
+          void logRaidCardActivation(attackerUid, effectiveCardId, 'BLOCKED_BY_TURRET');
+        }
         return;
       }
 
-      // --- Compute defender power ---
-      // Bumped from `outpostLevel * 10 + rand(0..49)` to `*11 + 25 + rand(0..40)`
-      // so even outpost-1 defenders sit at 36..76 instead of 10..59 — the
-      // EVEN-tier 75 power no longer auto-wins.
+      // --- Defender power (+ drone disrupt / threat index / smash & grab penalty) ---
       const defenderOutpostLevel = defenderHabitat?.data.outpostLevel ?? 1;
-      const defenderPower =
+      let defenderPower =
         defenderOutpostLevel * 11 + 25 + Math.floor(Math.random() * 41);
+      defenderPower += cardMods.defenderPowerDelta;
+
+      // threat_index: bonus power per outpost level the defender exceeds the
+      // attacker. Read attacker's outpost via habitat lookup.
+      if (cardMods.threatIndexPerLevel > 0) {
+        const attackerHab = await getHabitatForUser(attackerUid);
+        const attackerOutpost = attackerHab?.data.outpostLevel ?? 1;
+        const gap = Math.max(0, defenderOutpostLevel - attackerOutpost);
+        attackerPower += gap * cardMods.threatIndexPerLevel;
+      }
 
       const attackerWon = attackerPower > defenderPower;
 
       if (attackerWon) {
-        // --- Wallet-percent loot, closed-loop (defender loses == attacker gains) ---
         const tier = powerToTier(attackerPower);
         const { pct, floor, ceil } = LOOT_TIER[tier];
 
-        // Anomaly + drone bonuses come from server-authoritative reads.
-        const [anomalySnap] = await Promise.all([
-          db.doc('anomalies/current').get(),
-        ]);
-        const anomalyId = anomalySnap.exists ? (anomalySnap.data()?.id as string | undefined) : undefined;
+        const [anomalySnap] = await Promise.all([db.doc('anomalies/current').get()]);
+        const anomalyDoc = anomalySnap.exists ? anomalySnap.data() : undefined;
+        const anomalyId = anomalyDoc?.id as string | undefined;
+        const previousAnomalyId = anomalyDoc?.previousId as string | undefined;
+
+        // anomaly_shift card: substitute the raid bonus from a different
+        // anomaly. 'previous' = whichever was active 4h ago; 'best' = the
+        // highest single-anomaly raid bonus (currently RAID_SHADOW at 50%).
+        let effectiveAnomalyId = anomalyId;
+        if (cardMods.anomalyShiftMode === 'previous' && previousAnomalyId) {
+          if (anomalyRaidBonus(previousAnomalyId) > anomalyRaidBonus(anomalyId)) {
+            effectiveAnomalyId = previousAnomalyId;
+          }
+        } else if (cardMods.anomalyShiftMode === 'best') {
+          effectiveAnomalyId = 'RAID_SHADOW';
+        }
+
+        // Drone disrupt: zero out the attacker's RAIDER bonus when the card says so.
+        const droneBonus = cardMods.droneDisruptScope
+          ? 0
+          : attackerDroneRaidBonus(attacker.activeDrones);
+        const droneSynergyBonus =
+          cardMods.droneSynergyPerDronePct * ((attacker.activeDrones?.length ?? 0));
         const totalRaidBonus = Math.min(
           1.0,
-          anomalyRaidBonus(anomalyId) + attackerDroneRaidBonus(attacker.activeDrones),
+          anomalyRaidBonus(effectiveAnomalyId) + droneBonus + droneSynergyBonus,
         );
 
         const baseFromWallet = defender.credits * pct;
         const baseClamped    = Math.max(floor, Math.min(ceil, baseFromWallet));
-        const baseBonused    = Math.floor(baseClamped * (1 + totalRaidBonus));
+        let baseBonused      = Math.floor(baseClamped * (1 + totalRaidBonus));
 
-        const reduction   = vaultReduction(vaultLevel);
+        // Card loot multipliers stack: all_in × smash_grab/tax_collector etc.
+        let lootMult = cardMods.lootMultiplier * cardMods.allInMultiplier;
+        if (cardMods.taxPerVaultLevelPct > 0) {
+          lootMult *= (1 + cardMods.taxPerVaultLevelPct * vaultLevel);
+        }
+        if (cardMods.luckyRange) {
+          const [lo, hi] = cardMods.luckyRange;
+          if (attackerPower >= lo && attackerPower <= hi) {
+            lootMult *= (1 + cardMods.luckyLootBonus);
+          }
+        }
+        if (isVengeance) {
+          lootMult *= (1 + VENGEANCE_LOOT_BONUS);
+        }
+        if (cardMods.cooldownBypass && cardMods.cooldownLootPenalty > 0 && inCooldown) {
+          lootMult *= (1 - cardMods.cooldownLootPenalty);
+        }
+        // sector_specialist: extra loot when raiding in the player's
+        // current sector.
+        if (request.sectorMatch && cardMods.sectorSpecialistLootBonus > 0) {
+          lootMult *= (1 + cardMods.sectorSpecialistLootBonus);
+        }
+        // pursuit_beacon: consume a mark set by a prior raid on this target.
+        // The card itself doesn't apply a bonus to its OWN raid — it sets
+        // the mark for a future one. The bonus only fires when a beacon
+        // mark from a *previous* raid is still live.
+        const existingBeacon =
+          (attacker.pursuitTargets as Record<string, { expiresAt: number; bonusPct: number }> | undefined)
+            ?.[defenderUid];
+        const beaconActive = !!existingBeacon && existingBeacon.expiresAt > Date.now();
+        if (beaconActive && existingBeacon) {
+          lootMult *= (1 + existingBeacon.bonusPct);
+        }
+        baseBonused = Math.floor(baseBonused * lootMult);
+
+        // vault_cracker / vault_ignore: subtract the bypassed portion from
+        // the standard reduction floor. Reduction is still floored at 0.
+        const baseReduction = vaultReduction(vaultLevel);
+        const reduction = Math.max(0, baseReduction - cardMods.vaultIgnorePct);
         const creditsLost = Math.floor(baseBonused * (1 - reduction));
-        // Closed loop: attacker receives exactly what defender lost. No minting.
-        // Cap the actual transfer at the defender's wallet so we never withdraw
-        // more than they had — VAULT-reduced loss already kept this realistic
-        // for whales, but a near-broke defender shouldn't pay more than they own.
         const transferred = Math.min(creditsLost, defender.credits);
 
+        const isJackpotPower = attackerPower >= 130;
+        const turretDisableHours =
+          isJackpotPower ? cardMods.disableTurretOnJackpotHours : 0;
+
+        // sabotage on win: deduct a fraction of the defender's stored spins.
+        const sabotageSpins =
+          cardMods.sabotageSpinsOnWinPct > 0
+            ? Math.floor((defender.spinsRemaining ?? 0) * cardMods.sabotageSpinsOnWinPct)
+            : 0;
+
+        const wagerWinBonus = wagerActive ? Math.floor(wagerStake * wagerPayoutMultiplier) : 0;
         const defenderNewCredits = defender.credits - transferred;
-        const attackerNewCredits = attacker.credits + transferred;
+        const attackerNewCredits = effectiveAttackerCredits + transferred + wagerWinBonus;
+
+        // refund tokens on win (skim_off): bump the appropriate token by N.
+        const refundField = type === 'INTRUSION' ? 'intrusions' : 'extractions';
+        const refundTokens = cardMods.refundTokensOnWin;
+        const attackerUpdate: admin.firestore.UpdateData<UserDoc> = ({
+          credits: attackerNewCredits,
+          ...cardDecrementUpdate(),
+          ...consumeVengeanceUpdate,
+        } as admin.firestore.UpdateData<UserDoc>);
+        if (refundTokens > 0) {
+          attackerUpdate[refundField] =
+            ((attackerSnap.data()?.[refundField] as number | undefined) ?? 0) + refundTokens;
+        }
+        // pursuit_beacon: consume the existing mark (if any) and set the
+        // new one when the current raid was launched with the card.
+        if (beaconActive) {
+          (attackerUpdate as Record<string, unknown>)[`pursuitTargets.${defenderUid}`] =
+            admin.firestore.FieldValue.delete();
+        }
+        if (cardMods.pursuitBeacon) {
+          (attackerUpdate as Record<string, unknown>)[`pursuitTargets.${defenderUid}`] = {
+            expiresAt: Date.now() + cardMods.pursuitBeacon.minutes * 60 * 1000,
+            bonusPct: cardMods.pursuitBeacon.lootBonusPct,
+          };
+        }
+
+        const defenderUpdate: admin.firestore.UpdateData<UserDoc> = ({
+          credits: defenderNewCredits,
+          lastAttackedAt: Date.now(),
+          // 15-min vengeance window so the defender can retaliate.
+          [`vengeanceTargets.${attackerUid}`]: Date.now() + VENGEANCE_WINDOW_MS,
+          // 24h recentAttackers map for the vengeance_cast card.
+          [`recentAttackers.${attackerUid}`]: Date.now(),
+        } as admin.firestore.UpdateData<UserDoc>);
+        if (sabotageSpins > 0) {
+          defenderUpdate.spinsRemaining = Math.max(
+            0,
+            (defender.spinsRemaining ?? 0) - sabotageSpins,
+          );
+        }
+
+        const habitatUpdate: admin.firestore.UpdateData<HabitatDoc> = {};
+        if (turretDisableHours > 0 && defenderHabitat) {
+          habitatUpdate.turretDisabledUntil =
+            Date.now() + turretDisableHours * 3_600_000;
+        }
+
+        // smoke_screen: tag the defender's event so the client combat log
+        // hides it until the cloak expires; suppress the push entirely so
+        // the defender doesn't get a notification either.
+        const smokeMs = cardMods.smokeScreenHours * 3_600_000;
+        const defenderEvent: Record<string, unknown> = {
+          type: type === 'INTRUSION' ? 'ATTACK_RESOLVED' : 'RAID_RESOLVED',
+          fromUid: attackerUid,
+          fromDisplayName: attacker.displayName,
+          attackerWon: true,
+          creditsLost: transferred,
+        };
+        if (smokeMs > 0) defenderEvent.hideUntil = Date.now() + smokeMs;
 
         await Promise.all([
-          db.doc(`users/${defenderUid}`).update({ credits: defenderNewCredits, lastAttackedAt: Date.now() }),
-          db.doc(`users/${attackerUid}`).update({ credits: attackerNewCredits }),
-          writeEvent(defenderUid, {
-            type: type === 'INTRUSION' ? 'ATTACK_RESOLVED' : 'RAID_RESOLVED',
-            fromUid: attackerUid,
-            fromDisplayName: attacker.displayName,
-            attackerWon: true,
-            creditsLost: transferred,
-          }),
+          db.doc(`users/${defenderUid}`).update(defenderUpdate),
+          db.doc(`users/${attackerUid}`).update(attackerUpdate),
+          ...(defenderHabitat && Object.keys(habitatUpdate).length > 0
+            ? [db.doc(`habitats/${defenderHabitat.id}`).update(habitatUpdate)]
+            : []),
+          writeEvent(defenderUid, defenderEvent),
           writeEvent(attackerUid, {
             type: 'COMBAT_RESULT',
             fromUid: defenderUid,
             fromDisplayName: defender.displayName,
             attackerWon: true,
             creditsGained: transferred,
+            vengeance: isVengeance,
+            cardId: effectiveCardId ?? null,
           }),
-          pushToUser(
-            defenderUid,
-            type === 'INTRUSION' ? 'INCURSION DETECTED' : 'OUTPOST RAIDED',
-            `${attacker.displayName} took ${transferred.toLocaleString()} CR. Log in to retaliate.`,
-            { type: 'attack-won', attackerUid, creditsLost: transferred },
-          ),
+          ...(smokeMs > 0
+            ? [] // no push when smoke-screened
+            : [pushToUser(
+                defenderUid,
+                type === 'INTRUSION' ? 'INCURSION DETECTED' : 'OUTPOST RAIDED',
+                `${attacker.displayName} took ${transferred.toLocaleString()} CR. You have 15 min to retaliate.`,
+                { type: 'attack-won', attackerUid, creditsLost: transferred },
+              )]),
         ]);
 
         await requestRef.update({
@@ -346,34 +868,113 @@ export const resolveCombat = functions.firestore
           creditsGained: transferred,
           vaultReduction: reduction,
           anomalyBonus: anomalyRaidBonus(anomalyId),
-          droneBonus: attackerDroneRaidBonus(attacker.activeDrones),
+          droneBonus,
+          vengeance: isVengeance,
+          cardId: effectiveCardId ?? null,
         });
+        if (effectiveCardId) {
+          void logRaidCardActivation(attackerUid, effectiveCardId, 'ATTACKER_WON', {
+            creditsGained: transferred,
+            vengeance: isVengeance,
+            sectorMatch: request.sectorMatch ?? false,
+          });
+        }
       } else {
-        // Attacker lost — no credit change, but start the cooldown anyway so
-        // the defender gets breathing room from repeated attempts.
+        // Defender won. Refund the token if mirror_shield says to; consume
+        // it normally otherwise. No-consume-on-bust beats no-consume-on-loss
+        // when both apply (only one card is active per raid anyway).
+        const refundField = type === 'INTRUSION' ? 'intrusions' : 'extractions';
+        const tokenBefore = (attackerSnap.data()?.[refundField] as number | undefined) ?? 0;
+        const skipConsume =
+          (cardMods.noConsumeOnBust && attackerPower <= 8) || cardMods.noConsumeOnLoss;
+        const tokenRefundFraction = cardMods.refundTokenPctOnLoss;
+        let tokenAfter = tokenBefore;
+        if (skipConsume) {
+          tokenAfter = tokenBefore + 1; // already deducted client-side; give it back
+        } else if (tokenRefundFraction > 0 && Math.random() < tokenRefundFraction) {
+          // Fractional refund → probabilistic full-token refund. mirror_shield
+          // minor (0.5) lands 50% of the time, major (1.0) always.
+          tokenAfter = tokenBefore + 1;
+        }
+
+        // adrenal_spike on loss: defender gains a slice of the attacker's
+        // credits as bonus penalty (extraPct of the standard loot floor).
+        let bonusToDefender = 0;
+        if (cardMods.lossPenaltyExtraPct > 0) {
+          const tier = powerToTier(attackerPower);
+          const floorAmt = LOOT_TIER[tier].floor;
+          bonusToDefender = Math.min(
+            attacker.credits,
+            Math.floor(floorAmt * cardMods.lossPenaltyExtraPct),
+          );
+        }
+
+        // wager: stake is forfeit on loss. effectiveAttackerCredits already
+        // had the stake deducted; commit it now if no other CR write fires.
+        const attackerCreditsAfterLoss = wagerActive
+          ? Math.max(0, effectiveAttackerCredits - bonusToDefender)
+          : Math.max(0, attacker.credits - bonusToDefender);
+
+        const attackerUpdate: admin.firestore.UpdateData<UserDoc> = ({
+          ...cardDecrementUpdate(),
+          ...consumeVengeanceUpdate,
+        } as admin.firestore.UpdateData<UserDoc>);
+        if (tokenAfter !== tokenBefore) attackerUpdate[refundField] = tokenAfter;
+        if (bonusToDefender > 0 || wagerActive) {
+          attackerUpdate.credits = attackerCreditsAfterLoss;
+        }
+
+        const defenderUpdate: admin.firestore.UpdateData<UserDoc> = {
+          lastAttackedAt: Date.now(),
+        };
+        if (bonusToDefender > 0) {
+          defenderUpdate.credits = defender.credits + bonusToDefender;
+        }
+
+        // smoke_screen: tag and suppress push on loss too.
+        const smokeMs = cardMods.smokeScreenHours * 3_600_000;
+        const defenderEvent: Record<string, unknown> = {
+          type: type === 'INTRUSION' ? 'ATTACK_RESOLVED' : 'RAID_RESOLVED',
+          fromUid: attackerUid,
+          fromDisplayName: attacker.displayName,
+          attackerWon: false,
+          creditsGained: bonusToDefender || undefined,
+        };
+        if (smokeMs > 0) defenderEvent.hideUntil = Date.now() + smokeMs;
+
         await Promise.all([
-          db.doc(`users/${defenderUid}`).update({ lastAttackedAt: Date.now() }),
-          writeEvent(defenderUid, {
-            type: type === 'INTRUSION' ? 'ATTACK_RESOLVED' : 'RAID_RESOLVED',
-            fromUid: attackerUid,
-            fromDisplayName: attacker.displayName,
-            attackerWon: false,
-          }),
+          db.doc(`users/${defenderUid}`).update(defenderUpdate),
+          db.doc(`users/${attackerUid}`).update(attackerUpdate),
+          writeEvent(defenderUid, defenderEvent),
           writeEvent(attackerUid, {
             type: 'COMBAT_RESULT',
             fromUid: defenderUid,
             fromDisplayName: defender.displayName,
             attackerWon: false,
+            creditsLost: bonusToDefender || undefined,
+            cardId: effectiveCardId ?? null,
           }),
-          pushToUser(
-            defenderUid,
-            'ATTACK REPELLED',
-            `${attacker.displayName} tried to raid you and bounced.`,
-            { type: 'attack-repelled' },
-          ),
+          ...(smokeMs > 0
+            ? []
+            : [pushToUser(
+                defenderUid,
+                'ATTACK REPELLED',
+                `${attacker.displayName} tried to raid you and bounced.`,
+                { type: 'attack-repelled' },
+              )]),
         ]);
 
-        await requestRef.update({ status: 'RESOLVED', outcome: 'DEFENDER_WON' });
+        await requestRef.update({
+          status: 'RESOLVED',
+          outcome: 'DEFENDER_WON',
+          cardId: effectiveCardId ?? null,
+        });
+        if (effectiveCardId) {
+          void logRaidCardActivation(attackerUid, effectiveCardId, 'DEFENDER_WON', {
+            vengeance: isVengeance,
+            sectorMatch: request.sectorMatch ?? false,
+          });
+        }
       }
     } catch (err) {
       functions.logger.error('resolveCombat error', { requestId: context.params.requestId, err });
@@ -479,6 +1080,7 @@ export const seedAnomaly = functions.pubsub
 
     await ref.set({
       id,
+      previousId,
       startedAt: now,
       endsAt: now + ANOMALY_DURATION_MS,
     });

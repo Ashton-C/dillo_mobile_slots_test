@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -22,6 +22,7 @@ import { CosmeticPurchaseModal } from '@/components/CosmeticPurchaseModal';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
+import { ResourceBar } from '@/components/ResourceBar';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const OUTPOST_COLORS = [
@@ -49,6 +50,10 @@ const CUSTOMIZE_CATEGORIES: { category: CosmeticCategory; label: string }[] = [
 function xpToNextLevel(level: number) { return 100 * level; }
 
 export default function PilotScreen() {
+  const router = useRouter();
+  const cardCount = useGameStore((s) =>
+    Object.values(s.cards ?? {}).reduce((n, c) => n + c, 0),
+  );
   const { displayName, avatarColor, avatarAccessory, outpostColor, setDisplayName, setOutpostColor } = useAuthStore();
   const activeNameplate = useCosmeticsStore((s) => s.active.NAMEPLATE);
   const activeEmblem    = useCosmeticsStore((s) => s.active.EMBLEM);
@@ -91,6 +96,7 @@ export default function PilotScreen() {
       <TopBar
         right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
       />
+      <ResourceBar compact />
       <ScrollView contentContainerStyle={styles.scroll}>
 
         {/* Avatar section with gradient backdrop */}
@@ -174,13 +180,53 @@ export default function PilotScreen() {
           </View>
         </View>
 
+        {/* Card inventory entry */}
+        <View style={styles.section}>
+          <Pressable
+            onPress={() => router.push('/inventory')}
+            style={styles.inventoryBtn}
+          >
+            <View style={styles.inventoryLeft}>
+              <Text style={styles.inventoryIcon}>◇</Text>
+              <View>
+                <Text style={styles.inventoryLabel}>CARD INVENTORY</Text>
+                <Text style={styles.inventoryHint}>
+                  {cardCount === 0 ? 'No cards yet — win drops from spins' : `${cardCount} card${cardCount === 1 ? '' : 's'} in stash`}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.inventoryArrow}>›</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push('/(tabs)/dev')}
+            style={[styles.inventoryBtn, { marginTop: Spacing.sm, borderColor: Colors.warning }]}
+          >
+            <View style={styles.inventoryLeft}>
+              <Text style={[styles.inventoryIcon, { color: Colors.warning }]}>⚙</Text>
+              <View>
+                <Text style={[styles.inventoryLabel, { color: Colors.warning }]}>DEV TOOLS</Text>
+                <Text style={styles.inventoryHint}>
+                  Force outcomes, seed resources, view build info
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.inventoryArrow}>›</Text>
+          </Pressable>
+        </View>
+
         {/* Combat log */}
         <View style={[styles.section, { paddingBottom: Spacing.xl }]}>
           <Text style={styles.sectionHeader}>COMBAT LOG</Text>
           {events.length === 0 ? (
             <Text style={styles.logEmpty}>No combat activity yet</Text>
           ) : (
-            events.slice(0, 20).map((e) => <CombatLogRow key={e.id} event={e} />)
+            events
+              // smoke_screen card: hide raids tagged with `hideUntil` until
+              // their cloak expires. Once expired, the event resurfaces.
+              .filter((e) => !e.hideUntil || e.hideUntil <= Date.now())
+              .slice(0, 20)
+              .map((e) => <CombatLogRow key={e.id} event={e} />)
           )}
         </View>
 
@@ -656,4 +702,19 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     paddingVertical: 6,
   },
+  inventoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  inventoryLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  inventoryIcon: { fontSize: 22, color: Colors.accent },
+  inventoryLabel: { fontSize: Typography.sizes.sm, fontWeight: Typography.weights.bold, color: Colors.text, letterSpacing: 2 },
+  inventoryHint: { fontSize: Typography.sizes.xs, color: Colors.textMuted, marginTop: 2 },
+  inventoryArrow: { fontSize: 22, color: Colors.textMuted, fontWeight: Typography.weights.bold },
 });

@@ -41,6 +41,26 @@ export interface UserResourceSnapshot {
   // Daily streak — written by the claimDailyReward Cloud Function.
   lastDailyClaimAt: number;
   dailyClaimStreak: number;
+  // Card system. `cards` is a sparse map of card id → count;
+  // `activeReelCard` is the id queued for the next spin (cleared on
+  // consumption in spin()). `activeReelCardSpinsLeft` tracks multi-spin
+  // effects (Hot Streak, Tier Lock, etc.); 0 or missing = consume next spin.
+  cards: Record<string, number>;
+  activeReelCard: string | null;
+  activeReelCardSpinsLeft: number;
+  // Per-card-session state, written/cleared alongside activeReelCard.
+  // `lockedAnomalyId` snapshots the anomaly at activate time for the
+  // reel_anomaly_lock card. `lastWinningSymbol` powers hot_streak.
+  // `cardWinStreak` is the consecutive-wins counter while a card is
+  // active (resets on loss). `lockedCellsSymbols` holds the symbols
+  // pinned by the lock_cells card for the next spin.
+  lockedAnomalyId: string | null;
+  lastWinningSymbol: string | null;
+  cardWinStreak: number;
+  lockedCellsSymbols: string[];
+  // 15-minute vengeance window — written by the server when an attacker
+  // wins a raid against you. Map of attackerUid → expiry timestamp.
+  vengeanceTargets: Record<string, number>;
   // IAP-granted cosmetic IDs from the RevenueCat webhook. Server-authoritative
   // ownership; the client merges these into useCosmeticsStore on subscribe.
   ownedCosmetics?: string[];
@@ -65,6 +85,10 @@ export interface GameEvent {
   attackerWon?: boolean;
   timestamp: number;
   read: boolean;
+  // smoke_screen card: when set, the combat log filters this event out
+  // until the timestamp passes. The event still exists server-side so
+  // server-derived stats (raidsSuffered) stay accurate.
+  hideUntil?: number;
 }
 
 // Write resource deltas back to Firestore after a spin or action.
@@ -101,6 +125,14 @@ export function subscribeToUser(
         level:             d.level             ?? 1,
         lastDailyClaimAt:  d.lastDailyClaimAt  ?? 0,
         dailyClaimStreak:  d.dailyClaimStreak  ?? 0,
+        cards:                     (d.cards && typeof d.cards === 'object') ? (d.cards as Record<string, number>) : {},
+        activeReelCard:            typeof d.activeReelCard === 'string' ? d.activeReelCard : null,
+        activeReelCardSpinsLeft:   typeof d.activeReelCardSpinsLeft === 'number' ? d.activeReelCardSpinsLeft : 0,
+        lockedAnomalyId:           typeof d.lockedAnomalyId === 'string' ? d.lockedAnomalyId : null,
+        lastWinningSymbol:         typeof d.lastWinningSymbol === 'string' ? d.lastWinningSymbol : null,
+        cardWinStreak:             typeof d.cardWinStreak === 'number' ? d.cardWinStreak : 0,
+        lockedCellsSymbols:        Array.isArray(d.lockedCellsSymbols) ? (d.lockedCellsSymbols as string[]) : [],
+        vengeanceTargets:          (d.vengeanceTargets && typeof d.vengeanceTargets === 'object') ? (d.vengeanceTargets as Record<string, number>) : {},
         ownedCosmetics:    Array.isArray(d.ownedCosmetics) ? (d.ownedCosmetics as string[]) : undefined,
       });
     },
@@ -192,24 +224,45 @@ export async function writeCombatRequest(data: {
   defenderUid: string;
   type: 'INTRUSION' | 'EXTRACTION';
   attackerPower: number;
+  // Optional pre-raid card id. The Cloud Function validates that the
+  // attacker has the card in inventory, decrements it, and applies the
+  // effect inside resolveCombat.
+  cardId?: string;
+  // sector_specialist card flag — true when the defender was discovered
+  // via the player's current SectorMap scan (which is always the case in
+  // the current flow). Server applies the card's bonus when this is true.
+  sectorMatch?: boolean;
 }): Promise<string> {
   const ref = collection(db, 'combatRequests');
-  const doc_ = await addDoc(ref, {
-    ...data,
-    status: 'PENDING',
-    createdAt: serverTimestamp(),
-  });
+  // Firestore rejects undefined-valued fields; strip them before write so
+  // an optional `cardId: undefined` from the caller doesn't fail addDoc.
+  const payload: Record<string, unknown> = {
+    attackerUid:   data.attackerUid,
+    defenderUid:   data.defenderUid,
+    type:          data.type,
+    attackerPower: data.attackerPower,
+    status:        'PENDING',
+    createdAt:     serverTimestamp(),
+  };
+  if (data.cardId !== undefined)      payload.cardId      = data.cardId;
+  if (data.sectorMatch !== undefined) payload.sectorMatch = data.sectorMatch;
+  const doc_ = await addDoc(ref, payload);
   return doc_.id;
 }
 
 export interface CombatRequestResolution {
   status: 'PENDING' | 'PROCESSING' | 'RESOLVED' | 'ERROR';
-  outcome?: 'ATTACKER_WON' | 'DEFENDER_WON' | 'BLOCKED_BY_TURRET';
+  outcome?: 'ATTACKER_WON' | 'DEFENDER_WON' | 'BLOCKED_BY_TURRET' | 'BLOCKED_BY_COOLDOWN';
   creditsGained?: number;
   creditsLost?: number;
   vaultReduction?: number;
   anomalyBonus?: number;
   droneBonus?: number;
+  // Phase C: vengeance bonus applied when the attacker had vengeance against
+  // this defender. +50% loot, cooldown bypass.
+  vengeance?: boolean;
+  // Phase C: name of the raid card consumed for this raid (for receipt UI).
+  cardId?: string;
   error?: string;
 }
 
@@ -255,6 +308,7 @@ export function subscribeToEvents(
             attackerWon:      d.attackerWon,
             timestamp:        d.timestamp ?? Date.now(),
             read:             d.read ?? false,
+            hideUntil:        typeof d.hideUntil === 'number' ? d.hideUntil : undefined,
           }, isInitial);
         }
       });

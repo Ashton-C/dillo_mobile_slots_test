@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
+import { ResourceBar } from '@/components/ResourceBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGameStore } from '@/store/useGameStore';
 import { useAnomalyStore } from '@/store/useAnomalyStore';
@@ -81,6 +82,7 @@ export default function RiftScreen() {
       <TopBar
         right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
       />
+      <ResourceBar compact />
       <View style={styles.header}>
         <Text style={styles.title}>TEMPORAL RIFT</Text>
         <Text style={styles.subtitle}>You choose the rift before each spin. Cost is deducted on press.</Text>

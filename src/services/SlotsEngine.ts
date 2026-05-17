@@ -158,18 +158,56 @@ export const ACTIVE_LINES_5X5: WinLineId[] = [
   'D5_DOWN', 'D5_UP', 'V_DOWN', 'V_UP', 'W_SHAPE',
 ];
 
+// --- Card effect hook ---
+//
+// `setActiveCardEffect` configures a single reel-card effect that mutates the
+// next draw cycle. Effects that touch *draw weights* or the *effective Rift
+// tier* live here; effects that touch *post-evaluate payouts* are applied by
+// useGameStore.spin so the resulting credit number can flow through the
+// existing drone/anomaly/prestige multipliers cleanly. The engine clears
+// per-cell effects after one spin; multi-spin lifecycle is the caller's job.
+
+type CardWeightEffect =
+  | { kind: 'weight_multiplier'; symbols: SlotSymbol[]; multiplier: number }
+  | { kind: 'empty_reduction';   ratio: number }
+  | { kind: 'rift_tier_boost';   delta: 1 | 2 }
+  // Post-draw substitution — when a drawn symbol matches `from`, return `to`.
+  | { kind: 'symbol_convert';    from: SlotSymbol; to: SlotSymbol }
+  // Bias next draws toward a specific symbol (hot_streak — `multiplier` is
+  // the additive weight bump applied as `weight × (1 + multiplier)`).
+  | { kind: 'symbol_bias';       symbol: SlotSymbol; multiplier: number };
+
+// Layout effects applied AFTER the grid is fully drawn, before evaluation.
+// Kept separate from CardWeightEffect because they need to inspect the
+// rolled grid rather than influence individual draws.
+type CardLayoutEffect =
+  | { kind: 'layout_force';      mode: 'mirror_left_right' | 'mid_row_match' | 'top_bot_mirror' | 'all_rows_match' }
+  | { kind: 'lock_cells';        symbols: SlotSymbol[] }; // length = cells to lock; pinned to row 0 col 0..N-1
+
 // --- Core Engine ---
 
 export class SlotsEngine {
   private riftTier: TemporalRiftTier = 0;
   private signalBoost = false;
   private forcedOutcome: Partial<SpinResult> | null = null;
+  private activeCardWeightEffect: CardWeightEffect | null = null;
+  private activeCardLayoutEffect: CardLayoutEffect | null = null;
 
   setRiftTier(tier: TemporalRiftTier): void { this.riftTier = tier; }
   getRiftTier(): TemporalRiftTier { return this.riftTier; }
   setSignalBoost(active: boolean): void { this.signalBoost = active; }
   setForcedOutcome(override: Partial<SpinResult> | null): void { this.forcedOutcome = override; }
   hasForcedOutcome(): boolean { return this.forcedOutcome !== null; }
+  setActiveCardWeightEffect(effect: CardWeightEffect | null): void { this.activeCardWeightEffect = effect; }
+  setActiveCardLayoutEffect(effect: CardLayoutEffect | null): void { this.activeCardLayoutEffect = effect; }
+
+  private effectiveRiftTier(): TemporalRiftTier {
+    const e = this.activeCardWeightEffect;
+    if (e?.kind === 'rift_tier_boost') {
+      return Math.min(3, this.riftTier + e.delta) as TemporalRiftTier;
+    }
+    return this.riftTier;
+  }
 
   spin(): SpinResult {
     if (this.forcedOutcome) {
@@ -198,6 +236,7 @@ export class SlotsEngine {
       [col0[2], col1[2], col2[2]],
     ];
 
+    this.applyCardLayoutEffect(reelWindow);
     const activeLineIds = ACTIVE_LINES[numLines];
     return this.evaluateGrid(reelWindow, activeLineIds);
   }
@@ -212,6 +251,7 @@ export class SlotsEngine {
       for (let c = 0; c < cols; c++) row.push(this.drawSymbol());
       reelWindow.push(row);
     }
+    this.applyCardLayoutEffect(reelWindow);
     return this.evaluateGrid(reelWindow, activeLineIds);
   }
 
@@ -344,11 +384,11 @@ export class SlotsEngine {
   }
 
   private drawSymbol(): SlotSymbol {
-    return weightedRandom(this.buildEffectiveWeights());
+    return this.convertSymbol(weightedRandom(this.buildEffectiveWeights()));
   }
 
   private buildEffectiveWeights(): Record<SlotSymbol, number> {
-    const mods = RIFT_MODIFIERS[this.riftTier];
+    const mods = RIFT_MODIFIERS[this.effectiveRiftTier()];
     const result = { ...BASE_WEIGHTS };
 
     if (this.signalBoost) {
@@ -357,11 +397,68 @@ export class SlotsEngine {
       result.CREDIT_LARGE  = Math.round(result.CREDIT_LARGE  * 1.5);
     }
 
+    const eff = this.activeCardWeightEffect;
+    if (eff?.kind === 'weight_multiplier') {
+      for (const sym of eff.symbols) {
+        result[sym] = Math.max(1, Math.round(result[sym] * eff.multiplier));
+      }
+    } else if (eff?.kind === 'empty_reduction') {
+      // ratio of 0 = guaranteed non-EMPTY (weight clamped to 0, never picked).
+      result.EMPTY = Math.max(0, Math.round(result.EMPTY * eff.ratio));
+    } else if (eff?.kind === 'symbol_bias') {
+      result[eff.symbol] = Math.max(1, Math.round(result[eff.symbol] * (1 + eff.multiplier)));
+    }
+
     for (const [sym, delta] of Object.entries(mods) as [SlotSymbol, number][]) {
       result[sym] = Math.max(1, result[sym] + delta);
     }
 
     return result;
+  }
+
+  private convertSymbol(symbol: SlotSymbol): SlotSymbol {
+    const eff = this.activeCardWeightEffect;
+    if (eff?.kind === 'symbol_convert' && symbol === eff.from) return eff.to;
+    return symbol;
+  }
+
+  // Apply layout_force / lock_cells to an already-drawn grid before
+  // evaluation. Modifies the window in-place for layout_force; lock_cells
+  // overwrites the first N cells of row 0.
+  private applyCardLayoutEffect(reelWindow: ReelWindow): void {
+    const eff = this.activeCardLayoutEffect;
+    if (!eff) return;
+    if (eff.kind === 'lock_cells') {
+      const row0 = reelWindow[0];
+      if (!row0) return;
+      for (let i = 0; i < eff.symbols.length && i < row0.length; i++) {
+        row0[i] = eff.symbols[i];
+      }
+      return;
+    }
+    if (eff.kind !== 'layout_force') return;
+    const rows = reelWindow.length;
+    const cols = reelWindow[0]?.length ?? 0;
+    if (eff.mode === 'mirror_left_right') {
+      // Force col[cols-1] === col[0] across every row.
+      for (let r = 0; r < rows; r++) {
+        reelWindow[r][cols - 1] = reelWindow[r][0];
+      }
+    } else if (eff.mode === 'mid_row_match') {
+      const mid = Math.floor(rows / 2);
+      const pick = reelWindow[mid][0];
+      for (let c = 1; c < cols; c++) reelWindow[mid][c] = pick;
+    } else if (eff.mode === 'top_bot_mirror') {
+      // For 3-row grids, force row 2 to mirror row 0.
+      if (rows >= 3) {
+        for (let c = 0; c < cols; c++) reelWindow[rows - 1][c] = reelWindow[0][c];
+      }
+    } else if (eff.mode === 'all_rows_match') {
+      // Force every row to match row 0.
+      for (let r = 1; r < rows; r++) {
+        for (let c = 0; c < cols; c++) reelWindow[r][c] = reelWindow[0][c];
+      }
+    }
   }
 }
 

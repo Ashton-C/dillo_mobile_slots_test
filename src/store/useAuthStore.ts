@@ -203,6 +203,20 @@ async function ensureUserDoc(user: User): Promise<UserProfile> {
     xp: 0,
     level: 1,
     habitatId: null,
+    // Card system seed fields. activeReelCardSpinsLeft tracks multi-spin
+    // reel effects. lockedAnomalyId / lastWinningSymbol / cardWinStreak /
+    // lockedCellsSymbols back the per-card-session state of anomaly_lock,
+    // hot_streak, streak_bonus / compound, and lock_cells respectively.
+    // vengeanceTargets is the 15-min retaliation map (written by
+    // resolveCombat on successful incoming raids).
+    cards: {},
+    activeReelCard: null,
+    activeReelCardSpinsLeft: 0,
+    lockedAnomalyId: null,
+    lastWinningSymbol: null,
+    cardWinStreak: 0,
+    lockedCellsSymbols: [],
+    vengeanceTargets: {},
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

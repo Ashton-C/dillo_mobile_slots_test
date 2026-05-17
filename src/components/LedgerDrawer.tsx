@@ -104,23 +104,33 @@ function ReelGrid({ entry }: { entry: SpinHistoryEntry }) {
   const { reelWindow, winLineIds } = entry;
   if (!reelWindow) return null;
 
-  const winSet = new Set<WinLineId>(winLineIds);
-
-  // Determine highlight color for each [row][col] cell
-  const highlights: (string | null)[][] = [[null, null, null], [null, null, null], [null, null, null]];
+  // Size the highlight grid to match the actual reel window. The window is
+  // 3×3 for outposts 1–9 and 5×5 at outpost 10+ (10-payline mode); using
+  // hardcoded 3×3 here used to crash when a 5×5 win pattern indexed row 3.
+  const rows = reelWindow.length;
+  const cols = reelWindow[0]?.length ?? 0;
+  const highlights: (string | null)[][] =
+    Array.from({ length: rows }, () => Array.from({ length: cols }, () => null));
   for (const lineId of winLineIds) {
     const pattern = LINE_PATTERNS[lineId];
+    if (!pattern) continue;
     const color = PAYLINE_COLORS[lineId];
-    for (let col = 0; col < 3; col++) {
-      highlights[pattern[col]][col] = color;
+    for (let col = 0; col < pattern.length && col < cols; col++) {
+      const row = pattern[col];
+      if (row >= 0 && row < rows) {
+        highlights[row][col] = color;
+      }
     }
   }
 
+  const rowIndexes = Array.from({ length: rows }, (_, i) => i);
+  const colIndexes = Array.from({ length: cols }, (_, i) => i);
+
   return (
     <View style={gridStyles.grid}>
-      {([0, 1, 2] as const).map((row) => (
+      {rowIndexes.map((row) => (
         <View key={row} style={gridStyles.gridRow}>
-          {([0, 1, 2] as const).map((col) => {
+          {colIndexes.map((col) => {
             const sym = reelWindow[row][col];
             const hlColor = highlights[row][col];
             return (

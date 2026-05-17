@@ -111,6 +111,89 @@ Hard currency, IAP, and rewarded ads. Built the social loop fully before turning
 - [x] **Personalized-ads gating** — `AdsService` now honors the ATT permission state instead of always forcing `requestNonPersonalizedAdsOnly: true`
 - [ ] App Store / Play Store submission (see `DEPLOY_CHECKLIST.md`)
 
+### Card system — in progress (Phase A complete)
+
+Roguelike-style consumable cards that drop from slot wins. Two categories:
+**Reel cards** mutate the next spin (weight shifts, payout multipliers, Rift
+synergies); **Raid cards** are picked pre-raid and applied server-side inside
+`resolveCombat`. Each baseId has a MINOR (common) and MAJOR (rare) tier.
+
+- [x] **Phase A — data model + catalog** (`src/models/Card.ts`)
+  - 60 distinct cards (30 baseIds × 2 tiers) covering raid power/loot/risk
+    play and reel weight/multiplier/Rift/anomaly synergies
+  - Discriminated-union `CardEffect` so the Phase B/C apply sites get
+    exhaustive-switch safety from the compiler
+  - Drop tuning constants (1.5% drop rate, 75/25 minor-major split,
+    60/40 reel-raid split, 30-card inventory cap, shred values)
+  - `users/{uid}.cards: Record<cardId, count>` and `activeReelCard` fields
+    plumbed through `UserResourceSnapshot`, `useGameStore.Resources`,
+    `ensureUserDoc`, and the CF `UserDoc` / `CombatRequest` types
+- [x] **Phase B — slot integration**: card drop roll inside `useGameStore.spin`
+      with auto-shred to CR over inventory cap; `CardDropModal` (add/shred
+      choice); `ReelCardChip` armed-card chip + picker drawer on the spin
+      tab; `CardService.ts` houses drop weighting and `computePostSpinModifiers`;
+      SlotsEngine gains `setActiveCardWeightEffect` for weight / Rift-tier
+      effects; 15 single-spin reel-effect kinds wired (multiplier, jackpot
+      mult, line mult, extra lines, anomaly amplify/gated, rift free / gate /
+      boost, quartermaster, guarantee drop, stardust on big win, tier echo,
+      weight shifts, empty reduction). Drop filter restricts the catalog to
+      implemented effect kinds (raid cards always drop; their apply path is
+      Phase C). `activeReelCardSpinsLeft` field added for multi-spin cards.
+- [x] **Phase C — raid integration + vengeance**: `PreRaidCardModal` after
+      target lock; `combatRequests.cardId` validated + decremented +
+      applied server-side in `resolveCombat`. 21 raid-effect kinds wired
+      in C, +7 more in C.2 (smoke screen, pursuit beacon, wager, anomaly
+      shift, sector specialist, extra token cost, vengeance bonus card).
+      15-min vengeance window via `vengeanceTargets` map on the user
+      doc — server writes on each successful incoming raid; clients can
+      retaliate within the window at +50% loot, bypassing the 10-min
+      attack cooldown, still costing 1 token. 24h `recentAttackers` map
+      backs the vengeance_cast card. Mini-games (`RouletteGame`,
+      `BlackjackMiniGame`) thread `cardId` + `sectorMatch` into
+      `writeCombatRequest`. Combat log filters `hideUntil` for
+      smoke-screened raids. Drop filter still excludes the 3 mini-game
+      effects (mini_game_rerolls, reroll_mini_game, remove_wheel_slot)
+      pending Phase E animation work.
+- [x] **Phase D — inventory + tutorial + UI hints**: new `/inventory`
+      drill-down route (entry button on the Pilot tab) showing all owned
+      cards with filter chips, rarity dots, ARM/UNARM for reel cards,
+      shred-for-CR action, "ARMED" banner for the currently-queued reel
+      card. First-drop tutorial overlay layered on the `CardDropModal`
+      (one-shot, AsyncStorage-gated via `@card_tutorial_seen`) explaining
+      reel vs raid cards, shred, and inventory. SectorMap target cards
+      now surface a `⚡ VENGEANCE` badge when the player has an
+      unexpired vengeance window against that target.
+- [x] **Phase E — mini-game effects + telemetry**: wired the 3 parked
+      raid cards. RouletteGame's `startSpin` rolls best-of-N for
+      `mini_game_rerolls` (triple_threat) and excludes MISS slots
+      visually + in the landing pool for `remove_wheel_slot`
+      (stabilizer). BlackjackMiniGame tracks `rerollsLeft` and
+      auto-redeals on a loss for `reroll_mini_game` (reroll_module),
+      surfaced with a banner. `CardTelemetry` writes a single Firestore
+      doc per event (drop / activate_reel / shred / activate_raid) to
+      a new `cardTelemetry` collection — rules updated to allow client
+      writes scoped to their own uid. Server-side raid activations are
+      logged from `resolveCombat` for win/loss/turret outcomes.
+      `IMPLEMENTED_RAID_EFFECT_KINDS` opens up the final 3 raid effects,
+      so all 30 raid card baseIds × 2 tiers now drop.
+- [x] **Phase E.2 — full reel coverage** (100% catalog): wired all 11
+      remaining reel-effect kinds. `symbol_convert` runs post-draw in
+      `SlotsEngine.drawSymbol`. `compound`, `rift_refund`, `void_tap`
+      (Rift 3 + fuel gate), `anomaly_lock` (snapshot at activate),
+      `hot_streak` (engine weight bias keyed on `lastWinningSymbol`),
+      `streak_bonus` (caps on `cardWinStreak`) all flow through the
+      existing `computePostSpinModifiers` pipeline. `layout_force` and
+      `lock_cells` apply post-draw via the new
+      `setActiveCardLayoutEffect` hook on the engine (mirror /
+      mid-row-match / top-bot-mirror / all-rows-match for layout_force;
+      previous-spin cell carry for lock_cells). `echo_chance` and
+      `cascade` chain via module-level `pendingChainSpins` — chain
+      spins skip `spinsRemaining` drain, terminate on a losing spin,
+      and respect the card's maxExtra/maxChain bound. New state
+      fields on the user doc: `lockedAnomalyId`, `lastWinningSymbol`,
+      `cardWinStreak`, `lockedCellsSymbols`. **All 120 SKUs (60 reel +
+      60 raid) now drop and apply.**
+
 ### Also shipped in Phase 5 session
 - [x] **Multiline slot machine** — 3×3 / 5×5 reel windows; 1/3/5/10 paylines gated by Outpost Level (`getGridConfig`); `spinRows()` in SlotsEngine; per-cell win highlight colors in ReelDisplay
 - [x] **Roulette + Blackjack PvP mini-games** — replaced the 3-reel CombatMiniGame for raid resolution; thematically distinct outcomes for BREACH (roulette wheel) vs EXTRACT (blackjack hand)

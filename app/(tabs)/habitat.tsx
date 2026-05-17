@@ -5,6 +5,7 @@ import { hapticBuildStart } from '@/constants/haptics';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
+import { ResourceBar } from '@/components/ResourceBar';
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore, getGridConfig } from '@/store/useHabitatStore';
@@ -59,6 +60,7 @@ export default function HabitatScreen() {
       <TopBar
         right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
       />
+      <ResourceBar compact />
 
       {/* Outpost banner */}
       <LinearGradient

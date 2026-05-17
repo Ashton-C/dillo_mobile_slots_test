@@ -10,6 +10,7 @@ import {
   PlayerIndexEntry,
   CombatRequestResolution,
 } from '@/services/FirestoreService';
+import { getMiniGameMods } from '@/services/CardService';
 import { CombatResolutionChip } from '@/components/CombatResolutionChip';
 import { auth } from '@/lib/firebase';
 import { useGameStore } from '@/store/useGameStore';
@@ -23,6 +24,9 @@ interface Props {
   visible: boolean;
   target: PlayerIndexEntry | null;
   combatType: 'INTRUSION' | 'EXTRACTION';
+  // Optional pre-raid card id. Validated + applied server-side in
+  // resolveCombat; the client only passes it through.
+  cardId?: string | null;
   onClose: () => void;
   onResult: (won: boolean) => void;
 }
@@ -93,7 +97,7 @@ function blackjackPower(playerCards: Card[], dealerCards: Card[]): { power: 8 | 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function BlackjackMiniGame({ visible, target, combatType, onClose, onResult }: Props) {
+export function BlackjackMiniGame({ visible, target, combatType, cardId, onClose, onResult }: Props) {
   const [phase, setPhase] = useState<Phase>('DEAL');
   const [deck, setDeck] = useState<Card[]>([]);
   const [player, setPlayer] = useState<Card[]>([]);
@@ -103,6 +107,10 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
   const [resolution, setResolution] = useState<CombatRequestResolution | null>(null);
   const [sentPower, setSentPower] = useState(8);
   const [showRulesHint, setShowRulesHint] = useState(false);
+  // reroll_module card: number of redeals remaining for THIS modal session.
+  // Initialised when the modal opens from the catalog effect.
+  const [rerollsLeft, setRerollsLeft] = useState(0);
+  const [justRerolled, setJustRerolled] = useState(false);
   const requestUnsubRef = useRef<(() => void) | null>(null);
 
   // Show the rules hint exactly once per install on the first time the
@@ -135,6 +143,8 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
     setWon(false);
     setResolution(null);
     setSentPower(8);
+    setRerollsLeft(getMiniGameMods(cardId).blackjackRerolls);
+    setJustRerolled(false);
 
     // Auto-resolve a natural blackjack on the deal.
     if (isBlackjack(pHand) || isBlackjack(dHand)) {
@@ -179,6 +189,28 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
   function resolve(p: Card[], d: Card[]) {
     const { power, outcome: outcomeText } = blackjackPower(p, d);
     const didWin = power > 8;
+
+    // reroll_module card: on a loss, burn one reroll charge to re-deal the
+    // hand and try again. The player keeps every other piece of state —
+    // only the deck/hands reset. Naturals on the redeal still auto-resolve.
+    if (!didWin && rerollsLeft > 0) {
+      setRerollsLeft((n) => n - 1);
+      setJustRerolled(true);
+      const nd = buildShuffledDeck();
+      const np = [nd.pop()!, nd.pop()!];
+      const ndd = [nd.pop()!, nd.pop()!];
+      setDeck(nd);
+      setPlayer(np);
+      setDealer(ndd);
+      setPhase('PLAYER');
+      setOutcome('REROLLED');
+      setTimeout(() => setJustRerolled(false), 1400);
+      if (isBlackjack(np) || isBlackjack(ndd)) {
+        setTimeout(() => resolve(np, ndd), 500);
+      }
+      return;
+    }
+
     setSentPower(power);
 
     // Stardust skill drip: every blackjack-extraction win earns +1 ✦.
@@ -193,6 +225,8 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
         defenderUid: target.uid,
         type: combatType,
         attackerPower: power,
+        cardId: cardId ?? undefined,
+        sectorMatch: true,
       }).then((requestId) => {
         requestUnsubRef.current?.();
         requestUnsubRef.current = subscribeToCombatRequest(requestId, (r) => {
@@ -284,6 +318,16 @@ export function BlackjackMiniGame({ visible, target, combatType, onClose, onResu
               ))}
             </View>
           </View>
+
+          {(rerollsLeft > 0 || justRerolled) && (
+            <View style={styles.rerollBanner}>
+              <Text style={styles.rerollText}>
+                {justRerolled
+                  ? '↺ REROLLED — new hand dealt'
+                  : `◇ REROLL CHARGE${rerollsLeft === 1 ? '' : 'S'}: ${rerollsLeft} (auto on loss)`}
+              </Text>
+            </View>
+          )}
 
           {phase === 'DONE' && (
             <>
@@ -475,6 +519,22 @@ const styles = StyleSheet.create({
   },
   cardSuit: {
     fontSize: Typography.sizes.xl,
+  },
+  rerollBanner: {
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    backgroundColor: Colors.accent + '22',
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    marginTop: Spacing.sm,
+  },
+  rerollText: {
+    color: Colors.accent,
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    letterSpacing: 2,
   },
   outcomeText: {
     fontSize: Typography.sizes.md,

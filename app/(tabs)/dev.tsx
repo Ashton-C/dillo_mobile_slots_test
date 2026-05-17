@@ -16,7 +16,98 @@ import { ANOMALIES } from '@/services/AnomalyService';
 import type { AnomalyId } from '@/services/AnomalyService';
 import type { DroneType } from '@/models/Drone';
 import { DEBUG_PLAYERS, loadActiveDebugUids, saveActiveDebugUids } from '@/constants/debugPlayers';
+import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
+
+interface BuildInfo {
+  sha: string;
+  shortSha: string;
+  branch: string;
+  commitDate: string;
+  commitMessage: string;
+  dirty: boolean;
+  configEvaluatedAt: string;
+}
+
+function fmtRelative(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const diff = Date.now() - t;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60)        return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60)        return `${min}m ago`;
+  const hr  = Math.floor(min / 60);
+  if (hr  < 24)        return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function BuildInfoCard() {
+  const info = (Constants.expoConfig?.extra?.buildInfo as BuildInfo | undefined) ?? null;
+  if (!info) {
+    return (
+      <View style={[devStyles.card, devStyles.cardWarn]}>
+        <Text style={devStyles.cardTitle}>BUILD INFO</Text>
+        <Text style={devStyles.cardLine}>No build info — app.config.js may not be capturing git data.</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[devStyles.card, info.dirty ? devStyles.cardWarn : devStyles.cardOk]}>
+      <Text style={devStyles.cardTitle}>BUILD INFO</Text>
+      <View style={devStyles.cardRow}>
+        <Text style={devStyles.cardKey}>BRANCH</Text>
+        <Text style={devStyles.cardVal} numberOfLines={1}>{info.branch}{info.dirty ? '*' : ''}</Text>
+      </View>
+      <View style={devStyles.cardRow}>
+        <Text style={devStyles.cardKey}>COMMIT</Text>
+        <Text style={devStyles.cardVal} numberOfLines={1}>{info.shortSha}</Text>
+      </View>
+      <View style={devStyles.cardRow}>
+        <Text style={devStyles.cardKey}>SUBJECT</Text>
+        <Text style={devStyles.cardVal} numberOfLines={2}>{info.commitMessage}</Text>
+      </View>
+      <View style={devStyles.cardRow}>
+        <Text style={devStyles.cardKey}>COMMITTED</Text>
+        <Text style={devStyles.cardVal} numberOfLines={1}>{fmtRelative(info.commitDate)}</Text>
+      </View>
+      <View style={devStyles.cardRow}>
+        <Text style={devStyles.cardKey}>BUNDLE</Text>
+        <Text style={devStyles.cardVal} numberOfLines={1}>started {fmtRelative(info.configEvaluatedAt)}</Text>
+      </View>
+      {info.dirty && (
+        <Text style={devStyles.cardWarnText}>⚠ Working tree dirty — uncommitted changes are running.</Text>
+      )}
+    </View>
+  );
+}
+
+const devStyles = StyleSheet.create({
+  card: {
+    padding: Spacing.md,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.lg,
+    gap: 4,
+  },
+  cardOk:   { borderColor: Colors.success + '88' },
+  cardWarn: { borderColor: Colors.warning + 'AA' },
+  cardTitle: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.accent,
+    letterSpacing: 3,
+    fontWeight: Typography.weights.bold,
+    marginBottom: Spacing.xs,
+  },
+  cardRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' },
+  cardKey: { width: 84, fontSize: 10, color: Colors.textMuted, letterSpacing: 1.5, fontWeight: Typography.weights.bold },
+  cardVal: { flex: 1, fontSize: Typography.sizes.xs, color: Colors.text, fontFamily: Typography.fontFamily, fontWeight: Typography.weights.bold },
+  cardWarnText: { marginTop: Spacing.xs, fontSize: 10, color: Colors.warning, fontStyle: 'italic' },
+});
 
 const ANOMALY_IDS: AnomalyId[] = [
   'SOLAR_SURGE', 'VOID_STORM', 'CREDIT_BLOOM', 'SHIELD_PULSE', 'RAID_SHADOW', 'CALM',
@@ -71,9 +162,22 @@ export default function DevScreen() {
     }
   }
 
+  const router = useRouter();
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.screenTitle}>DEV</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={styles.screenTitle}>DEV</Text>
+        <Pressable
+          onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/pilot')}
+          style={{ paddingVertical: 4, paddingHorizontal: Spacing.sm }}
+        >
+          <Text style={{ color: Colors.textMuted, letterSpacing: 2, fontWeight: Typography.weights.bold, fontSize: Typography.sizes.xs }}>
+            BACK
+          </Text>
+        </Pressable>
+      </View>
+
+      <BuildInfoCard />
 
       <Text style={styles.sectionTitle}>MODIFIERS</Text>
 

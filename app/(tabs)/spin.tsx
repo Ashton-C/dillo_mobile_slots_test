@@ -21,7 +21,10 @@ import { useHabitatStore } from '@/store/useHabitatStore';
 import { useEventStore } from '@/store/useEventStore';
 import { useCosmeticsStore } from '@/store/useCosmeticsStore';
 import { BACKGROUND_TOKENS } from '@/services/CosmeticsService';
+import { CardDropModal } from '@/components/CardDropModal';
+import { ReelCardChip } from '@/components/ReelCardChip';
 import { SpinButton } from '@/components/SpinButton';
+import { getCardDefinition } from '@/models/Card';
 import { ReelDisplay } from '@/components/ReelDisplay';
 import { ResourceBar } from '@/components/ResourceBar';
 import { RiftSelector } from '@/components/RiftSelector';
@@ -95,7 +98,13 @@ export default function SpinScreen() {
     msUntilNextSpin, msUntilFull,
     overclockActive, signalBoostActive,
     spin, setRiftTier, activateOverclock, activateSignalBoost,
+    lastCardDrop, clearLastCardDrop, activeReelCard, cards,
   } = useGameStore();
+  const [cardPickerOpen, setCardPickerOpen] = useState(false);
+  const ownedReelCount = Object.entries(cards).reduce(
+    (acc, [id, n]) => acc + (getCardDefinition(id)?.category === 'REEL' ? n : 0),
+    0,
+  );
 
   const latestEvent = useEventStore((s) => s.events[0]);
   const generatorLevel  = useHabitatStore((s) => s.buildingLevels.GENERATOR ?? 0);
@@ -372,24 +381,29 @@ export default function SpinScreen() {
           </>
         }
       />
-
-      <LinearGradient
-        colors={bgTokens.gradientColors as [string, string, string]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      >
-        <ResourceBar
-          credits={credits}
-          stardust={stardust}
-          attacks={attacks}
-          raids={raids}
-          shields={shields}
-          spinsRemaining={spinsRemaining}
-          style={styles.resourceBarTransparent}
-        />
-      </LinearGradient>
+      <ResourceBar compact />
 
       <ModifierPanel />
+      <View style={styles.cardStrip}>
+        {activeReelCard ? (
+          <ReelCardChip pickerOpen={false} onClosePicker={() => {}} />
+        ) : (
+          <Pressable
+            onPress={() => setCardPickerOpen(true)}
+            style={[styles.cardCta, ownedReelCount > 0 && styles.cardCtaPulse]}
+          >
+            <Text style={styles.cardCtaIcon}>◇</Text>
+            <Text style={styles.cardCtaLabel}>
+              {ownedReelCount > 0 ? `${ownedReelCount} REEL CARDS` : 'NO CARDS YET'}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+      <ReelCardChip
+        pickerOpen={cardPickerOpen}
+        onClosePicker={() => setCardPickerOpen(false)}
+        showChip={false}
+      />
 
       <View style={[styles.contentScroll, styles.content, { paddingBottom: tabBarHeight + 16 }]}>
         {/* Digital payout indicator — fixed 64px, always rendered */}
@@ -640,6 +654,8 @@ export default function SpinScreen() {
         <LegendRow left="▲▲ BOOST" right="1 SIGNAL · ×1.5 CR weights" color={Colors.raid} />
         <LegendNote text="Multipliers stack: base × DRONE × ANOMALY + OVERCLOCK − RIFT cost. See LEDGER for the receipt." />
       </LegendCard>
+
+      <CardDropModal drop={lastCardDrop} onClose={clearLastCardDrop} />
     </SafeAreaView>
   );
 }
@@ -934,5 +950,37 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: Colors.background,
     letterSpacing: 4,
+  },
+  cardStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: 4,
+  },
+  cardCta: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  cardCtaPulse: {
+    borderColor: Colors.accent,
+  },
+  cardCtaIcon: {
+    fontSize: 14,
+    color: Colors.accent,
+  },
+  cardCtaLabel: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    fontWeight: Typography.weights.bold,
   },
 });

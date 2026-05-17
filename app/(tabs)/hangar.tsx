@@ -9,6 +9,7 @@ import { adsService } from '@/services/AdsService';
 import { LegendCard, LegendSection, LegendRow, LegendNote } from '@/components/LegendCard';
 import { IconButton } from '@/components/IconButton';
 import { TopBar } from '@/components/TopBar';
+import { ResourceBar } from '@/components/ResourceBar';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useGameStore } from '@/store/useGameStore';
 import { useHabitatStore } from '@/store/useHabitatStore';
@@ -17,6 +18,8 @@ import { DEBUG_PLAYERS, loadActiveDebugUids } from '@/constants/debugPlayers';
 import { RouletteGame } from '@/components/RouletteGame';
 import { BlackjackMiniGame } from '@/components/BlackjackMiniGame';
 import { SectorMap } from '@/components/SectorMap';
+import { PreRaidCardModal } from '@/components/PreRaidCardModal';
+import { getCardDefinition } from '@/models/Card';
 import { Colors, Typography, Spacing, BorderRadius } from '@/constants/theme';
 
 const RECENT_TARGETS_KEY = 'recentRadarTargets';
@@ -49,9 +52,12 @@ interface TargetCardProps {
   extractions: number;
   onAttack: (target: PlayerIndexEntry, type: CombatType) => void;
   dimmed?: boolean;
+  // True when the player has an unexpired vengeance window against this
+  // target — shown as a "VENGEANCE" badge in the threat row.
+  vengeanceReady?: boolean;
 }
 
-function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, dimmed }: TargetCardProps) {
+function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, dimmed, vengeanceReady }: TargetCardProps) {
   const threatDiff = outpostLevel - target.outpostLevel;
   const threatColor = threatDiff >= 2 ? Colors.success : threatDiff >= 0 ? Colors.warning : Colors.danger;
   const threatLabel = threatDiff >= 2 ? 'WEAK' : threatDiff >= 0 ? 'EVEN' : 'STRONG';
@@ -80,6 +86,11 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
             <View style={[styles.threatBadge, { borderColor: threatColor }]}>
               <Text style={[styles.threatText, { color: threatColor }]}>{threatLabel}</Text>
             </View>
+            {vengeanceReady && (
+              <View style={[styles.threatBadge, { borderColor: Colors.accent, backgroundColor: Colors.accent + '22' }]}>
+                <Text style={[styles.threatText, { color: Colors.accent }]}>⚡ VENGEANCE</Text>
+              </View>
+            )}
             {dimmed && <Text style={styles.recentBadge}>RECENT</Text>}
           </View>
           <Text style={styles.targetMeta}>
@@ -126,6 +137,7 @@ function TargetCard({ target, outpostLevel, intrusions, extractions, onAttack, d
 export default function RadarScreen() {
   const user = useAuthStore((s) => s.user);
   const { intrusions, extractions, subtractResources } = useGameStore();
+  const cards = useGameStore((s) => s.cards);
   const outpostLevel = useHabitatStore((s) => s.outpostLevel);
 
   const [targets, setTargets] = useState<PlayerIndexEntry[]>([]);
@@ -134,9 +146,24 @@ export default function RadarScreen() {
   const [selectedTarget, setSelectedTarget] = useState<PlayerIndexEntry | null>(null);
   const [combatType, setCombatType] = useState<CombatType>('INTRUSION');
   const [miniGameVisible, setMiniGameVisible] = useState(false);
+  // Pre-raid card pick — modal is shown after target lock when the player
+  // owns ≥1 raid card. Carries selectedCardId through into the mini-game.
+  const [cardPickerVisible, setCardPickerVisible] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [scanCount, setScanCount] = useState(0);
   const [legendVisible, setLegendVisible] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+
+  const ownedRaidCardCount = Object.entries(cards).reduce(
+    (n, [id, c]) => n + (getCardDefinition(id)?.category === 'RAID' ? c : 0),
+    0,
+  );
+
+  const vengeanceTargets = useGameStore((s) => s.vengeanceTargets);
+  const isVengeanceReady = (uid: string): boolean => {
+    const expiry = vengeanceTargets[uid];
+    return typeof expiry === 'number' && expiry > Date.now();
+  };
 
   async function scan() {
     if (!user) return;
@@ -182,8 +209,55 @@ export default function RadarScreen() {
 
     setSelectedTarget(target);
     setCombatType(type);
-    setMiniGameVisible(true);
+    setSelectedCardId(null);
+    // If the player owns any raid cards, give them a chance to pick one
+    // before the mini-game opens. Otherwise jump straight to the reels.
+    if (ownedRaidCardCount > 0) {
+      setCardPickerVisible(true);
+    } else {
+      setMiniGameVisible(true);
+    }
     hapticCombatLaunch();
+  }
+
+  function handleCardPick(cardId: string | null) {
+    if (cardId) {
+      // twin_strike (raid_extra_token_cost): deduct the extra token cost
+      // upfront and validate the player can afford it. If not, silently
+      // refuse the card and let them pick again.
+      const def = getCardDefinition(cardId);
+      const extraEffect = def?.effects.find((e) => e.kind === 'raid_extra_token_cost');
+      if (extraEffect && extraEffect.kind === 'raid_extra_token_cost') {
+        const extra = extraEffect.extraTokens;
+        const have =
+          combatType === 'INTRUSION'
+            ? useGameStore.getState().intrusions
+            : useGameStore.getState().extractions;
+        if (have < extra) {
+          // Not enough tokens — keep the picker open. A tiny UX gap; toast
+          // hookup is Phase D polish.
+          return;
+        }
+        const cost = combatType === 'INTRUSION' ? { intrusions: extra } : { extractions: extra };
+        useGameStore.getState().subtractResources(cost);
+      }
+    }
+    setSelectedCardId(cardId);
+    setCardPickerVisible(false);
+    setMiniGameVisible(true);
+  }
+
+  function handleCardPickerCancel() {
+    // Cancelling refunds the breach/extract token — the player hadn't
+    // committed to the raid yet. Same UX as backing out of the wheel.
+    if (combatType === 'INTRUSION') {
+      useGameStore.setState((s) => ({ intrusions: s.intrusions + 1 }));
+    } else {
+      useGameStore.setState((s) => ({ extractions: s.extractions + 1 }));
+    }
+    setCardPickerVisible(false);
+    setSelectedTarget(null);
+    setSelectedCardId(null);
   }
 
   function handleMiniGameResult(won: boolean) {
@@ -193,6 +267,7 @@ export default function RadarScreen() {
   function handleMiniGameClose() {
     setMiniGameVisible(false);
     setSelectedTarget(null);
+    setSelectedCardId(null);
     // Post-combat interstitial — frequency-capped to once every 4 minutes
     // globally so a fast raid streak doesn't bombard players. Only fires
     // after EXTRACTIONs to leave the snappier INTRUSION flow ad-free.
@@ -206,6 +281,7 @@ export default function RadarScreen() {
       <TopBar
         right={<IconButton glyph="?" onPress={() => setLegendVisible(true)} />}
       />
+      <ResourceBar compact />
       {/* Header */}
       <LinearGradient
         colors={[Colors.danger + '22', Colors.accent + '11', 'transparent']}
@@ -280,6 +356,7 @@ export default function RadarScreen() {
                 extractions={extractions}
                 onAttack={launchAttack}
                 dimmed
+                vengeanceReady={isVengeanceReady(target.uid)}
               />
             ))}
             <View style={styles.divider} />
@@ -325,6 +402,7 @@ export default function RadarScreen() {
             intrusions={intrusions}
             extractions={extractions}
             onAttack={launchAttack}
+            vengeanceReady={isVengeanceReady(target.uid)}
           />
         ))}
 
@@ -339,11 +417,19 @@ export default function RadarScreen() {
         </Text>
       </ScrollView>
 
+      <PreRaidCardModal
+        visible={cardPickerVisible}
+        combatType={combatType}
+        onPick={handleCardPick}
+        onCancel={handleCardPickerCancel}
+      />
+
       {combatType === 'EXTRACTION' ? (
         <BlackjackMiniGame
           visible={miniGameVisible}
           target={selectedTarget}
           combatType={combatType}
+          cardId={selectedCardId}
           onClose={handleMiniGameClose}
           onResult={handleMiniGameResult}
         />
@@ -352,6 +438,7 @@ export default function RadarScreen() {
           visible={miniGameVisible}
           target={selectedTarget}
           combatType={combatType}
+          cardId={selectedCardId}
           onClose={handleMiniGameClose}
           onResult={handleMiniGameResult}
         />
