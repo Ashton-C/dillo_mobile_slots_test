@@ -234,11 +234,19 @@ export async function writeCombatRequest(data: {
   sectorMatch?: boolean;
 }): Promise<string> {
   const ref = collection(db, 'combatRequests');
-  const doc_ = await addDoc(ref, {
-    ...data,
-    status: 'PENDING',
-    createdAt: serverTimestamp(),
-  });
+  // Firestore rejects undefined-valued fields; strip them before write so
+  // an optional `cardId: undefined` from the caller doesn't fail addDoc.
+  const payload: Record<string, unknown> = {
+    attackerUid:   data.attackerUid,
+    defenderUid:   data.defenderUid,
+    type:          data.type,
+    attackerPower: data.attackerPower,
+    status:        'PENDING',
+    createdAt:     serverTimestamp(),
+  };
+  if (data.cardId !== undefined)      payload.cardId      = data.cardId;
+  if (data.sectorMatch !== undefined) payload.sectorMatch = data.sectorMatch;
+  const doc_ = await addDoc(ref, payload);
   return doc_.id;
 }
 
